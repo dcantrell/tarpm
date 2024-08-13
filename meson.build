@@ -7,7 +7,7 @@ project('tarpm',
             'werror=true',
             'buildtype=debugoptimized'
         ],
-        license : 'BSD-3-Clause'
+        license : 'Apache-2.0'
 )
 
 cc = meson.get_compiler('c')
