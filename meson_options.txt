@@ -1,0 +1,4 @@
+option('nls',
+       type : 'boolean',
+       value : true,
+       description : 'Enable native language support (translations)')
