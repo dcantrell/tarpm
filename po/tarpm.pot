@@ -1,0 +1,77 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the tarpm package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: tarpm\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-08-09 11:53-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/main.c:19
+#, c-format
+msgid "Binary RPM extraction and creation utility\n"
+msgstr ""
+
+#: src/main.c:20
+#, c-format
+msgid "Usage: %s [OPTIONS] [binary .rpm file]\n"
+msgstr ""
+
+#: src/main.c:21
+#, c-format
+msgid "Options:\n"
+msgstr ""
+
+#: src/main.c:22
+#, c-format
+msgid "    -x, --extract                     Extract binary RPM file\n"
+msgstr ""
+
+#: src/main.c:23
+#, c-format
+msgid "    -v, --verbose                     Verbose progress output\n"
+msgstr ""
+
+#: src/main.c:24
+#, c-format
+msgid "    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"
+msgstr ""
+
+#: src/main.c:25
+#, c-format
+msgid "    -V, --version                     Display version information\n"
+msgstr ""
+
+#: src/main.c:26
+#, c-format
+msgid "    -?, --help                        Display this screen\n"
+msgstr ""
+
+#: src/main.c:27
+#, c-format
+msgid "See the tarpm(!) man page for more information.\n"
+msgstr ""
+
+#: src/main.c:70
+msgid "*** -x and -c specified together; unsupported"
+msgstr ""
+
+#: src/main.c:82
+#, c-format
+msgid "%s version %s\n"
+msgstr ""
+
+#: src/main.c:88
+#, c-format
+msgid "*** ?? getopt returned character code 0%o ??"
+msgstr ""
