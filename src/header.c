@@ -4,6 +4,7 @@
  */
 
 #include <assert.h>
+#include <string.h>
 #include <rpm/header.h>
 
 #include "tarpm.h"
