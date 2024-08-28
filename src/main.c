@@ -159,6 +159,11 @@ main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
+        /* extract the RPM lead -- the first header (unused) */
+        if (extract_lead(filename, output_dir) == -1) {
+            err(EXIT_FAILURE, "extract_lead");
+        }
+
         /* add header data to JSON structure */
         if (extract_header(h, output_dir) == -1) {
             err(EXIT_FAILURE, "extract_header");

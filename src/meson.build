@@ -7,11 +7,13 @@ sources = [
     'mkdirp.c',
     'unpack.c',
     'header.c',
+    'joinpath.c',
 ]
 
 deps = [
     rpm,
     libarchive,
+    jsonc,
 ]
 
 tarpm_prog = executable(
