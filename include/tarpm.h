@@ -45,8 +45,10 @@ int mkdirp(const char *path, mode_t mode);
 /* unpack.c */
 int unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose);
 
+/* lead.c */
+int extract_lead(const int fd, const char *output_dir);
+
 /* header.c */
-int extract_lead(const char *rpm, const char *output_dir);
 int extract_header(Header h, const char *output_dir);
 
 /* joinpath.c */
