@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <locale.h>
 #include <errno.h>
@@ -46,6 +47,7 @@ main(int argc, char **argv)
     char *cwd = NULL;
     char *output_dir = NULL;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    int rpmfd = 0;
     Header h;
     char *short_opts = "xcvf:V\?";
     struct option long_opts[] = {
@@ -140,6 +142,13 @@ main(int argc, char **argv)
             errx(EXIT_FAILURE, _("*** %s is not a valid RPM"), filename);
         }
 
+        /* open the RPM file (this handle will be passed around) */
+        rpmfd = open(filename, O_RDONLY);
+
+        if (rpmfd == -1) {
+            err(EXIT_FAILURE, "open");
+        }
+
         /* make a unique output directory name if we need to */
         if (output_dir == NULL) {
             /*
@@ -160,14 +169,30 @@ main(int argc, char **argv)
         }
 
         /* extract the RPM lead -- the first header (unused) */
-        if (extract_lead(filename, output_dir) == -1) {
+        if (extract_lead(rpmfd, output_dir) == -1) {
             err(EXIT_FAILURE, "extract_lead");
         }
 
+
+        /* close the RPM after reading headers */
+        if (close(rpmfd) == -1) {
+            warn("close");
+        }
+
+
+
+
+
+
+
+
+
         /* add header data to JSON structure */
+/*
         if (extract_header(h, output_dir) == -1) {
             err(EXIT_FAILURE, "extract_header");
         }
+*/
 
         /* extract the RPM payload as an archive we can read in libarchive */
         if (chdir(output_dir) == -1) {

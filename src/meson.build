@@ -6,6 +6,7 @@ sources = [
     'xalloc.c',
     'mkdirp.c',
     'unpack.c',
+    'lead.c',
     'header.c',
     'joinpath.c',
 ]

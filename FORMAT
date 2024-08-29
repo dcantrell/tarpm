@@ -1,0 +1,59 @@
+RPM file structure
+
+There are four main sections:
+
+    * The lead
+    * The signature
+    * The header
+    * The payload
+
+
+THE LEAD
+--------
+
+The lead is the first 96 bytes of the RPM file and contains this
+structure:
+
+    struct rpmlead {
+        unsigned char magic[4];
+        unsigned char major, minor;
+        short type;
+        short archnum;
+        char name[66];
+        short osnum;
+        short signature_type;
+        char reserved[16];
+    };
+
+The lead is no longer used by RPM except for backwards compatibility
+and things like file(1).  The tarpm program will extract the data to
+lead.json, but you should not edit this data.
+
+The fields:
+
+    magic = Should be 0xEDABEEDB
+    major = 3
+    minor = 0
+    type = 0 for binary package, 1 for source package
+    archnum = 1 means x86, see /usr/lib/rpm/rpmrc for archnum values
+    name = the package NEVR; truncated to 66 characters
+    osnum = 1 means Linux, see /usr/lib/rpm/rpmrc for osnum values
+    signature_type = RPMSIGTYPE_HEADERSIG which is pronounced "5"
+
+The type, osnum, archnum, and signature_type are written in network
+byte order to the RPM.  The major and minor numbers are almost always
+going to be 3.0.  The major value can be 4 which maps to rpm v6.
+
+
+THE SIGNATURE
+-------------
+
+
+
+THE HEADER
+----------
+
+
+
+THE PAYLOAD
+-----------
