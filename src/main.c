@@ -213,26 +213,25 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "extract_lead");
         }
 
+        /* extract the RPM signature -- the second header (sort of used) */
+        if (extract_signature(rpmfd, output_dir) == -1) {
+            err(EXIT_FAILURE, "extract_signature");
+        }
+
+
+
+
+
+
+//        /* add header data to JSON structure */
+//        if (extract_header(h, output_dir) == -1) {
+//            err(EXIT_FAILURE, "extract_header");
+//        }
 
         /* close the RPM after reading headers */
         if (close(rpmfd) == -1) {
             warn("close");
         }
-
-
-
-
-
-
-
-
-
-        /* add header data to JSON structure */
-/*
-        if (extract_header(h, output_dir) == -1) {
-            err(EXIT_FAILURE, "extract_header");
-        }
-*/
 
         /* extract the RPM payload as an archive we can read in libarchive */
         if (chdir(output_dir) == -1) {
