@@ -41,14 +41,17 @@ main(int argc, char **argv)
     bool extract = false;
     bool create = false;
     bool verbose = false;
+    bool havefilename = false;
     char *tmp = NULL;
     char *payload_file = NULL;
     char *filename = NULL;
     char *cwd = NULL;
     char *output_dir = NULL;
+    int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     int rpmfd = 0;
     Header h;
+    char *opt = NULL;
     char *short_opts = "xcvf:V\?";
     struct option long_opts[] = {
         { "extract", no_argument, 0, 'x' },
@@ -83,6 +86,7 @@ main(int argc, char **argv)
                 }
 
                 extract = true;
+                flags = R_OK;
                 break;
             case 'c':
                 if (extract) {
@@ -90,6 +94,7 @@ main(int argc, char **argv)
                 }
 
                 create = true;
+                flags = W_OK;
                 break;
             case 'v':
                 verbose = true;
@@ -109,6 +114,41 @@ main(int argc, char **argv)
                 exit(EXIT_SUCCESS);
             default:
                 errx(EXIT_FAILURE, _("*** ?? getopt returned character code 0%o ??"), c);
+        }
+    }
+
+    /*
+     * Handle the common short form syntax for tar(1) options, such as:
+     *     tar xvf FILENAME.tar
+     *     tar cvf FILENAME.tar
+     */
+    if ((optind + 1) != argc) {
+        /* process common short syntax options that may exist */
+        opt = argv[optind];
+
+        while (*opt != '\0') {
+            if (*opt == 'c') {
+                create = true;
+            } else if (*opt == 'x') {
+                extract = true;
+            } else if (*opt == 'v') {
+                verbose = true;
+            } else if (*opt == 'f') {
+                /* the filename must come after 'f' */
+                if (filename) {
+                    errx(EXIT_FAILURE, _("*** -f already specified; only allowed once"));
+                }
+
+                havefilename = true;
+                break;
+            }
+
+            opt++;
+        }
+
+        /* pick up the 'f' filename if we don't have one */
+        if (havefilename && !access(argv[optind + 1], flags)) {
+            filename = realpath(argv[optind + 1], NULL);
         }
     }
 
