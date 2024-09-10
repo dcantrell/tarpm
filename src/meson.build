@@ -8,6 +8,7 @@ sources = [
     'unpack.c',
     'lead.c',
     'header.c',
+    'signature.c',
     'joinpath.c',
 ]
 

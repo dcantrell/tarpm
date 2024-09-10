@@ -48,6 +48,9 @@ int unpack_archive(const char *archive, const char *dest, const bool force, cons
 /* lead.c */
 int extract_lead(const int fd, const char *output_dir);
 
+/* signature.c */
+int extract_signature(const int fd, const char *output_dir);
+
 /* header.c */
 int extract_header(Header h, const char *output_dir);
 
