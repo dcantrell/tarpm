@@ -16,7 +16,8 @@ structure:
 
     struct rpmlead {
         unsigned char magic[4];
-        unsigned char major, minor;
+        unsigned char major;
+        unsigned char minor;
         short type;
         short archnum;
         char name[66];
@@ -48,10 +49,38 @@ going to be 3.0.  The major value can be 4 which maps to rpm v6.
 THE SIGNATURE
 -------------
 
+The next block is the "signature".  This gives us how many index
+records exist and the size of the storage area.
+
+    struct rpmsighdr {
+        uint32_t magic;        /* must be "0x8EADE801" */
+        uint32_t reserved;     /* must be "0x0" */
+        uint32_t nentries;     /* number of index records */
+        uint32_t hsize;        /* size of storage area for data */
+    };
+
+Everything is byte aligned, so there may be padding to ensure the
+signature is aligned.
+
+The ilen and hlen values are not in the RPM, but are computed.  The
+ilen is the length of the index records (including the signature).  It
+is the number of index records (nindex) times the sizeof an index
+entry (defined in the next section).  The hlen value is the size of
+the header block containing the signature and the index records, so
+it's ilen plus hsize.  Lastly, the padlen is how much empty space is
+between the signature and first index entry to ensure byte alignment
+in the header.  It is computed as ((8 - (hlen % 8)) % 8).
 
 
-THE HEADER
-----------
+THE INDEX ENTRIES
+-----------------
+
+struct rpmhdrindex {
+    int tag;    // the key
+    int type;   // data type
+    int offset; // where to find the data in the storage area
+    int count;  // how many data items are stored in this key
+};
 
 
 
