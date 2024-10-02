@@ -126,7 +126,7 @@ main(int argc, char **argv)
         /* process common short syntax options that may exist */
         opt = argv[optind];
 
-        while (*opt != '\0') {
+        while (opt && *opt != '\0') {
             if (*opt == 'c') {
                 create = true;
             } else if (*opt == 'x') {

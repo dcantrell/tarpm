@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <rpm/header.h>
+#include <json.h>
 
 #include "constants.h"
 #include "i18n.h"
@@ -46,6 +47,7 @@ int mkdirp(const char *path, mode_t mode);
 int unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose);
 
 /* lead.c */
+
 int extract_lead(const int fd, const char *output_dir);
 
 /* signature.c */
@@ -56,5 +58,13 @@ int extract_header(Header h, const char *output_dir);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);
+
+/* json.c */
+int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
+void free_json(struct json_object *data);
+
+/* tags.c */
+const char *tag_type(rpmTagType type);
+const char *signature_tag_name(rpmSigTag tag);
 
 #endif /* _TARPM_TARPM_H */
