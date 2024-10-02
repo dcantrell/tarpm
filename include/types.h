@@ -20,25 +20,38 @@ struct rpmlead {
     short archnum;
     char name[66];
     short osnum;
-    short signature_type;       /*!< Signature header type (RPMSIG_HEADERSIG) */
-    char reserved[16];          /*!< Pad to 96 bytes -- 8 byte aligned! */
+    short signature_type;  /*!< Signature header type (RPMSIG_HEADERSIG) */
+    char reserved[16];     /*!< Pad to 96 bytes -- 8 byte aligned! */
 };
 
 /*
  * The next two sections are in the "signature" header.
  */
 struct rpmsighdr {
-    unsigned char magic[4];     /* must be "\216\255\350\001" */
-    unsigned char reserved[4];  /* must be "\0\0\0\0" */
-    int nindex;                 /* number of index records */
-    int hsize;                  /* size of storage area for data */
+    uint32_t magic;        /* must be "\216\255\350\001" */
+    uint32_t reserved;     /* must be "\0\0\0\0" */
+    uint32_t nentries;     /* number of index records */
+    uint32_t nbytes;       /* size of storage area for data */
 };
 
-struct rpmsighdridx {
-    int tag;                    /* the key */
-    int type;                   /* the data type */
-    int offset;                 /* where to find the data in the storage area */
-    int count;                  /* how many data items are stored in this key */
+/* the size of the signature header to read from the file */
+#define RPMSIGHDRSZ (sizeof(uint32_t) * 4)
+
+struct rpmhdrentry {
+    uint32_t tag;          /* the key */
+    uint32_t type;         /* the data type */
+    int32_t offset;        /* where to find the data in the storage area */
+    uint32_t count;        /* how many data items are stored in this key */
+};
+
+/* A union for data types used when extracting data from the header. */
+union datatypes
+{
+    char c;
+    int8_t i8;
+    int16_t i16;
+    int32_t i32;
+    int64_t i64;
 };
 
 #endif /* _TARPM_TYPES_H */

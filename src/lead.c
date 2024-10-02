@@ -22,12 +22,7 @@ extract_lead(const int fd, const char *output_dir)
 {
     struct rpmlead lead;
     struct json_object *out = NULL;
-    struct json_object_iter iter;
-    int flags = JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY;
     char *s = NULL;
-    int r = 0;
-    FILE *fp = NULL;
-    const char *js = NULL;
 
     assert(fd > 0);
     assert(output_dir != NULL);
@@ -80,39 +75,12 @@ extract_lead(const int fd, const char *output_dir)
     }
 
     /* write the lead to a JSON file */
-    s = joinpath(output_dir, OUTPUT_LEAD, NULL);
-    assert(s != NULL);
-
-    fp = fopen(s, "w");
-
-    if (fp == NULL) {
-        warn("fopen");
-        return -1;
+    if (write_json_file(out, output_dir, OUTPUT_LEAD) != 0) {
+        warn("write_json_file");
     }
 
-    js = json_object_to_json_string_ext(out, flags);
-
-    if (js == NULL) {
-        errx(EXIT_FAILURE, "unable to turn JSON object in to string");
-    }
-
-    fprintf(fp, "%s\n", js);
-    r = fflush(fp);
-
-    if (r != 0) {
-        warn("fflush");
-    }
-
-    r = fclose(fp);
-
-    if (r != 0) {
-        warn("fclose");
-    }
-
-    /* clean up the JSON object memory usage */
-    json_object_object_foreachC(out, iter) {
-        json_object_put(iter.val);
-    }
+    /* cleanup */
+    free_json(out);
 
     return 0;
 }

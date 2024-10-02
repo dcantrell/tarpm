@@ -10,6 +10,8 @@ sources = [
     'header.c',
     'signature.c',
     'joinpath.c',
+    'json.c',
+    'tags.c'
 ]
 
 deps = [
