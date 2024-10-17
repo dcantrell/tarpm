@@ -77,6 +77,7 @@ free_json(struct json_object *data)
         json_object_put(iter.val);
     }
 
+    free(data);
     data = NULL;
 
     return;

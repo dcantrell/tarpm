@@ -11,7 +11,8 @@ sources = [
     'signature.c',
     'joinpath.c',
     'json.c',
-    'tags.c'
+    'tags.c',
+    'read.c'
 ]
 
 deps = [
