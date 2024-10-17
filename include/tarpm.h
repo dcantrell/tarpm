@@ -67,4 +67,11 @@ void free_json(struct json_object *data);
 const char *tag_type(rpmTagType type);
 const char *signature_tag_name(rpmSigTag tag);
 
+/* read.c */
+struct rpmhdrintro *read_header_intro(const int fd);
+uint32_t *read_header_entries(const int fd, const struct rpmhdrintro *intro, const uint32_t hlen);
+struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
+
+
+
 #endif /* _TARPM_TARPM_H */

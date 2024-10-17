@@ -108,11 +108,11 @@ extract_signature(const int fd, const char *output_dir)
     rpmTagType datatype = 0;
     uint32_t count = 0;
     uint32_t *buffer = NULL;
-    struct rpmsighdr sig;
+    struct rpmhdrintro *intro = NULL;
     uint32_t ilen = 0;
     uint32_t hlen = 0;
     uint32_t padlen = 0;
-    struct rpmsighdr pad;
+    struct rpmhdrintro pad;
     struct rpmhdrentry *estart = NULL;
     struct rpmhdrentry *entry = NULL;
     struct rpmhdrentry *trailer = NULL;
@@ -124,36 +124,26 @@ extract_signature(const int fd, const char *output_dir)
     assert(fd > 0);
     assert(output_dir != NULL);
 
-    /* zero out the structures */
-    memset(&sig, 0, sizeof(sig));
-
     /* read in the signature */
-    if (read(fd, &sig, RPMSIGHDRSZ) != RPMSIGHDRSZ) {
-        err(EXIT_FAILURE, "read");
-    }
+    intro = read_header_intro(fd);
 
-    sig.magic = ntohl(sig.magic);
-    sig.nentries = ntohl(sig.nentries);
-    sig.nbytes = ntohl(sig.nbytes);
+    if (intro == NULL) {
+        err(EXIT_FAILURE, "read_header_intro");
+    }
 
     /* computed from header values */
-    ilen = sig.nentries * sizeof(entry);
-    hlen = ilen + sig.nbytes;
+    ilen = intro->nentries * sizeof(struct rpmhdrentry);
+    hlen = ilen + intro->nbytes;
 
-    /* read in entries */
-    /* (largely from rpmdump.c) */
-    buffer = xcalloc(sig.nentries, sig.nbytes + hlen);
-    assert(buffer != NULL);
+    /* read in the entries */
+    buffer = read_header_entries(fd, intro, hlen);
 
-    buffer[0] = htonl(sig.nentries);
-    buffer[1] = htonl(sig.nbytes);
+    if (intro == NULL) {
+        err(EXIT_FAILURE, "read_header_entries");
+    }
 
     estart = (struct rpmhdrentry *) &(buffer[2]);
-    datastart = (uint8_t *) (estart + sig.nentries);
-
-    if (read(fd, buffer + 2, hlen) != hlen) {
-        err(EXIT_FAILURE, "read");
-    }
+    datastart = (uint8_t *) (estart + intro->nentries);
 
     /* signature is aligned, so padding may be present */
     padlen = (8 - (hlen % 8)) % 8;
@@ -162,27 +152,25 @@ extract_signature(const int fd, const char *output_dir)
         err(EXIT_FAILURE, "read");
     }
 
-    /* verify the magic and reserved values are correct */
-    if (sig.magic != RPM_SIGNATURE_MAGIC) {
-        err(EXIT_FAILURE, "magic value mismatch, not an RPM");
-    }
+    /* first entry */
+    entry = (struct rpmhdrentry *) (buffer + 2);
 
-    if (sig.reserved != 0) {
-        err(EXIT_FAILURE, "reserved value mismatch, not an RPM");
-    }
+    /* handle trailer */
+    /* the trailer is not guaranteed to be aligned, copy required */
+    trailer = read_header_trailer(entry, datastart);
 
     /* generate a JSON structure for the signature */
     out = json_object_new_object();
 
-    xasprintf(&s, "0x%X", sig.magic);
+    xasprintf(&s, "0x%X", intro->magic);
     json_object_object_add(out, RPM_SIGNATURE_MAGIC_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%04d", sig.reserved);
+    xasprintf(&s, "%04d", intro->reserved);
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", sig.nentries);
+    xasprintf(&s, "%d", intro->nentries);
     json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
     free(s);
 
@@ -190,7 +178,7 @@ extract_signature(const int fd, const char *output_dir)
     json_object_object_add(out, RPM_SIGNATURE_ILEN_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", sig.nbytes);
+    xasprintf(&s, "%d", intro->nbytes);
     json_object_object_add(out, RPM_SIGNATURE_NBYTES_DESC, json_object_new_string(s));
     free(s);
 
@@ -201,20 +189,7 @@ extract_signature(const int fd, const char *output_dir)
     /* dump all of the tags in the signature */
     vals = json_object_new_array();
 
-    /* handle trailer */
-    /* the trailer is not guaranteed to be aligned, copy required */
-    /* from rpmdump.c in rpm's source */
-    entry = (struct rpmhdrentry *) (buffer + 2);
-    tag = ntohl(entry->tag);
-    datastart = (uint8_t *) (estart + sig.nentries);
-
-    if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
-        trailer = xalloc(sizeof(*trailer));
-        assert(trailer != NULL);
-        memcpy(trailer, datastart + ntohl(entry->offset), sizeof(*trailer));
-    }
-
-    for (i = 0; i < sig.nentries; i++) {
+    for (i = 0; i < intro->nentries; i++) {
         /* create the JSON data */
         tag = ntohl(entry[i].tag);
         offset = ntohl(entry[i].offset);
@@ -255,6 +230,9 @@ extract_signature(const int fd, const char *output_dir)
 
     /* cleanup */
     free_json(out);
+    free(trailer);
+    free(buffer);
+    free(intro);
 
     return 0;
 }
