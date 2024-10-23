@@ -10,7 +10,6 @@
 int
 init_librpm(void)
 {
-    int result = 0;
     static bool initialized = false;
 
     if (initialized) {
@@ -19,8 +18,7 @@ init_librpm(void)
 
     rpmFreeMacros(NULL);
     rpmFreeRpmrc();
-    result = rpmReadConfigFiles(NULL, NULL);
     initialized = true;
 
-    return result;
+    return 0;
 }

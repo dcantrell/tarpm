@@ -65,6 +65,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
             assert(blob != NULL);
             memcpy(blob, data, count);
             s = rpmBase64Encode(blob, count, -1);
+            free(blob);
 
             if (s == NULL) {
                 err(EXIT_FAILURE, "rpmBase64Encode");
@@ -230,6 +231,7 @@ extract_signature(const int fd, const char *output_dir)
 
     /* cleanup */
     free_json(out);
+    json_object_put(vals);
     free(trailer);
     free(buffer);
     free(intro);

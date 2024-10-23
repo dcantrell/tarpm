@@ -38,6 +38,7 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
         return -1;
     }
 
+    free(s);
     js = json_object_to_json_string_ext(data, flags);
 
     if (js == NULL) {
@@ -66,6 +67,8 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
 void
 free_json(struct json_object *data)
 {
+    int r = 0;
+    int len = 0;
     struct json_object_iter iter;
 
     if (data == NULL) {
@@ -74,11 +77,15 @@ free_json(struct json_object *data)
 
     /* clean up the JSON object memory usage */
     json_object_object_foreachC(data, iter) {
-        json_object_put(iter.val);
+        if (json_object_get_type(iter.val) == json_type_array) {
+            len = json_object_array_length(iter.val);
+
+            for (r = 0; r < len; r++) {
+                json_object_array_put_idx(iter.val, r, NULL);
+            }
+        }
     }
 
-    free(data);
-    data = NULL;
-
+    json_object_put(data);
     return;
 }
