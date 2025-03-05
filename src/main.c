@@ -218,15 +218,10 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "extract_signature");
         }
 
-
-
-
-
-
-//        /* add header data to JSON structure */
-//        if (extract_header(h, output_dir) == -1) {
-//            err(EXIT_FAILURE, "extract_header");
-//        }
+        /* extract the RPM header -- the third header (used) */
+        if (extract_header(rpmfd, output_dir) == -1) {
+            err(EXIT_FAILURE, "extract_header");
+        }
 
         /* close the RPM after reading headers */
         if (close(rpmfd) == -1) {

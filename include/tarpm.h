@@ -47,14 +47,13 @@ int mkdirp(const char *path, mode_t mode);
 int unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose);
 
 /* lead.c */
-
 int extract_lead(const int fd, const char *output_dir);
 
 /* signature.c */
 int extract_signature(const int fd, const char *output_dir);
 
 /* header.c */
-int extract_header(Header h, const char *output_dir);
+int extract_header(const int fd, const char *output_dir);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);
@@ -66,12 +65,14 @@ void free_json(struct json_object *data);
 /* tags.c */
 const char *tag_type(rpmTagType type);
 const char *signature_tag_name(rpmSigTag tag);
+const char *tag_name(rpmTag tag);
 
 /* read.c */
-struct rpmhdrintro *read_header_intro(const int fd);
-uint32_t *read_header_entries(const int fd, const struct rpmhdrintro *intro, const uint32_t hlen);
-struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
+struct rpmsignature *read_header_signature(const int fd);
+uint32_t *read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t hlen);
+struct rpmidxentry *read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart);
 
-
+/* entry.c */
+void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
 
 #endif /* _TARPM_TARPM_H */

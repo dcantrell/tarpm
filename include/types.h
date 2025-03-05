@@ -27,7 +27,7 @@ struct rpmlead {
 /*
  * The next two types are in the "signature" and "header" header.
  */
-struct rpmhdrintro {
+struct rpmsignature {
     uint32_t magic;        /* must be "\216\255\350\001" */
     uint32_t reserved;     /* must be "\0\0\0\0" */
     uint32_t nentries;     /* number of index records */
@@ -37,7 +37,7 @@ struct rpmhdrintro {
 /* the size of the header intro to read from the file */
 #define RPMHDRINTROSZ (sizeof(uint32_t) * 4)
 
-struct rpmhdrentry {
+struct rpmidxentry {
     uint32_t tag;          /* the key */
     uint32_t type;         /* the data type */
     int32_t offset;        /* where to find the data in the storage area */
