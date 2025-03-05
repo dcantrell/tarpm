@@ -108,6 +108,7 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
     int flags, r, ret = 0;
     char *rfilename = NULL;
     char cwd[PATH_MAX + 1];
+    const char *p = NULL;
     struct archive *input = NULL;
     struct archive *output = NULL;
     struct archive_entry *entry = NULL;
@@ -183,7 +184,13 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
         }
 
         if (verbose) {
-            printf("x %s\n", archive_entry_pathname(entry));
+            p = archive_entry_pathname(entry);
+
+            while ((*p == '.' || *p == '/') && *p != '\0') {
+                p++;
+            }
+
+            printf("x %s/%s\n", dest, p);
         }
 
         if (extract_entry(input, output, entry)) {
