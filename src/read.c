@@ -15,67 +15,67 @@
  * allocated struct rpmhdrintro on success (caller must free) or NULL
  * on error.
  */
-struct rpmhdrintro *
-read_header_intro(const int fd)
+struct rpmsignature *
+read_header_signature(const int fd)
 {
-    struct rpmhdrintro *intro = NULL;
+    struct rpmsignature *sig = NULL;
 
     assert(fd > 0);
 
     /* zero out the structures */
-    intro = xcalloc(1, sizeof(*intro));
-    assert(intro != NULL);
+    sig = xcalloc(1, sizeof(*sig));
+    assert(sig != NULL);
 
-    /* read in the intro */
-    if (read(fd, intro, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
+    /* read in the signature */
+    if (read(fd, sig, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
         warn("read");
         goto bad;
     }
 
-    intro->magic = ntohl(intro->magic);
-    intro->nentries = ntohl(intro->nentries);
-    intro->nbytes = ntohl(intro->nbytes);
+    sig->magic = ntohl(sig->magic);
+    sig->nentries = ntohl(sig->nentries);
+    sig->nbytes = ntohl(sig->nbytes);
 
     /* verify the magic and reserved values are correct */
-    if (intro->magic != RPM_SIGNATURE_MAGIC) {
+    if (sig->magic != RPM_SIGNATURE_MAGIC) {
         warn("magic value mismatch, not an RPM");
         goto bad;
     }
 
-    if (intro->reserved != 0) {
+    if (sig->reserved != 0) {
         warn("reserved value mismatch, not an RPM");
         goto bad;
     }
 
-    return intro;
+    return sig;
 
 bad:
-    free(intro);
+    free(sig);
     return NULL;
 }
 
 /*
- * Given a header intro structure, read the entries block in to a
+ * Given a header sig structure, read the entries block in to a
  * buffer for random access.  Returns an allocated buffer with the
  * data in it, or NULL on error.  The caller is responsible for
  * freeing the buffer.
  */
 uint32_t *
-read_header_entries(const int fd, const struct rpmhdrintro *intro, const uint32_t hlen)
+read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t hlen)
 {
     uint32_t *buffer = NULL;
 
     assert(fd > 0);
-    assert(intro != NULL);
+    assert(sig != NULL);
     assert(hlen > 0);
 
     /* read in entries */
     /* (largely from rpmdump.c) */
-    buffer = xcalloc(intro->nentries, intro->nbytes + hlen);
+    buffer = xcalloc(sig->nentries, sig->nbytes + hlen);
     assert(buffer != NULL);
 
-    buffer[0] = htonl(intro->nentries);
-    buffer[1] = htonl(intro->nbytes);
+    buffer[0] = htonl(sig->nentries);
+    buffer[1] = htonl(sig->nbytes);
 
     if (read(fd, buffer + 2, hlen) != hlen) {
         warn("read");
@@ -90,10 +90,10 @@ read_header_entries(const int fd, const struct rpmhdrintro *intro, const uint32_
  * Read and return the trailer if necessary.  Caller is responsible
  * for freeing the allocated trailer.
  */
-struct rpmhdrentry *
-read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart)
+struct rpmidxentry *
+read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart)
 {
-    struct rpmhdrentry *trailer = NULL;
+    struct rpmidxentry *trailer = NULL;
     rpmSigTag tag = 0;
 
     assert(entry != NULL);

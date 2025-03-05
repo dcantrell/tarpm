@@ -1,18 +1,19 @@
 sources = [
-    'main.c',
-    'init.c',
-    'rpm.c',
-    'strfuncs.c',
-    'xalloc.c',
-    'mkdirp.c',
-    'unpack.c',
-    'lead.c',
+    'entry.c',
     'header.c',
-    'signature.c',
+    'init.c',
     'joinpath.c',
     'json.c',
+    'lead.c',
+    'main.c',
+    'mkdirp.c',
+    'read.c',
+    'rpm.c',
+    'signature.c',
+    'strfuncs.c',
     'tags.c',
-    'read.c'
+    'unpack.c',
+    'xalloc.c',
 ]
 
 deps = [

@@ -3,97 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <string.h>
-#include <assert.h>
-#include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
-#include <rpm/header.h>
 #include <rpm/rpmtag.h>
-#include <rpm/rpmbase64.h>
-#include <json.h>
 
 #include "tarpm.h"
-
-static void
-add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count)
-{
-    uint8_t *data = NULL;
-    union datatypes dt;
-    void *blob = NULL;
-    char *s = NULL;
-
-    assert(arrayentry != NULL);
-    assert(buffer != NULL);
-
-    /* move to the position of this entry's data */
-    data = buffer + offset;
-
-    /* read the value */
-    switch (datatype) {
-        case RPM_NULL_TYPE:
-            s = strdup("(null)");
-            break;
-        case RPM_CHAR_TYPE:
-            memcpy(&dt.c, data, sizeof(dt.c));
-            xasprintf(&s, "%c", dt.c);
-            break;
-        case RPM_INT8_TYPE:
-            memcpy(&dt.i8, data, sizeof(dt.i8));
-            xasprintf(&s, "%d", dt.i8);
-            break;
-        case RPM_INT16_TYPE:
-            memcpy(&dt.i16, data, sizeof(dt.i16));
-            dt.i16 = ntohl(dt.i16);
-            xasprintf(&s, "%d", dt.i16);
-            break;
-        case RPM_INT32_TYPE:
-            memcpy(&dt.i32, data, sizeof(dt.i32));
-            dt.i32 = ntohl(dt.i32);
-            xasprintf(&s, "%d", dt.i32);
-            break;
-        case RPM_INT64_TYPE:
-            memcpy(&dt.i64, data, sizeof(dt.i64));
-            dt.i64 = ntohl(dt.i64);
-            xasprintf(&s, "%ld", dt.i64);
-            break;
-        case RPM_STRING_TYPE:
-            s = strdup((char *) data);
-            break;
-        case RPM_BIN_TYPE:
-            blob = xalloc(count);
-            assert(blob != NULL);
-            memcpy(blob, data, count);
-            s = rpmBase64Encode(blob, count, -1);
-            free(blob);
-
-            if (s == NULL) {
-                err(EXIT_FAILURE, "rpmBase64Encode");
-            }
-
-            break;
-        case RPM_STRING_ARRAY_TYPE:
-            /* XXX: return "argv"; */
-            break;
-        case RPM_I18NSTRING_TYPE:
-            s = strdup((char *) data);
-            break;
-        default:
-            s = strdup("(unknown)");
-            break;
-    }
-
-    /* add the value */
-    if (s == NULL) {
-        s = strdup("");
-        assert(s != NULL);
-    }
-
-    json_object_object_add(arrayentry, RPM_SIGNATURE_VALUE_DESC, json_object_new_string(s));
-    free(s);
-
-    return;
-}
 
 /*
  * Extract the data of the RPM signature and convert it to JSON data.
@@ -109,14 +23,14 @@ extract_signature(const int fd, const char *output_dir)
     rpmTagType datatype = 0;
     uint32_t count = 0;
     uint32_t *buffer = NULL;
-    struct rpmhdrintro *intro = NULL;
+    struct rpmsignature *sig = NULL;
     uint32_t ilen = 0;
     uint32_t hlen = 0;
     uint32_t padlen = 0;
-    struct rpmhdrintro pad;
-    struct rpmhdrentry *estart = NULL;
-    struct rpmhdrentry *entry = NULL;
-    struct rpmhdrentry *trailer = NULL;
+    struct rpmsignature pad;
+    struct rpmidxentry *estart = NULL;
+    struct rpmidxentry *entry = NULL;
+    struct rpmidxentry *trailer = NULL;
     struct json_object *out = NULL;
     struct json_object *vals = NULL;
     struct json_object *arrayentry = NULL;
@@ -126,25 +40,25 @@ extract_signature(const int fd, const char *output_dir)
     assert(output_dir != NULL);
 
     /* read in the signature */
-    intro = read_header_intro(fd);
+    sig = read_header_signature(fd);
 
-    if (intro == NULL) {
-        err(EXIT_FAILURE, "read_header_intro");
+    if (sig == NULL) {
+        err(EXIT_FAILURE, "read_header_signature");
     }
 
     /* computed from header values */
-    ilen = intro->nentries * sizeof(struct rpmhdrentry);
-    hlen = ilen + intro->nbytes;
+    ilen = sig->nentries * sizeof(struct rpmidxentry);
+    hlen = ilen + sig->nbytes;
 
     /* read in the entries */
-    buffer = read_header_entries(fd, intro, hlen);
+    buffer = read_header_entries(fd, sig, hlen);
 
-    if (intro == NULL) {
+    if (sig == NULL) {
         err(EXIT_FAILURE, "read_header_entries");
     }
 
-    estart = (struct rpmhdrentry *) &(buffer[2]);
-    datastart = (uint8_t *) (estart + intro->nentries);
+    estart = (struct rpmidxentry *) &(buffer[2]);
+    datastart = (uint8_t *) (estart + sig->nentries);
 
     /* signature is aligned, so padding may be present */
     padlen = (8 - (hlen % 8)) % 8;
@@ -154,7 +68,7 @@ extract_signature(const int fd, const char *output_dir)
     }
 
     /* first entry */
-    entry = (struct rpmhdrentry *) (buffer + 2);
+    entry = (struct rpmidxentry *) (buffer + 2);
 
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
@@ -163,15 +77,15 @@ extract_signature(const int fd, const char *output_dir)
     /* generate a JSON structure for the signature */
     out = json_object_new_object();
 
-    xasprintf(&s, "0x%X", intro->magic);
+    xasprintf(&s, "0x%X", sig->magic);
     json_object_object_add(out, RPM_SIGNATURE_MAGIC_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%04d", intro->reserved);
+    xasprintf(&s, "%04d", sig->reserved);
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", intro->nentries);
+    xasprintf(&s, "%d", sig->nentries);
     json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
     free(s);
 
@@ -179,7 +93,7 @@ extract_signature(const int fd, const char *output_dir)
     json_object_object_add(out, RPM_SIGNATURE_ILEN_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", intro->nbytes);
+    xasprintf(&s, "%d", sig->nbytes);
     json_object_object_add(out, RPM_SIGNATURE_NBYTES_DESC, json_object_new_string(s));
     free(s);
 
@@ -190,7 +104,7 @@ extract_signature(const int fd, const char *output_dir)
     /* dump all of the tags in the signature */
     vals = json_object_new_array();
 
-    for (i = 0; i < intro->nentries; i++) {
+    for (i = 0; i < sig->nentries; i++) {
         /* create the JSON data */
         tag = ntohl(entry[i].tag);
         offset = ntohl(entry[i].offset);
@@ -234,7 +148,7 @@ extract_signature(const int fd, const char *output_dir)
     json_object_put(vals);
     free(trailer);
     free(buffer);
-    free(intro);
+    free(sig);
 
     return 0;
 }
