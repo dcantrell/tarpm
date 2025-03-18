@@ -34,6 +34,19 @@ struct rpmsignature {
     uint32_t nbytes;       /* size of storage area for data */
 };
 
+/*
+ * Header and signature structure.
+ */
+struct rpmsigvalues {
+    uint32_t ilen;
+    uint32_t hlen;
+    struct rpmidxentry *estart;
+    struct rpmidxentry *entry;
+    uint8_t *datastart;
+    uint32_t padlen;
+    struct rpmsignature pad;
+};
+
 /* the size of the header intro to read from the file */
 #define RPMHDRINTROSZ (sizeof(uint32_t) * 4)
 

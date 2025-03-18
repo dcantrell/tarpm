@@ -13,6 +13,7 @@ sources = [
     'strfuncs.c',
     'tags.c',
     'unpack.c',
+    'write.c',
     'xalloc.c',
 ]
 

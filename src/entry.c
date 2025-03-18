@@ -15,10 +15,13 @@
 void
 add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count)
 {
+    uint32_t i = 0;
+/*    uint32_t j = 0; */
     uint8_t *data = NULL;
     union datatypes dt;
     void *blob = NULL;
     char *s = NULL;
+    uint8_t *p = NULL;
 
     assert(arrayentry != NULL);
     assert(buffer != NULL);
@@ -70,6 +73,23 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
 
             break;
         case RPM_STRING_ARRAY_TYPE:
+
+//p = s = strdup((char *) data);
+/* j = 0; */
+p = data;
+int c;
+
+for (i = 0; i < count; i++) {
+    c = printf("|%s|\n", (char *) p);
+    p += c - 2;
+
+/*
+    while (*s != '\0') {
+         j++;
+    }
+*/
+}
+
             /* XXX: return "argv"; */
             break;
         case RPM_I18NSTRING_TYPE:
@@ -86,7 +106,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
         assert(s != NULL);
     }
 
-    json_object_object_add(arrayentry, RPM_SIGNATURE_VALUE_DESC, json_object_new_string(s));
+    json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
     free(s);
 
     return;
