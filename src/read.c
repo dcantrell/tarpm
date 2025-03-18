@@ -10,6 +10,33 @@
 #include "tarpm.h"
 
 /*
+ * Given a "signature" or "header" header, compute the values necessary
+ * to iterate over it.  Return the computed values as a struct that the
+ * caller must free.
+ */
+struct rpmsigvalues *
+compute_sigvalues(const struct rpmsignature *sig, const bool signature)
+{
+    struct rpmsigvalues *vals = NULL;
+
+    assert(sig != NULL);
+
+    vals = calloc(1, sizeof(*vals));
+    assert(vals != NULL);
+
+    /* computed from header values */
+    vals->ilen = sig->nentries * sizeof(struct rpmidxentry);
+    vals->hlen = vals->ilen + sig->nbytes;
+
+    /* signature is aligned, so padding may be present */
+    if (signature) {
+        vals->padlen = (8 - (vals->hlen % 8)) % 8;
+    }
+
+    return vals;
+}
+
+/*
  * Read the intro part of a "signature" or "header" header.  These are
  * structurally the same, but contain different data.  Returns an
  * allocated struct rpmhdrintro on success (caller must free) or NULL

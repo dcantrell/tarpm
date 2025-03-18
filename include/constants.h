@@ -21,7 +21,7 @@
 #define OUTPUT_HEADER                "header.json"
 
 /* RPM lead */
-#define RPMLEAD_SIZE       96
+#define RPMLEAD_SIZE                 96
 
 /* RPM lead fields and descriptions */
 #define RPM_LEAD_MAGIC               "lead magic"
@@ -39,7 +39,7 @@
 #define RPM_LEAD_HEADERSIG           "RPMSIGTYPE_HEADERSIG"
 #define RPM_LEAD_UNKNOWN             "unknown"
 
-/* RPM signature fields and values */
+/* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC     "magic"
 #define RPM_SIGNATURE_RESERVED_DESC  "reserved"
 #define RPM_SIGNATURE_NENTRIES_DESC  "index entries"
@@ -47,14 +47,14 @@
 #define RPM_SIGNATURE_NBYTES_DESC    "data size (bytes)"
 #define RPM_SIGNATURE_HLEN_DESC      "header size (bytes)"
 #define RPM_SIGNATURE_MAGIC          0x8EADE801
-#define RPM_SIGNATRURE_RESERVED      0
-#define RPM_SIGNATURE_NAME_DESC      "name"
-#define RPM_SIGNATURE_TAG_DESC       "number"
-#define RPM_SIGNATURE_TYPE_DESC      "type"
-#define RPM_SIGNATURE_OFFSET_DESC    "offset"
-#define RPM_SIGNATURE_COUNT_DESC     "count"
-#define RPM_SIGNATURE_TAGS_DESC      "tags"
-#define RPM_SIGNATURE_VALUE_DESC     "value"
-#define RPM_SIGNATURE_VALUES_DESC    "values"
+#define RPM_SIGNATURE_RESERVED       0
+#define RPM_ENTRY_NAME_DESC          "name"
+#define RPM_ENTRY_TAG_DESC           "number"
+#define RPM_ENTRY_TYPE_DESC          "type"
+#define RPM_ENTRY_OFFSET_DESC        "offset"
+#define RPM_ENTRY_COUNT_DESC         "count"
+#define RPM_ENTRY_TAGS_DESC          "tags"
+#define RPM_ENTRY_VALUE_DESC         "value"
+#define RPM_ENTRY_VALUES_DESC        "values"
 
 #endif /* _TARPM_CONSTANTS_H */

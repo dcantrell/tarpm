@@ -68,11 +68,16 @@ const char *signature_tag_name(rpmSigTag tag);
 const char *tag_name(rpmTag tag);
 
 /* read.c */
+struct rpmsigvalues *compute_sigvalues(const struct rpmsignature *sig, const bool signature);
 struct rpmsignature *read_header_signature(const int fd);
 uint32_t *read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t hlen);
 struct rpmidxentry *read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart);
 
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
+
+/* write.c */
+struct json_object *generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals);
+struct json_object *generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues *svals, struct rpmidxentry *entry, const bool signature);
 
 #endif /* _TARPM_TARPM_H */
