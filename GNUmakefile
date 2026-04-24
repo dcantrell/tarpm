@@ -20,7 +20,7 @@ PROJECT_VERSION = $(shell $(GREP) version $(topdir)/meson.build | $(GREP) -E ',$
 TARGET_ARG = `arg="$(filter-out $@,$(MAKECMDGOALS))" && echo $${arg:-${1}}`
 
 # regexp of email addresses of primary authors on the project
-PRIMARY_AUTHORS = dcantrell@redhat.com
+PRIMARY_AUTHORS = dcantrell@burdell.org
 
 # full path to release tarball and detached signature
 # (this comes from a 'make srpm')
