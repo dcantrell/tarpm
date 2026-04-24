@@ -425,8 +425,10 @@ tag_name(rpmTag tag)
             return "RPMTAG_FILEDEPENDSN";
         case RPMTAG_DEPENDSDICT:
             return "RPMTAG_DEPENDSDICT";
+#ifdef RPMTAG_SOURCEPKGID
         case RPMTAG_SOURCEPKGID:
             return "RPMTAG_SOURCEPKGID";
+#endif
         case RPMTAG_FILECONTEXTS:
             return "RPMTAG_FILECONTEXTS";
         case RPMTAG_FSCONTEXTS:
@@ -709,18 +711,24 @@ tag_name(rpmTag tag)
             return "RPMTAG_FILESIGNATURES";
         case RPMTAG_FILESIGNATURELENGTH:
             return "RPMTAG_FILESIGNATURELENGTH";
+#ifdef RPMTAG_PAYLOADDIGEST
         case RPMTAG_PAYLOADDIGEST:
             return "RPMTAG_PAYLOADDIGEST";
+#endif
+#ifdef RPMTAG_PAYLOADDIGESTALGO
         case RPMTAG_PAYLOADDIGESTALGO:
             return "RPMTAG_PAYLOADDIGESTALGO";
+#endif
         case RPMTAG_AUTOINSTALLED:
             return "RPMTAG_AUTOINSTALLED";
         case RPMTAG_IDENTITY:
             return "RPMTAG_IDENTITY";
         case RPMTAG_MODULARITYLABEL:
             return "RPMTAG_MODULARITYLABEL";
+#ifdef RPMTAG_PAYLOADDIGESTALT
         case RPMTAG_PAYLOADDIGESTALT:
             return "RPMTAG_PAYLOADDIGESTALT";
+#endif
         case RPMTAG_ARCHSUFFIX:
             return "RPMTAG_ARCHSUFFIX";
         case RPMTAG_SPEC:
