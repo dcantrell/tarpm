@@ -1,9 +1,10 @@
 Primary Authors
 ===============
 
-- David Cantrell <dcantrell@redhat.com>
+- Dave Cantrell <dcantrell@burdell.org>
 
 
 Contributors
 ============
+
 - Mike McLean <mikem@redhat.com>
