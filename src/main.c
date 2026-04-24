@@ -20,8 +20,8 @@
 static void
 usage(void)
 {
-    printf(_("Binary RPM extraction and creation utility\n"));
-    printf(_("Usage: %s [OPTIONS] [binary .rpm file]\n"), COMMAND_NAME);
+    printf(_("RPM extraction and creation utility\n"));
+    printf(_("Usage: %s [OPTIONS] [.rpm file]\n"), COMMAND_NAME);
     printf(_("Options:\n"));
     printf(_("    -x, --extract                     Extract binary RPM file\n"));
     printf(_("    -v, --verbose                     Verbose progress output\n"));
