@@ -23,7 +23,8 @@ usage(void)
     printf(_("RPM extraction and creation utility\n"));
     printf(_("Usage: %s [OPTIONS] [.rpm file]\n"), COMMAND_NAME);
     printf(_("Options:\n"));
-    printf(_("    -x, --extract                     Extract binary RPM file\n"));
+    printf(_("    -t, --list                        List RPM payload contents\n"));
+    printf(_("    -x, --extract                     Extract RPM file\n"));
     printf(_("    -v, --verbose                     Verbose progress output\n"));
     printf(_("    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"));
     printf(_("    -V, --version                     Display version information\n"));
@@ -38,6 +39,7 @@ main(int argc, char **argv)
 {
     int c = 0;
     int idx = 0;
+    bool list = false;
     bool extract = false;
     bool create = false;
     bool verbose = false;
@@ -52,8 +54,9 @@ main(int argc, char **argv)
     int rpmfd = 0;
     Header h;
     char *opt = NULL;
-    char *short_opts = "xcvf:V\?";
+    char *short_opts = "txcvf:V\?";
     struct option long_opts[] = {
+        { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
         { "create", no_argument, 0, 'c' },
         { "verbose", no_argument, 0, 'v' },
@@ -80,17 +83,25 @@ main(int argc, char **argv)
         }
 
         switch (c) {
+            case 't':
+                if (create || extract) {
+                    errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
+                }
+
+                list = true;
+                flags = R_OK;
+                break;
             case 'x':
-                if (create) {
-                    errx(EXIT_FAILURE, _("*** -x and -c specified together; unsupported"));
+                if (list || create) {
+                    errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
                 }
 
                 extract = true;
                 flags = R_OK;
                 break;
             case 'c':
-                if (extract) {
-                    errx(EXIT_FAILURE, _("*** -x and -c specified together; unsupported"));
+                if (list || extract) {
+                    errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
                 }
 
                 create = true;
@@ -119,6 +130,7 @@ main(int argc, char **argv)
 
     /*
      * Handle the common short form syntax for tar(1) options, such as:
+     *     tar tvf FILENAME.tar
      *     tar xvf FILENAME.tar
      *     tar cvf FILENAME.tar
      */
@@ -127,7 +139,9 @@ main(int argc, char **argv)
         opt = argv[optind];
 
         while (opt && *opt != '\0') {
-            if (*opt == 'c') {
+            if (*opt == 't') {
+                list = true;
+            } else if (*opt == 'c') {
                 create = true;
             } else if (*opt == 'x') {
                 extract = true;
@@ -152,9 +166,14 @@ main(int argc, char **argv)
         }
     }
 
+    /* Ensure we only have one of -t, -x, or -c */
+    if ((list + extract + create) >= 2) {
+        errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
+    }
+
     /* Make sure we have minimal options specified */
-    if (!extract && !create) {
-        errx(EXIT_FAILURE, _("*** must specify at least -x or -c"));
+    if (!list && !extract && !create) {
+        errx(EXIT_FAILURE, _("*** must specify at least -t, -x, or -c"));
     }
 
     if (filename == NULL) {
