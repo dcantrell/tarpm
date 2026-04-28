@@ -56,12 +56,12 @@ check: setup
 		env $(MESON) test -C $(MESON_BUILD_DIR) -v ; \
 	else \
 		test_script="test_$${test_name}.py" ; \
-		if [ ! -f "$(topdir)/test/$${test_script}" ]; then \
+		if [ ! -f "$(topdir)/test/integration/$${test_script}" ]; then \
 			echo "*** test/$${test_script} does not exist." >&2 ; \
 			exit 1 ; \
 		fi ; \
 		env TARPM=$(topdir)/build/src/tarpm \
-		$(PYTHON) -Bm unittest discover -v $(topdir)/test/ $${test_script} ; \
+		$(PYTHON) -Bm unittest discover -v $(topdir)/test/integration/ $${test_script} ; \
 	fi
 
 flake8:

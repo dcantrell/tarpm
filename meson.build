@@ -51,8 +51,10 @@ endif
 # Test suite dependencies
 run_tests = get_option('tests')
 if run_tests
+    cunit = dependency('cunit', method : 'pkg-config', required : true)
     python = find_program(get_option('python_program'), required : false)
 else
+    cunit = disabler()
     python = disabler()
 endif
 
