@@ -34,11 +34,31 @@ endif
 
 # Dependencies
 jsonc = dependency('json-c', required : true)
-rpm = dependency('rpm', required : true)
 libarchive = dependency('libarchive', required : true)
+
+if cc.has_function('archive_version_details', dependencies : [ libarchive ])
+    add_project_arguments('-D_HAVE_ARCHIVE_VERSION_DETAILS', language : ['c', 'cpp'])
+elif cc.has_function('archive_version_string', dependencies : [ libarchive ])
+    add_project_arguments('-D_HAVE_ARCHIVE_VERSION_STRING', language : ['c', 'cpp'])
+endif
+
+rpm = dependency('rpm', required : true)
+
+if rpm.version().version_compare('<4.15.0')
+    add_project_arguments('-D_HAVE_OLD_RPM_API', language : ['c', 'cpp'])
+endif
+
+# Test suite dependencies
+run_tests = get_option('tests')
+if run_tests
+    python = find_program(get_option('python_program'), required : false)
+else
+    python = disabler()
+endif
 
 # Header files
 inc = include_directories('include')
 
 # Include all relevant subdirectories
 subdir('src')
+subdir('test')

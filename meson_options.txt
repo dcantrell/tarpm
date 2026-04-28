@@ -2,3 +2,13 @@ option('nls',
        type : 'boolean',
        value : true,
        description : 'Enable native language support (translations)')
+
+option('tests',
+       type : 'boolean',
+       value : true,
+       description : 'Run the test suite')
+
+option('python_program',
+       type : 'string',
+       value : 'python3',
+       description : 'The basename of the Python 3 executable to run the test suite.')

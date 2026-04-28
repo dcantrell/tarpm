@@ -6,6 +6,7 @@ NINJA    ?= ninja
 REALPATH ?= realpath
 GREP     ?= grep
 CUT      ?= cut
+PYTHON   ?= python3
 
 # Where to build
 MESON_BUILD_DIR = build
@@ -44,10 +45,30 @@ update-pot: setup
 	find include -type f -name "*.h" >> po/POTFILES.new
 	sort -u po/POTFILES.new > po/POTFILES
 	rm -f po/POTFILES.new
-	$(NINJA) -C $(MESON_BUILD_DIR) tarpm-pot
+	$(NINJA) -C $(MESON_BUILD_DIR) $(PROJECT_NAME)-pot
 
-check:
-	@echo "*** No test suite right now."
+# To keep intermediate files and results files for each test case, set
+# KEEP=y (or to any value) in the calling environment when you run
+# 'make check'.  For example: make check KEEP=y
+check: setup
+	@test_name="$(call TARGET_ARG,)" ; \
+	if [ -z "$${test_name}" ]; then \
+		env $(MESON) test -C $(MESON_BUILD_DIR) -v ; \
+	else \
+		test_script="test_$${test_name}.py" ; \
+		if [ ! -f "$(topdir)/test/$${test_script}" ]; then \
+			echo "*** test/$${test_script} does not exist." >&2 ; \
+			exit 1 ; \
+		fi ; \
+		env TARPM=$(topdir)/build/src/tarpm \
+		$(PYTHON) -Bm unittest discover -v $(topdir)/test/ $${test_script} ; \
+	fi
+
+flake8:
+	$(PYTHON) -m flake8
+
+black:
+	$(PYTHON) -m black --check --diff $(topdir)/test/
 
 clean:
 	-rm -rf $(MESON_BUILD_DIR)
@@ -67,6 +88,33 @@ authors:
 	rm -f AUTHORS.contrib
 	head -n $$(($$(wc -l < AUTHORS.md) - 1)) AUTHORS.md > AUTHORS.md.new
 	mv AUTHORS.md.new AUTHORS.md
+
+help:
+	@echo "$(PROJECT_NAME) helper Makefile"
+	@echo "The source tree uses meson(1) for building and testing, but this Makefile"
+	@echo "is intended as a simple helper for the common steps."
+	@echo
+	@echo "    all               Default target, setup tree to build and build"
+	@echo "    debug             Setup tree for debug build and build"
+	@echo "    setup             Run '$(MESON) setup $(MESON_BUILD_DIR)'"
+	@echo "    setup-debug       The counterpart to 'setup'; called by 'debug'"
+	@echo "    check             Run '$(MESON) test -C $(MESON_BUILD_DIR) -v'"
+	@echo "    update-pot        Update po/POTFILES and po/$(PROJECT_NAME).pot"
+	@echo "    clean             Run 'rm -rf $(MESON_BUILD_DIR)'"
+	@echo "    authors           Generate a new AUTHORS.md file"
+	@echo
+	@echo "To build:"
+	@echo "    make"
+	@echo
+	@echo "To perform syntax and style checks:"
+	@echo "    make flake8       Run Python flake8 checks on all Python files"
+	@echo "    make black        Run Python black checks on all Python files"
+	@echo
+	@echo "To run the test suite:"
+	@echo "    make check"
+	@echo
+	@echo "To run a single test script (e.g., test_options.py):"
+	@echo "    make check options"
 
 # Quiet errors about target arguments not being targets
 %:
