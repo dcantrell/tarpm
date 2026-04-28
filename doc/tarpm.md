@@ -1,20 +1,21 @@
 % TARPM(1)
-% David Cantrell
+% Dave Cantrell
 % October 2024
 
 # NAME
 
-tarpm - create, modify, and extract binary RPM packages without using rpmbuild(1)
+tarpm - list, create, modify, and extract RPM packages without using rpmbuild(1)
 
 # SYNOPSIS
 
 **tarpm** [**-?**]
+**tarpm** [**-t**] [**-v**] [**-f** **RPMFILENAME**]
 **tarpm** [**-x**] [**-v**] [**-f** **RPMFILENAME**]
 **tarpm** [**-c**] [**-v**] [**-f** **RPMFILENAME**] [**DIRECTORY**]
 
 # DESCRIPTION
 
-**tarpm** is a command line tool for working with built RPM packages.
+**tarpm** is a command line tool for working with RPM package files.
 The interface is intended to work like tar(1).  When you extract an
 RPM package, a subdirectory is created matching the NEVRA of the
 package.  Inside this directory, you will find a subdirectory called
@@ -40,12 +41,15 @@ not be modified.
 **-V**, **-\-version**
 :    Display version information.
 
+**-t**, **-\0list**
+:    List the contents of the RPM package without metadata (cannot be used with **-c** or **-x**).
+
 **-x**, **-\-extract**
-:    Extract the named RPM file on the command line (cannot be used with **-c**).
+:    Extract the named RPM package on the command line (cannot be used with **-t** or **-c**).
 
 **-c**, **-\-create**
-:    Create the named RPM files on the command line from the named
-:    DIRECTORY contents (cannot be used with **-x**).  The DIRECTORY must
+:    Create the named RPM package on the command line from the named
+:    DIRECTORY contents (cannot be used with **-t** or **-x**).  The DIRECTORY must
 :    contain RPM package metadata in JSON format, like what you see when
 :    you extract an RPM.
 
