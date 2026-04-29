@@ -32,13 +32,6 @@
 #define RPM_LEAD_OS                  "os"
 #define RPM_LEAD_SIGTYPE             "signature type"
 
-/* RPM lead field values */
-/* (from RPM's header files */
-#define RPM_LEAD_SOURCE              "RPMLEAD_SOURCE"
-#define RPM_LEAD_BINARY              "RPMLEAD_BINARY"
-#define RPM_LEAD_HEADERSIG           "RPMSIGTYPE_HEADERSIG"
-#define RPM_LEAD_UNKNOWN             "unknown"
-
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC     "magic"
 #define RPM_SIGNATURE_RESERVED_DESC  "reserved"

@@ -54,26 +54,15 @@ extract_lead(const int fd, const char *output_dir)
     free(s);
 
     if (lead.type) {
-        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string(RPM_LEAD_SOURCE));
+        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string("source"));
     } else {
-        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string(RPM_LEAD_BINARY));
+        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string("binary"));
     }
 
     json_object_object_add(out, RPM_LEAD_NAME, json_object_new_string(lead.name));
-
-    xasprintf(&s, "%hu", lead.archnum);
-    json_object_object_add(out, RPM_LEAD_ARCH, json_object_new_string(s));
-    free(s);
-
-    xasprintf(&s, "%hu", lead.osnum);
-    json_object_object_add(out, RPM_LEAD_OS, json_object_new_string(s));
-    free(s);
-
-    if (lead.signature_type == 5) {
-        json_object_object_add(out, RPM_LEAD_SIGTYPE, json_object_new_string(RPM_LEAD_HEADERSIG));
-    } else {
-        json_object_object_add(out, RPM_LEAD_SIGTYPE, json_object_new_string(RPM_LEAD_UNKNOWN));
-    }
+    json_object_object_add(out, RPM_LEAD_ARCH, json_object_new_int(lead.archnum));
+    json_object_object_add(out, RPM_LEAD_OS, json_object_new_int(lead.osnum));
+    json_object_object_add(out, RPM_LEAD_SIGTYPE, json_object_new_int(lead.signature_type));
 
     /* write the lead to a JSON file */
     if (write_json_file(out, output_dir, OUTPUT_LEAD) != 0) {
