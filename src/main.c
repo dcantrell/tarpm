@@ -27,6 +27,7 @@ usage(void)
     printf(_("    -x, --extract                     Extract RPM file\n"));
     printf(_("    -v, --verbose                     Verbose progress output\n"));
     printf(_("    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"));
+    printf(_("    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"));
     printf(_("    -V, --version                     Display version information\n"));
     printf(_("    -?, --help                        Display this screen\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
@@ -39,10 +40,10 @@ main(int argc, char **argv)
 {
     int c = 0;
     int idx = 0;
-    bool list = false;
-    bool extract = false;
-    bool create = false;
-    bool verbose = false;
+    bool t_flag = false;
+    bool x_flag = false;
+    bool c_flag = false;
+    bool v_flag = false;
     bool havefilename = false;
     char *tmp = NULL;
     char *payload_file = NULL;
@@ -54,13 +55,14 @@ main(int argc, char **argv)
     int rpmfd = 0;
     Header h;
     char *opt = NULL;
-    char *short_opts = "txcvf:V\?";
+    char *short_opts = "txcvf:O:V\?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
         { "create", no_argument, 0, 'c' },
         { "verbose", no_argument, 0, 'v' },
         { "filename", required_argument, 0, 'f' },
+        { "output", required_argument, 0, 'O' },
         { "version", no_argument, 0, 'V' },
         { "help", no_argument, 0, '?' },
         { 0, 0, 0, 0 }
@@ -84,31 +86,31 @@ main(int argc, char **argv)
 
         switch (c) {
             case 't':
-                if (create || extract) {
+                if (c_flag || x_flag) {
                     errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
                 }
 
-                list = true;
+                t_flag = true;
                 flags = R_OK;
                 break;
             case 'x':
-                if (list || create) {
+                if (t_flag || c_flag) {
                     errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
                 }
 
-                extract = true;
+                x_flag = true;
                 flags = R_OK;
                 break;
             case 'c':
-                if (list || extract) {
+                if (t_flag || x_flag) {
                     errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
                 }
 
-                create = true;
+                c_flag = true;
                 flags = W_OK;
                 break;
             case 'v':
-                verbose = true;
+                v_flag = true;
                 break;
             case 'f':
                 if (filename) {
@@ -116,6 +118,13 @@ main(int argc, char **argv)
                 }
 
                 filename = realpath(optarg, NULL);
+                break;
+            case 'O':
+                if (output_dir) {
+                    errx(EXIT_FAILURE, _("*** -O already specified; only allowed once"));
+                }
+
+                output_dir = realpath(optarg, NULL);
                 break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
@@ -140,13 +149,13 @@ main(int argc, char **argv)
 
         while (opt && *opt != '\0') {
             if (*opt == 't') {
-                list = true;
+                t_flag = true;
             } else if (*opt == 'c') {
-                create = true;
+                c_flag = true;
             } else if (*opt == 'x') {
-                extract = true;
+                x_flag = true;
             } else if (*opt == 'v') {
-                verbose = true;
+                v_flag = true;
             } else if (*opt == 'f') {
                 /* the filename must come after 'f' */
                 if (filename) {
@@ -167,12 +176,12 @@ main(int argc, char **argv)
     }
 
     /* Ensure we only have one of -t, -x, or -c */
-    if ((list + extract + create) >= 2) {
+    if ((t_flag + x_flag + c_flag) >= 2) {
         errx(EXIT_FAILURE, _("*** only one of -t, -x, or -c may be specified"));
     }
 
     /* Make sure we have minimal options specified */
-    if (!list && !extract && !create) {
+    if (!t_flag && !x_flag && !c_flag) {
         errx(EXIT_FAILURE, _("*** must specify at least -t, -x, or -c"));
     }
 
@@ -193,7 +202,14 @@ main(int argc, char **argv)
     }
 
     /* Main operations begin here */
-    if (extract) {
+    if (t_flag) {
+        /* XXX: can't list yet */
+        printf(_("XXX: unable to list RPMs right now\n"));
+
+        if (v_flag) {
+            return EXIT_SUCCESS;
+        }
+    } else if (x_flag) {
         /* validate the specified file is an RPM */
         h = get_rpm_header(filename);
 
@@ -270,7 +286,7 @@ main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        if (unpack_archive(payload_file, tmp, true, verbose) != 0) {
+        if (unpack_archive(payload_file, tmp, true, v_flag) != 0) {
             err(EXIT_FAILURE, "unpack_archive");
         }
 
@@ -282,11 +298,11 @@ main(int argc, char **argv)
         free(tmp);
         free(output_dir);
         headerFree(h);
-    } else if (create) {
+    } else if (c_flag) {
         /* XXX: can't create yet */
         printf(_("XXX: unable to create RPMs right now\n"));
 
-        if (verbose) {
+        if (v_flag) {
             return EXIT_SUCCESS;
         }
     }
