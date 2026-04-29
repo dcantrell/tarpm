@@ -16,8 +16,9 @@ generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals)
     struct json_object *out = NULL;
     char *s = NULL;
 
-    assert(sig != NULL);
-    assert(svals != NULL);
+    if (sig == NULL || svals == NULL) {
+        return NULL;
+    }
 
     out = json_object_new_object();
 
@@ -63,9 +64,9 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
     struct json_object *arrayentry = NULL;
     char *s = NULL;
 
-    assert(sig != NULL);
-    assert(svals != NULL);
-    assert(entry != NULL);
+    if (sig == NULL || svals == NULL || entry == NULL) {
+        return NULL;
+    }
 
     jvals = json_object_new_array();
 

@@ -113,8 +113,10 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
     struct archive *output = NULL;
     struct archive_entry *entry = NULL;
 
-    assert(archive != NULL);
-    assert(dest != NULL);
+    if (archive == NULL || dest == NULL) {
+        return -1;
+    }
+
     memset(cwd, '\0', sizeof(cwd));
 
     /* attributes to restore */

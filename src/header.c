@@ -29,8 +29,9 @@ extract_header(const int fd, const char *output_dir)
     struct json_object *out = NULL;
     struct json_object *jvals = NULL;
 
-    assert(fd > 0);
-    assert(output_dir != NULL);
+    if (fd <= 0 || output_dir == NULL) {
+        return -1;
+    }
 
     /* read in the signature */
     sig = read_header_signature(fd);

@@ -19,7 +19,9 @@ compute_sigvalues(const struct rpmsignature *sig, const bool signature)
 {
     struct rpmsigvalues *vals = NULL;
 
-    assert(sig != NULL);
+    if (sig == NULL) {
+        return NULL;
+    }
 
     vals = calloc(1, sizeof(*vals));
     assert(vals != NULL);
@@ -47,7 +49,9 @@ read_header_signature(const int fd)
 {
     struct rpmsignature *sig = NULL;
 
-    assert(fd > 0);
+    if (fd <= 0) {
+        return NULL;
+    }
 
     /* zero out the structures */
     sig = xcalloc(1, sizeof(*sig));
@@ -92,9 +96,9 @@ read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t
 {
     uint32_t *buffer = NULL;
 
-    assert(fd > 0);
-    assert(sig != NULL);
-    assert(hlen > 0);
+    if (fd <= 0 || sig == NULL || hlen <= 0) {
+        return NULL;
+    }
 
     /* read in entries */
     /* (largely from rpmdump.c) */
@@ -123,8 +127,9 @@ read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart)
     struct rpmidxentry *trailer = NULL;
     rpmSigTag tag = 0;
 
-    assert(entry != NULL);
-    assert(datastart != NULL);
+    if (entry == NULL || datastart == NULL) {
+        return NULL;
+    }
 
     tag = ntohl(entry->tag);
 

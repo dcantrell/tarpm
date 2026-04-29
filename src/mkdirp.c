@@ -3,7 +3,7 @@
  */
 
 /*
- * Copyright 2018-2021 David Cantrell <dcantrell@burdell.org>
+ * Copyright Dave Cantrell <dcantrell@burdell.org>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,9 @@ mkdirp(const char *path, mode_t mode)
     char *cwd = NULL;
     struct stat sb;
 
-    assert(path != NULL);
+    if (path == NULL) {
+        return -1;
+    }
 
     /* exit if path exists */
     r = stat(path, &sb);

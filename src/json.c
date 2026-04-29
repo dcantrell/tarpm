@@ -23,9 +23,9 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
     int r = 0;
     int flags = JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY;
 
-    assert(data != NULL);
-    assert(output_dir != NULL);
-    assert(output_file != NULL);
+    if (data == NULL || output_dir == NULL || output_file == NULL) {
+        return -1;
+    }
 
     /* write the JSON data for a file */
     s = joinpath(output_dir, output_file, NULL);

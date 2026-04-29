@@ -51,19 +51,25 @@ char *joinpath(const char *path, ...)
     char *near = NULL;
     char *far = NULL;
 
-    assert(path != NULL);
+    if (path == NULL) {
+        return NULL;
+    }
 
     /* Allocate a large buffer to use for building the path. */
-    built = xalloc(PATH_MAX + 1);
+    tail = built = xalloc(PATH_MAX + 1);
 
     /* Make sure the full path starts with a slash. */
     if (*path == '/') {
         /* this for loop trims multiple leading slashes down to just one */
         while (*(path + 1) == '/') path++;
+    } else {
+        /* ensure joined path begins with a slash */
+        built[0] = '/';
+        tail++;
     }
 
     /* begin our joined path */
-    tail = stpcpy(built, path);
+    tail = stpcpy(tail, path);
 
     /* the remaining elements come in this way */
     va_start(ap, path);

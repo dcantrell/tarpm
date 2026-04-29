@@ -69,7 +69,9 @@ extract_rpm_payload(const char *rpm)
     size_t len = 0;
     size_t read = 0;
 
-    assert(rpm != NULL);
+    if (rpm == NULL) {
+        return NULL;
+    }
 
     /* create librpm widgets */
     ts = rpmtsCreate();
@@ -217,7 +219,9 @@ get_rpm_header(const char *pkg)
     FD_t fd;
     rpmRC result;
 
-    assert(pkg != NULL);
+    if (pkg == NULL) {
+        return NULL;
+    }
 
     fd = Fopen(pkg, "r.ufdio");
 
@@ -287,7 +291,9 @@ val_cleanup:
 const char *
 get_rpm_header_arch(Header h)
 {
-    assert(h != NULL);
+    if (h == NULL) {
+        return NULL;
+    }
 
     if (headerIsSource(h)) {
         return SRPM_ARCH_NAME;
@@ -320,7 +326,11 @@ get_nevra(Header h)
     char *r = NULL;
 
     r = get_nevr(h);
-    assert(r != NULL);
+
+    if (r == NULL) {
+        return NULL;
+    }
+
     r = strappend(r, ".", get_rpm_header_arch(h), NULL);
     return r;
 }
