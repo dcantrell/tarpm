@@ -10,7 +10,23 @@ project('tarpm',
         license : 'Apache-2.0'
 )
 
+fs = import('fs')
+
 cc = meson.get_compiler('c')
+
+# Header search dirs
+if build_machine.system() == 'netbsd'
+    include_dirs = [ '/usr/local/include', '/usr/pkg/include', '/usr/include' ]
+else
+    include_dirs = [ '/usr/local/include', '/usr/include' ]
+endif
+existing_include_dirs = []
+foreach dir : include_dirs
+    if fs.is_dir(dir)
+        existing_include_dirs += dir
+    endif
+endforeach
+sysinc = include_directories(existing_include_dirs)
 
 # Define the program version
 add_global_arguments('-DPACKAGE_VERSION="@0@"'.format(meson.project_version()), language : 'c')
@@ -24,6 +40,12 @@ add_global_arguments('-D__STRICT_ANSI__', language : 'c')
 # See if we have reallocarray in libc
 if cc.has_function('reallocarray')
     add_global_arguments('-D_HAVE_REALLOCARRAY', language : 'c')
+endif
+
+# Check for sys/queue.h
+if not cc.has_header('sys/queue.h', include_directories : sysinc)
+    message('<sys/queue.h> not found, using bundled copy')
+    add_project_arguments('-D_COMPAT_QUEUE', language : ['c', 'cpp'])
 endif
 
 # Translations

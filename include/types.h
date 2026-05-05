@@ -1,7 +1,10 @@
 /*
+ * Copyright The rpminspect Project Authors
  * Copyright The tarpm Project Authors
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: LGPL-3.0-or-later
  */
+
+#include "queue.h"
 
 #ifndef _TARPM_TYPES_H
 #define _TARPM_TYPES_H
@@ -66,5 +69,18 @@ union datatypes
     int32_t i32;
     int64_t i64;
 };
+
+/*
+ * List of strings.
+ */
+typedef struct _str_entry_t {
+    char *str;
+    TAILQ_ENTRY(_str_entry_t) items;
+} str_entry_t;
+
+typedef TAILQ_HEAD(str_entry_s, _str_entry_t) str_list_t;
+
+/* Function pointers */
+typedef void (*list_entry_data_free_func)(void *);
 
 #endif /* _TARPM_TYPES_H */

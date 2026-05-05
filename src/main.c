@@ -49,6 +49,7 @@ main(int argc, char **argv)
     char *payload_file = NULL;
     char *filename = NULL;
     char *cwd = NULL;
+    char *candidate_path = NULL;
     char *output_dir = NULL;
     int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
@@ -124,7 +125,7 @@ main(int argc, char **argv)
                     errx(EXIT_FAILURE, _("*** -O already specified; only allowed once"));
                 }
 
-                output_dir = realpath(optarg, NULL);
+                output_dir = abspath(optarg);
                 break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
@@ -226,15 +227,16 @@ main(int argc, char **argv)
 
         /* make a unique output directory name if we need to */
         if (output_dir == NULL) {
-            /*
-             * XXX: this should build a path and use abspath() from rpminspect, but that can come later
-             */
             tmp = get_nevra(h);
             assert(tmp != NULL);
 
-            xasprintf(&output_dir, "%s/%s", cwd, tmp);
+            xasprintf(&candidate_path, "%s/%s", cwd, tmp);
+            assert(candidate_path != NULL);
+
+            output_dir = abspath(candidate_path);
             assert(output_dir != NULL);
 
+            free(candidate_path);
             free(tmp);
         }
 

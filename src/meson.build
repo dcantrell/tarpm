@@ -1,11 +1,13 @@
 # Define source files as File objects so they can be used in unit
 # tests.
+abspath_src = files('abspath.c')
 entry_src = files('entry.c')
 header_src = files('header.c')
 init_src = files('init.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
 lead_src = files('lead.c')
+listfuncs_src = files('listfuncs.c')
 main_src = files('main.c')
 mkdirp_src = files('mkdirp.c')
 read_src = files('read.c')
@@ -18,12 +20,14 @@ write_src = files('write.c')
 xalloc_src = files('xalloc.c')
 
 sources = [
+    abspath_src,
     entry_src,
     header_src,
     init_src,
     joinpath_src,
     json_src,
     lead_src,
+    listfuncs_src,
     main_src,
     mkdirp_src,
     read_src,

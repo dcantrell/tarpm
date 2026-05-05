@@ -16,6 +16,9 @@
 #include "helpers.h"
 #include "types.h"
 
+/* abspath.c */
+char *abspath(const char *path);
+
 /* init.c */
 int init_librpm(void);
 
@@ -31,6 +34,12 @@ char *get_nevra(Header h);
 bool strprefix(const char *s, const char *prefix);
 bool strsuffix(const char *s, const char *suffix);
 char *strappend(char *dest, ...);
+str_list_t *strsplit(const char *s, const char *delim);
+
+/* listfuncs.c */
+char *list_to_string(const str_list_t *list, const char *delimiter);
+void list_free(str_list_t *list, list_entry_data_free_func free_func);
+str_list_t *list_add(str_list_t *list, const char *s);
 
 /* xalloc.c */
 void *xcalloc(size_t n, size_t s);

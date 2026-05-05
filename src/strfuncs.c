@@ -1,6 +1,7 @@
 /*
+ * Copyright The rpminspect Project Authors
  * Copyright The tarpm Project Authors
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
 #include <assert.h>
@@ -85,4 +86,39 @@ strappend(char *dest, ...)
     va_end(sl);
 
     return dest;
+}
+
+/*
+ * Split given string on delimiter.  Put each substring in a
+ * str_list_t as a separate entry, return the list.  Caller must free
+ * the list.
+ */
+str_list_t *strsplit(const char *s, const char *delim)
+{
+    char *walk = NULL;
+    char *walkp = NULL;
+    char *token = NULL;
+    str_list_t *list = NULL;
+
+    if (s == NULL) {
+        return NULL;
+    }
+
+    /* given a string but no delim, just make a single entry list */
+    if (s && (delim == NULL || !strcmp(s, delim))) {
+        list = list_add(list, s);
+        return list;
+    }
+
+    walk = strdup(s);
+    assert(walk != NULL);
+    walkp = walk;
+
+    /* split the string and build the list */
+    while ((token = strsep(&walk, delim)) != NULL) {
+        list = list_add(list, token);
+    }
+
+    free(walkp);
+    return list;
 }
