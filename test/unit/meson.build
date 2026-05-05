@@ -183,6 +183,20 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_abspath = executable(
+        'test-abspath',
+        [ 'test-abspath.c',
+          'test-main.c',
+          abspath_src,
+          listfuncs_src,
+          strfuncs_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     # Unit tests
     test('test-strfuncs', test_strfuncs)
     test('test-header', test_header)
@@ -198,6 +212,7 @@ if cunit.found()
     test('test-unpack', test_unpack)
     test('test-write', test_write)
     test('test-xalloc', test_xalloc)
+    test('test-abspath', test_abspath)
 else
     warning('CUnit not found, skipping unit test suite')
 endif
