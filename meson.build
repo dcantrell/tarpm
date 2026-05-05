@@ -7,7 +7,7 @@ project('tarpm',
             'werror=true',
             'buildtype=debugoptimized'
         ],
-        license : 'Apache-2.0'
+        license : 'GPL-3.0-or-later AND LGPL-3.0-or-later'
 )
 
 fs = import('fs')

@@ -31,6 +31,11 @@ part of any project.  Aside from testing and documentation.
 LICENSE
 =======
 
-The Apache-2.0 license covers this project.
+The GNU General Public License 3.0 (or, at your option, any later
+version) and the GNU Lesser General Public License 3.0 (or, at your
+option, any later version) cover this project.  Some code is licensed
+under the GPL-3.0-or-later and some code is under the
+LGPL-3.0-or-later.  I was able to copy in code from my other projects,
+such as rpminspect, when it fit the need in tarpm.
 
-See the LICENSE file for more information.
+See the COPYING and COPYING.LIB files for more information.
