@@ -1,6 +1,6 @@
 #
 # Copyright The tarpm Project Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 
 import subprocess
@@ -41,7 +41,7 @@ class TarpmRequiredOption(RequiresTarpm):
         self.assertNotEqual(err.decode("utf-8").find(s), -1)
 
 
-# Verify rpminspect doesn't segfault on non-RPM files
+# Verify tarpm doesn't segfault on non-RPM files
 class TarpmSegv(RequiresTarpm):
     def runTest(self):
         p = subprocess.Popen(
