@@ -130,6 +130,11 @@ class RequiresTarpm(unittest.TestCase):
         # create a temporary directory for outputs
         self.output_dir = tempfile.mkdtemp(prefix="tarpm-integration-test")
 
+        # output from a tarpm extraction
+        self.lead = os.path.join(self.output_dir, 'lead.json')
+        self.signature = os.path.join(self.output_dir, 'signature.json')
+        self.header = os.path.join(self.output_dir, 'header.json')
+
         # tarpm opts
         self.opts = []
 
@@ -143,16 +148,22 @@ class RequiresTarpm(unittest.TestCase):
             shutil.rmtree(self.output_dir, True)
 
 
-# Base test case class that tests a source RPM
-class TestSRPM(RequiresTarpm):
+# Base test case class that tests operations on a source RPM
+class TestUnpackSRPM(RequiresTarpm):
     def setUp(self):
         super().setUp()
-        self.srpm = SimpleSrpmBuild(NAME, VER, REL)
+        self.rpm = SimpleSrpmBuild(NAME, VER, REL)
+
+        # turn off all rpmbuild post processing stuff for the purposes of testing
+        self.rpm.header += "\n%global __os_install_post %{nil}\n"
+
+        # select extract mode by default
+        self.mode = "-x"
 
     def runTest(self):
-        self.srpm.do_make()
+        self.rpm.do_make()
 
-        args = [ self.tarpm ] + self.opts + [ "-f", self.srpm.get_built_srpm(), "-O", self.output_dir ]
+        args = [ self.tarpm, self.mode ] + self.opts + [ "-f", self.rpm.get_built_srpm(), "-O", self.output_dir ]
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (self.out, self.err) = proc.communicate()
 
@@ -162,17 +173,29 @@ class TestSRPM(RequiresTarpm):
         super().tearDown()
 
         if not KEEP_RESULTS:
-            self.srpm.clean()
+            self.rpm.clean()
 
 
-# Base test case class that tests a binary RPM
-class TestRPM(RequiresTarpm):
+# Base test case class that tests operations on a binary RPM
+class TestUnpackRPM(RequiresTarpm):
     def setUp(self):
         super().setUp()
-        self.rpm = SimpleRpmBuild(NAME, VER, REL)
+        self.rpm = rpmfluff.SimpleRpmBuild(NAME, VER, REL)
+
+        # turn off all rpmbuild post processing stuff for the purposes of testing
+        self.rpm.header += "\n%global __os_install_post %{nil}\n"
+
+        # select extract mode by default
+        self.mode = "-x"
 
     def runTest(self):
         self.rpm.do_make()
+
+        args = [ self.tarpm, self.mode ] + self.opts + [ "-f", self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()), "-O", self.output_dir ]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (self.out, self.err) = proc.communicate()
+
+        self.assertEqual(proc.returncode, self.exitcode)
 
     def tearDown(self):
         super().tearDown()

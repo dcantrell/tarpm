@@ -5,6 +5,7 @@ if python.found()
 
     test_suites = [
         'test_options.py',
+        'test_lead.py',
     ]
 
     foreach suite : test_suites
