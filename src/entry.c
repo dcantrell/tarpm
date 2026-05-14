@@ -22,6 +22,9 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
     void *blob = NULL;
     char *s = NULL;
     uint8_t *p = NULL;
+    bool array = false;
+    int c = -1;
+    struct json_object *sa = NULL;
 
     assert(arrayentry != NULL);
     assert(buffer != NULL);
@@ -73,24 +76,24 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
 
             break;
         case RPM_STRING_ARRAY_TYPE:
+            sa = json_object_new_array();
+            array = true;
+            p = data;
 
-//p = s = strdup((char *) data);
-/* j = 0; */
-p = data;
-int c;
+            for (i = 0; i < count; i++) {
+                c = asprintf(&s, "%s", (char *) p);
 
-for (i = 0; i < count; i++) {
-    c = printf("|%s|\n", (char *) p);
-    p += c - 2;
+                if (c == -1) {
+                    err(EXIT_FAILURE, "asprintf");
+                }
 
-/*
-    while (*s != '\0') {
-         j++;
-    }
-*/
-}
+                json_object_array_add(sa, json_object_new_string((char *) p));
+                p += c + 1;
 
-            /* XXX: return "argv"; */
+                free(s);
+                s = NULL;
+            }
+
             break;
         case RPM_I18NSTRING_TYPE:
             s = strdup((char *) data);
@@ -101,13 +104,12 @@ for (i = 0; i < count; i++) {
     }
 
     /* add the value */
-    if (s == NULL) {
-        s = strdup("");
-        assert(s != NULL);
+    if (array) {
+        json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);
+    } else {
+        json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
+        free(s);
     }
-
-    json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
-    free(s);
 
     return;
 }
