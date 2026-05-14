@@ -60,7 +60,8 @@ read_header_signature(const int fd)
     /* read in the signature */
     if (read(fd, sig, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
         warn("read");
-        goto bad;
+        free(sig);
+        sig = NULL;
     }
 
     sig->magic = ntohl(sig->magic);
@@ -70,19 +71,17 @@ read_header_signature(const int fd)
     /* verify the magic and reserved values are correct */
     if (sig->magic != RPM_SIGNATURE_MAGIC) {
         warn("magic value mismatch, not an RPM");
-        goto bad;
+        free(sig);
+        sig = NULL;
     }
 
     if (sig->reserved != 0) {
         warn("reserved value mismatch, not an RPM");
-        goto bad;
+        free(sig);
+        sig = NULL;
     }
 
     return sig;
-
-bad:
-    free(sig);
-    return NULL;
 }
 
 /*
