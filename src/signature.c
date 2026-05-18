@@ -69,6 +69,7 @@ extract_signature(const int fd, const char *output_dir)
     }
 
     /* cleanup */
+    free(svals);
     free_json(out);
     json_object_put(jvals);
     free(trailer);
