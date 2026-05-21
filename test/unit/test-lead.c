@@ -21,10 +21,10 @@ clean_test_lead(void)
 }
 
 void
-test_extract_lead(void)
+test_read_lead_from_rpm(void)
 {
-    TARPM_ASSERT_TRUE(extract_lead(-47, NULL) == -1);
-    TARPM_ASSERT_TRUE(extract_lead(0, NULL) == -1);
+    TARPM_ASSERT_TRUE(read_lead_from_rpm(-47) == NULL);
+    TARPM_ASSERT_TRUE(read_lead_from_rpm(0) == NULL);
 
     return;
 }
@@ -42,7 +42,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test extract_lead()", test_extract_lead) == NULL) {
+    if (CU_add_test(pSuite, "test read_lead_from_rpm()", test_read_lead_from_rpm) == NULL) {
         return NULL;
     }
 

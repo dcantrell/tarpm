@@ -56,13 +56,13 @@ int mkdirp(const char *path, mode_t mode);
 int unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose);
 
 /* lead.c */
-int extract_lead(const int fd, const char *output_dir);
+struct json_object *read_lead_from_rpm(const int fd);
 
 /* signature.c */
-int extract_signature(const int fd, const char *output_dir);
+struct json_object *read_signature_from_rpm(const int fd);
 
 /* header.c */
-int extract_header(const int fd, const char *output_dir);
+struct json_object *read_header_from_rpm(const int fd);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);

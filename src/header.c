@@ -15,38 +15,38 @@
 #include "tarpm.h"
 
 /*
- * Iterate over the RPM header and write the data to a JSON file in
- * output_dir.  Returns 0 on success, -1 on error.
+ * Read the data of the RPM header and convert it to JSON data.
+ * Returns an allocated json_object (caller must free), NULL on error.
  */
-int
-extract_header(const int fd, const char *output_dir)
+struct json_object *
+read_header_from_rpm(const int fd)
 {
     uint32_t *buffer = NULL;
-    struct rpmsignature *sig = NULL;
+    struct rpmsignature *rawsig = NULL;
     struct rpmsigvalues *svals = NULL;
     struct rpmidxentry *entry = NULL;
     struct rpmidxentry *trailer = NULL;
-    struct json_object *out = NULL;
     struct json_object *jvals = NULL;
+    struct json_object *header = NULL;
 
-    if (fd <= 0 || output_dir == NULL) {
-        return -1;
+    if (fd <= 0) {
+        return NULL;
     }
 
     /* read in the signature */
-    sig = read_header_signature(fd);
+    rawsig = read_header_signature(fd);
 
-    if (sig == NULL) {
+    if (rawsig == NULL) {
         err(EXIT_FAILURE, "read_header_signature");
     }
 
     /* computed from header values */
-    svals = compute_sigvalues(sig, true);
+    svals = compute_sigvalues(rawsig, true);
 
     /* read in the entries */
-    buffer = read_header_entries(fd, sig, svals->hlen);
+    buffer = read_header_entries(fd, rawsig, svals->hlen);
     svals->estart = (struct rpmidxentry *) &(buffer[2]);
-    svals->datastart = (uint8_t *) (svals->estart + sig->nentries);
+    svals->datastart = (uint8_t *) (svals->estart + rawsig->nentries);
 
     /* first entry */
     entry = (struct rpmidxentry *) (buffer + 2);
@@ -56,25 +56,20 @@ extract_header(const int fd, const char *output_dir)
     trailer = read_header_trailer(entry, svals->datastart);
 
     /* generate a JSON structure for the signature */
-    out = generate_json(sig, svals);
+    header = generate_json(rawsig, svals);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(sig, svals, entry, false);
+    jvals = generate_json_entries(rawsig, svals, entry, false);
 
     /* write the signature to a file */
-    json_object_object_add(out, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
-
-    if (write_json_file(out, output_dir, OUTPUT_HEADER) != 0) {
-        warn("write_json_file");
-    }
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
     /* cleanup */
     free(svals);
-    free_json(out);
     json_object_put(jvals);
     free(trailer);
     free(buffer);
-    free(sig);
+    free(rawsig);
 
-    return 0;
+    return header;
 }

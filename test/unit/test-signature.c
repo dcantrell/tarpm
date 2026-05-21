@@ -21,10 +21,10 @@ clean_test_signature(void)
 }
 
 void
-test_extract_signature(void)
+test_read_signature_from_rpm(void)
 {
-    TARPM_ASSERT_TRUE(extract_signature(0, NULL) == -1);
-    TARPM_ASSERT_TRUE(extract_signature(-47, NULL) == -1);
+    TARPM_ASSERT_TRUE(read_signature_from_rpm(0) == NULL);
+    TARPM_ASSERT_TRUE(read_signature_from_rpm(-47) == NULL);
 
     return;
 }
@@ -42,7 +42,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test extract_signature()", test_extract_signature) == NULL) {
+    if (CU_add_test(pSuite, "test read_signature_from_rpm()", test_read_signature_from_rpm) == NULL) {
         return NULL;
     }
 

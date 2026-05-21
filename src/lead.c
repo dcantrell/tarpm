@@ -14,63 +14,55 @@
 #include "tarpm.h"
 
 /*
- * Extract the data of the RPM lead and convert it to JSON data.
- * Returns 0 on success, -1 on error.
+ * Read the data of the RPM lead and convert it to JSON data.
+ * Returns an allocated json_object (caller must free), NULL on error.
  */
-int
-extract_lead(const int fd, const char *output_dir)
+struct json_object *
+read_lead_from_rpm(const int fd)
 {
-    struct rpmlead lead;
-    struct json_object *out = NULL;
+    struct rpmlead rawlead;
+    struct json_object *lead = NULL;
     char *s = NULL;
 
-    if (fd <= 0 || output_dir == NULL) {
-        return -1;
+    if (fd <= 0) {
+        return NULL;
     }
 
     /* zero out the lead structure */
-    memset(&lead, 0, sizeof(lead));
+    memset(&rawlead, 0, sizeof(rawlead));
 
     /* read in the lead */
-    if (read(fd, &lead, RPMLEAD_SIZE) != RPMLEAD_SIZE) {
+    if (read(fd, &rawlead, RPMLEAD_SIZE) != RPMLEAD_SIZE) {
         err(EXIT_FAILURE, "read");
     }
 
     /* convert some lead fields from network byte order to host byte order */
-    lead.type = ntohs(lead.type);
-    lead.osnum = ntohs(lead.osnum);
-    lead.archnum = ntohs(lead.archnum);
-    lead.signature_type = ntohs(lead.signature_type);
+    rawlead.type = ntohs(rawlead.type);
+    rawlead.osnum = ntohs(rawlead.osnum);
+    rawlead.archnum = ntohs(rawlead.archnum);
+    rawlead.signature_type = ntohs(rawlead.signature_type);
 
     /* generate a JSON structure for the lead */
-    out = json_object_new_object();
+    lead = json_object_new_object();
 
-    xasprintf(&s, "0x%hhX%hhX%hhX%hhX", lead.magic[0], lead.magic[1], lead.magic[2], lead.magic[3]);
-    json_object_object_add(out, RPM_LEAD_MAGIC, json_object_new_string(s));
+    xasprintf(&s, "0x%hhX%hhX%hhX%hhX", rawlead.magic[0], rawlead.magic[1], rawlead.magic[2], rawlead.magic[3]);
+    json_object_object_add(lead, RPM_LEAD_MAGIC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d.%d", lead.major, lead.minor);
-    json_object_object_add(out, RPM_LEAD_VERSION, json_object_new_string(s));
+    xasprintf(&s, "%d.%d", rawlead.major, rawlead.minor);
+    json_object_object_add(lead, RPM_LEAD_VERSION, json_object_new_string(s));
     free(s);
 
-    if (lead.type) {
-        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string("source"));
+    if (rawlead.type) {
+        json_object_object_add(lead, RPM_LEAD_TYPE, json_object_new_string("source"));
     } else {
-        json_object_object_add(out, RPM_LEAD_TYPE, json_object_new_string("binary"));
+        json_object_object_add(lead, RPM_LEAD_TYPE, json_object_new_string("binary"));
     }
 
-    json_object_object_add(out, RPM_LEAD_NAME, json_object_new_string(lead.name));
-    json_object_object_add(out, RPM_LEAD_ARCH, json_object_new_int(lead.archnum));
-    json_object_object_add(out, RPM_LEAD_OS, json_object_new_int(lead.osnum));
-    json_object_object_add(out, RPM_LEAD_SIGTYPE, json_object_new_int(lead.signature_type));
+    json_object_object_add(lead, RPM_LEAD_NAME, json_object_new_string(rawlead.name));
+    json_object_object_add(lead, RPM_LEAD_ARCH, json_object_new_int(rawlead.archnum));
+    json_object_object_add(lead, RPM_LEAD_OS, json_object_new_int(rawlead.osnum));
+    json_object_object_add(lead, RPM_LEAD_SIGTYPE, json_object_new_int(rawlead.signature_type));
 
-    /* write the lead to a JSON file */
-    if (write_json_file(out, output_dir, OUTPUT_LEAD) != 0) {
-        warn("write_json_file");
-    }
-
-    /* cleanup */
-    free_json(out);
-
-    return 0;
+    return lead;
 }

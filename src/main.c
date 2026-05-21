@@ -54,6 +54,9 @@ main(int argc, char **argv)
     int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     int rpmfd = 0;
+    struct json_object *lead = NULL;
+    struct json_object *signature = NULL;
+    struct json_object *header = NULL;
     Header h;
     char *opt = NULL;
     char *short_opts = "txcvf:O:V\?";
@@ -225,6 +228,32 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "open");
         }
 
+        /* extract the RPM lead -- the first header (unused) */
+        lead = read_lead_from_rpm(rpmfd);
+
+        if (lead == NULL) {
+            err(EXIT_FAILURE, "read_lead_from_rpm");
+        }
+
+        /* extract the RPM signature -- the second header (sort of used) */
+        signature = read_signature_from_rpm(rpmfd);
+
+        if (signature == NULL) {
+            err(EXIT_FAILURE, "read_signature_from_rpm");
+        }
+
+        /* extract the RPM header -- the third header (used) */
+        header = read_header_from_rpm(rpmfd);
+
+        if (header == NULL) {
+            err(EXIT_FAILURE, "read_header_from_rpm");
+        }
+
+        /* close the RPM after reading headers */
+        if (close(rpmfd) == -1) {
+            warn("close");
+        }
+
         /* make a unique output directory name if we need to */
         if (output_dir == NULL) {
             tmp = get_nevra(h);
@@ -245,24 +274,17 @@ main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        /* extract the RPM lead -- the first header (unused) */
-        if (extract_lead(rpmfd, output_dir) == -1) {
-            err(EXIT_FAILURE, "extract_lead");
+        /* write out the header metadata */
+        if (write_json_file(lead, output_dir, OUTPUT_LEAD) != 0) {
+            warn("write_json_file");
         }
 
-        /* extract the RPM signature -- the second header (sort of used) */
-        if (extract_signature(rpmfd, output_dir) == -1) {
-            err(EXIT_FAILURE, "extract_signature");
+        if (write_json_file(signature, output_dir, OUTPUT_SIGNATURE) != 0) {
+            warn("write_json_file");
         }
 
-        /* extract the RPM header -- the third header (used) */
-        if (extract_header(rpmfd, output_dir) == -1) {
-            err(EXIT_FAILURE, "extract_header");
-        }
-
-        /* close the RPM after reading headers */
-        if (close(rpmfd) == -1) {
-            warn("close");
+        if (write_json_file(header, output_dir, OUTPUT_HEADER) != 0) {
+            warn("write_json_file");
         }
 
         /* extract the RPM payload as an archive we can read in libarchive */
@@ -296,6 +318,9 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "unlink");
         }
 
+        free_json(header);
+        free_json(signature);
+        free_json(lead);
         free(payload_file);
         free(tmp);
         free(output_dir);
