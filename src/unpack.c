@@ -192,7 +192,7 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
                 p++;
             }
 
-            printf("x %s/%s\n", dest, p);
+            printf("./%s\n", p);
         }
 
         if (extract_entry(input, output, entry)) {
