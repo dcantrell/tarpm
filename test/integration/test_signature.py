@@ -80,6 +80,19 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 4128)
                         self.assertTrue(len(tag["value"]) == 5590)
+                    else:
+                        # unknown tag is now appearing, write it out
+
+                        # To see what it is, uncomment this block and
+                        # run the test suite again.  The data will be
+                        # in /tmp/rpm-signature-tag.
+                        #
+                        #f = open("/tmp/rpm-signature-tag", "w+")
+                        #f.write(str(tag))
+                        #f.close()
+
+                        m = "Unknown tag found in signature: %s" % t
+                        self.fail(msg=m)
 
 
 class VerifySignatureExtractRPM(TestUnpackRPM):
@@ -155,3 +168,16 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 4128)
                         self.assertTrue(len(tag["value"]) == 5590)
+                    else:
+                        # unknown tag is now appearing, write it out
+
+                        # To see what it is, uncomment this block and
+                        # run the test suite again.  The data will be
+                        # in /tmp/rpm-signature-tag.
+                        #
+                        #f = open("/tmp/rpm-signature-tag", "w+")
+                        #f.write(str(tag))
+                        #f.close()
+
+                        m = "Unknown tag found in signature: %s" % t
+                        self.fail(msg=m)
