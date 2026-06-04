@@ -37,9 +37,9 @@ char *strappend(char *dest, ...);
 str_list_t *strsplit(const char *s, const char *delim);
 
 /* listfuncs.c */
-char *list_to_string(const str_list_t *list, const char *delimiter);
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
 str_list_t *list_add(str_list_t *list, const char *s);
+char *list_to_string(const str_list_t *list, const char *delimiter);
 
 /* xalloc.c */
 void *xcalloc(size_t n, size_t s);
