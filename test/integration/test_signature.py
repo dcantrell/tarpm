@@ -24,13 +24,13 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
             elif key == "reserved":
                 self.assertEqual(signature[key], "0000")
             elif key == "index entries":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 112)
             elif key == "data size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 4276)
             elif key == "header size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 4388)
             elif key == "tags":
                 self.assertTrue(isinstance(signature[key], list))
                 self.assertTrue(len(signature[key]) > 0)
@@ -42,6 +42,44 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                     self.assertTrue("type" in tag.keys())
                     self.assertTrue("offset" in tag.keys())
                     self.assertTrue("count" in tag.keys())
+
+                    t = tag["name"]
+
+                    if t == "(unknown)":
+                        self.assertTrue(int(tag["number"]) == 62)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 16)
+                        self.assertTrue(len(tag["value"]) == 25)
+                    elif t == "RPMSIGTAG_SHA1":
+                        self.assertTrue(int(tag["number"]) == 269)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) == 40)
+                    elif t == "RPMSIGTAG_SHA256":
+                        self.assertTrue(int(tag["number"]) == 273)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) == 64)
+                    elif t == "RPMSIGTAG_SIZE":
+                        self.assertTrue(int(tag["number"]) == 1000)
+                        self.assertTrue(tag["type"] == "int32")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) > 1)
+                    elif t == "RPMSIGTAG_MD5":
+                        self.assertTrue(int(tag["number"]) == 1004)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 16)
+                        self.assertTrue(len(tag["value"]) == 25)
+                    elif t == "RPMSIGTAG_PAYLOADSIZE":
+                        self.assertTrue(int(tag["number"]) == 1007)
+                        self.assertTrue(tag["type"] == "int32")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) > 1)
+                    elif t == "RPMSIGTAG_RESERVEDSPACE":
+                        self.assertTrue(int(tag["number"]) == 1008)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 4128)
+                        self.assertTrue(len(tag["value"]) == 5590)
 
 
 class VerifySignatureExtractRPM(TestUnpackRPM):
@@ -61,13 +99,13 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
             elif key == "reserved":
                 self.assertEqual(signature[key], "0000")
             elif key == "index entries":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 112)
             elif key == "data size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 4276)
             elif key == "header size (bytes)":
-                self.assertTrue(int(signature[key]) > 0)
+                self.assertTrue(int(signature[key]) == 4388)
             elif key == "tags":
                 self.assertTrue(isinstance(signature[key], list))
                 self.assertTrue(len(signature[key]) > 0)
@@ -79,3 +117,41 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                     self.assertTrue("type" in tag.keys())
                     self.assertTrue("offset" in tag.keys())
                     self.assertTrue("count" in tag.keys())
+
+                    t = tag["name"]
+
+                    if t == "(unknown)":
+                        self.assertTrue(int(tag["number"]) == 62)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 16)
+                        self.assertTrue(len(tag["value"]) == 25)
+                    elif t == "RPMSIGTAG_SHA1":
+                        self.assertTrue(int(tag["number"]) == 269)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) == 40)
+                    elif t == "RPMSIGTAG_SHA256":
+                        self.assertTrue(int(tag["number"]) == 273)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) == 64)
+                    elif t == "RPMSIGTAG_SIZE":
+                        self.assertTrue(int(tag["number"]) == 1000)
+                        self.assertTrue(tag["type"] == "int32")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) > 1)
+                    elif t == "RPMSIGTAG_MD5":
+                        self.assertTrue(int(tag["number"]) == 1004)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 16)
+                        self.assertTrue(len(tag["value"]) == 25)
+                    elif t == "RPMSIGTAG_PAYLOADSIZE":
+                        self.assertTrue(int(tag["number"]) == 1007)
+                        self.assertTrue(tag["type"] == "int32")
+                        self.assertTrue(int(tag["count"]) == 1)
+                        self.assertTrue(len(tag["value"]) > 1)
+                    elif t == "RPMSIGTAG_RESERVEDSPACE":
+                        self.assertTrue(int(tag["number"]) == 1008)
+                        self.assertTrue(tag["type"] == "binary blob")
+                        self.assertTrue(int(tag["count"]) == 4128)
+                        self.assertTrue(len(tag["value"]) == 5590)
