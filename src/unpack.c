@@ -103,7 +103,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
  * exist before calling this function.
  */
 int
-unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose)
+unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose)
 {
     int flags, r, ret = 0;
     char *rfilename = NULL;
@@ -124,11 +124,7 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
     flags |= ARCHIVE_EXTRACT_PERM;
     flags |= ARCHIVE_EXTRACT_ACL;
     flags |= ARCHIVE_EXTRACT_FFLAGS;
-
-    if (force) {
-        /* user passed a -f flag, so try to force past errors unpacking */
-        flags |= ARCHIVE_EXTRACT_UNLINK;
-    }
+    flags |= ARCHIVE_EXTRACT_UNLINK;
 
     /* full location to the archive */
     if ((rfilename = realpath(archive, rfilename)) == NULL) {
@@ -155,22 +151,25 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
         return -1;
     }
 
-    /* change to dest */
-    if (getcwd(cwd, PATH_MAX) == NULL) {
-        archive_read_free(input);
-        err(EXIT_FAILURE, "getcwd");
+    if (list == false) {
+        /* change to dest */
+        if (getcwd(cwd, PATH_MAX) == NULL) {
+            archive_read_free(input);
+            err(EXIT_FAILURE, "getcwd");
+        }
+
+        if (chdir(dest) != 0) {
+            warn("chdir");
+            archive_read_free(input);
+            return -1;
+        }
+
+        /* handler to write archive members to disk */
+        output = archive_write_disk_new();
+        archive_write_disk_set_options(output, flags);
+        archive_write_disk_set_standard_lookup(output);
     }
 
-    if (chdir(dest) != 0) {
-        warn("chdir");
-        archive_read_free(input);
-        return -1;
-    }
-
-    /* handler to write archive members to disk */
-    output = archive_write_disk_new();
-    archive_write_disk_set_options(output, flags);
-    archive_write_disk_set_standard_lookup(output);
 
     /* extract each archive member */
     while ((r = archive_read_next_header(input, &entry)) != ARCHIVE_EOF) {
@@ -195,22 +194,27 @@ unpack_archive(const char *archive, const char *dest, const bool force, const bo
             printf("./%s\n", p);
         }
 
-        if (extract_entry(input, output, entry)) {
-            ret = -1;
+        if (list == false) {
+            if (extract_entry(input, output, entry)) {
+                ret = -1;
+            }
         }
     }
 
     archive_read_free(input);
+
+    if (list == false) {
 #if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_write_finish(output);
+        archive_write_finish(output);
 #else
-    archive_write_free(output);
+        archive_write_free(output);
 #endif
 
-    /* change back to original directory */
-    if (chdir(cwd) != 0) {
-        warn("chdir");
-        return -1;
+        /* change back to original directory */
+        if (chdir(cwd) != 0) {
+            warn("chdir");
+            return -1;
+        }
     }
 
     free(rfilename);

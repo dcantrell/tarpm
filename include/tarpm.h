@@ -53,7 +53,7 @@ void *xreallocarray(void *p, size_t n, size_t s);
 int mkdirp(const char *path, mode_t mode);
 
 /* unpack.c */
-int unpack_archive(const char *archive, const char *dest, const bool force, const bool verbose);
+int unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose);
 
 /* lead.c */
 struct json_object *read_lead_from_rpm(const int fd);

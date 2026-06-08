@@ -51,6 +51,7 @@ main(int argc, char **argv)
     char *cwd = NULL;
     char *candidate_path = NULL;
     char *output_dir = NULL;
+    char *input_dir = NULL;
     int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     int rpmfd = 0;
@@ -121,7 +122,13 @@ main(int argc, char **argv)
                     errx(EXIT_FAILURE, _("*** -f already specified; only allowed once"));
                 }
 
-                filename = realpath(optarg, NULL);
+                if (!access(optarg, flags)) {
+                    filename = realpath(optarg, NULL);
+                } else {
+                    filename = strdup(optarg);
+                }
+
+                assert(filename != NULL);
                 break;
             case 'O':
                 if (output_dir) {
@@ -174,9 +181,24 @@ main(int argc, char **argv)
         }
 
         /* pick up the 'f' filename if we don't have one */
-        if (havefilename && !access(argv[optind + 1], flags)) {
-            filename = realpath(argv[optind + 1], NULL);
+        if (havefilename) {
+            if ((t_flag || x_flag) && !access(argv[optind + 1], flags)) {
+                /* for -t and -x, the filename specified needs to exist */
+                filename = realpath(argv[optind + 1], NULL);
+            } else {
+                /* the other mode is -c which will create the named file */
+                filename = strdup(argv[optind + 1]);
+            }
+
+            assert(filename != NULL);
+            optind++;
         }
+    }
+
+    /* Pick up the input directory for -c */
+    if (c_flag && optind < argc && !access(argv[optind], flags)) {
+        input_dir = realpath(argv[optind], NULL);
+        assert(input_dir != NULL);
     }
 
     /* Ensure we only have one of -t, -x, or -c */
@@ -209,10 +231,6 @@ main(int argc, char **argv)
     if (t_flag) {
         /* XXX: can't list yet */
         printf(_("XXX: unable to list RPMs right now\n"));
-
-        if (v_flag) {
-            return EXIT_SUCCESS;
-        }
     } else if (x_flag) {
         /* validate the specified file is an RPM */
         h = get_rpm_header(filename);
@@ -310,7 +328,7 @@ main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        if (unpack_archive(payload_file, tmp, true, v_flag) != 0) {
+        if (unpack_archive(payload_file, tmp, false, v_flag) != 0) {
             err(EXIT_FAILURE, "unpack_archive");
         }
 
@@ -329,9 +347,28 @@ main(int argc, char **argv)
         /* XXX: can't create yet */
         printf(_("XXX: unable to create RPMs right now\n"));
 
-        if (v_flag) {
-            return EXIT_SUCCESS;
-        }
+
+
+
+
+/*
+make sure the input directory exists, error if not
+check for the JSON metadata files (signature and header), error if not
+check for the payload subdirectory, error if not
+read in signature.json to object
+read in header.json to object
+open a file and get a handle for the target filename
+create the lead using data from the header
+write the lead to the output file
+create the signature using data from signature.json
+write the signature to the output file
+create the header using data from header.json
+write the header to the output file
+create the payload writer (use librpm) and yeet each payload file in to the output file
+close the output file
+*/
+
+        free(input_dir);
     }
 
     /* Cleanup and exit */
