@@ -68,6 +68,7 @@ struct json_object *read_header_from_rpm(const int fd);
 char *joinpath(const char *path, ...);
 
 /* json.c */
+struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
 void free_json(struct json_object *data);
 

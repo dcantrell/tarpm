@@ -55,6 +55,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     int rpmfd = 0;
+    struct stat sb;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
@@ -344,30 +345,67 @@ main(int argc, char **argv)
         free(output_dir);
         headerFree(h);
     } else if (c_flag) {
-        /* XXX: can't create yet */
-        printf(_("XXX: unable to create RPMs right now\n"));
+        /* make sure the input directory exists */
+        if (input_dir == NULL || access(input_dir, flags)) {
+            errx(EXIT_FAILURE, _("*** %s does not exist"), input_dir);
+        }
 
+        /* change to the input directory */
+        if (chdir(input_dir) == -1) {
+            err(EXIT_FAILURE, "chdir");
+        }
+
+        /* make sure we have the payload subdirectory */
+        if (lstat(PAYLOAD_SUBDIR, &sb) == -1) {
+            err(EXIT_FAILURE, "lstat");
+        }
+
+        if (!S_ISDIR(sb.st_mode)) {
+            errx(EXIT_FAILURE, _("*** %s is not a directory"), PAYLOAD_SUBDIR);
+        }
+
+        /* read in signature.json and header.json */
+        signature = read_json_file(OUTPUT_SIGNATURE);
+
+        if (signature == NULL) {
+            errx(EXIT_FAILURE, _("*** missing signature data"));
+        }
+
+        header = read_json_file(OUTPUT_HEADER);
+
+        if (header == NULL) {
+            errx(EXIT_FAILURE, _("*** missing header data"));
+        }
 
 
 
 
 /*
-make sure the input directory exists, error if not
-check for the JSON metadata files (signature and header), error if not
-check for the payload subdirectory, error if not
-read in signature.json to object
-read in header.json to object
-open a file and get a handle for the target filename
-create the lead using data from the header
-write the lead to the output file
-create the signature using data from signature.json
-write the signature to the output file
-create the header using data from header.json
-write the header to the output file
-create the payload writer (use librpm) and yeet each payload file in to the output file
-close the output file
+
+* make sure the input directory exists, error if not
+* check for the JSON metadata files (signature and header), error if not
+* check for the payload subdirectory, error if not
+* read in signature.json to object
+* read in header.json to object
+
+- create the lead using data from the header
+- create the signature using data from signature.json
+- create the header using data from header.json
+- open a file and get a handle for the target filename
+- write the lead to the output file
+- write the signature to the output file
+- write the header to the output file
+- create the payload writer (use librpm) and yeet each payload file in to the output file
+- close the output file
+
 */
 
+        if (chdir(cwd) == -1) {
+            err(EXIT_FAILURE, "chdir");
+        }
+
+        free_json(header);
+        free_json(signature);
         free(input_dir);
     }
 

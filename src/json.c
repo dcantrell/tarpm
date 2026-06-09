@@ -4,11 +4,37 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <err.h>
 #include <json.h>
 
 #include "tarpm.h"
+
+/*
+ * Wrapper for reading in a JSON file.
+ */
+struct json_object *
+read_json_file(const char *input_file)
+{
+    struct json_object *obj = NULL;
+
+    assert(input_file != NULL);
+
+    if (access(input_file, R_OK) == -1) {
+        warn(_("*** missing or unreadable %s"), input_file);
+        return NULL;
+    }
+
+    obj = json_object_from_file(input_file);
+
+    if (obj == NULL) {
+        warnx(_("*** json_object_from_file: %s"), json_util_get_last_err());
+        return NULL;
+    }
+
+    return obj;
+}
 
 /*
  * Takes the JSON data and writes it to the output_file in output_dir.
