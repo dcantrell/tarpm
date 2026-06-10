@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <string.h>
+#include <err.h>
 #include <rpm/rpmtag.h>
 
 #include "tarpm.h"
@@ -762,4 +764,55 @@ tag_name(rpmTag tag)
         default:
             return "(unknown)";
     }
+}
+
+/*
+ * Given a json_object representing a "tags" array from a header JSON
+ * file, search for the array entry where the "name" field matches the
+ * name parameter on this function.  Return the tag value as a string
+ * or NULL if not found.  Caller must not free the returned string.
+ */
+const char *
+get_tag_value(const struct json_object *tags, const char *name)
+{
+    const char *v = NULL;
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    if (tags == NULL || name == NULL) {
+        return NULL;
+    }
+
+    if (json_object_get_type(tags) != json_type_array) {
+        warnx(_("*** get_tag_value: tags must be an array"));
+        return NULL;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        value = NULL;
+        entry = json_object_array_get_idx(tags, i);
+
+        if (entry == NULL) {
+            break;
+        }
+
+        if (json_object_object_get_ex(entry, "name", &value) == 1) {
+            /* we found the name key, check the value */
+            if (strcmp(name, json_object_get_string(value))) {
+                /* no match */
+                continue;
+            }
+
+            value = NULL;
+
+            /* we have a match, get the value for the caller */
+            if (json_object_object_get_ex(entry, "value", &value) == 1) {
+                v = json_object_get_string(value);
+                break;
+            }
+        }
+    }
+
+    return v;
 }

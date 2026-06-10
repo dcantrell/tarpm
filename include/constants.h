@@ -20,7 +20,14 @@
 #define OUTPUT_SIGNATURE             "signature.json"
 #define OUTPUT_HEADER                "header.json"
 
-/* RPM lead */
+/* RPM lead -- all from rpm headers and source */
+#define RPMLEAD_MAGIC0               0xED
+#define RPMLEAD_MAGIC1               0xAB
+#define RPMLEAD_MAGIC2               0xEE
+#define RPMLEAD_MAGIC3               0XDB
+
+#define RPMSIGTYPE_HEADERSIG         5
+
 #define RPMLEAD_SIZE                 96
 
 /* RPM lead fields and descriptions */

@@ -57,6 +57,7 @@ int unpack_archive(const char *archive, const char *dest, const bool list, const
 
 /* lead.c */
 struct json_object *read_lead_from_rpm(const int fd);
+struct rpmlead *create_rpm_lead(struct json_object *header);
 
 /* signature.c */
 struct json_object *read_signature_from_rpm(const int fd);
@@ -76,6 +77,7 @@ void free_json(struct json_object *data);
 const char *tag_type(rpmTagType type);
 const char *signature_tag_name(rpmSigTag tag);
 const char *tag_name(rpmTag tag);
+const char *get_tag_value(const struct json_object *tags, const char *name);
 
 /* read.c */
 struct rpmsigvalues *compute_sigvalues(const struct rpmsignature *sig, const bool signature);

@@ -72,6 +72,7 @@ if cunit.found()
         [ 'test-lead.c',
           'test-main.c',
           lead_src,
+          tags_src,
           joinpath_src,
           json_src,
           xalloc_src,

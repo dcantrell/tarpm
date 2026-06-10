@@ -13,6 +13,13 @@
 
 #include "tarpm.h"
 
+static unsigned char const lead_magic[] = {
+    RPMLEAD_MAGIC0,
+    RPMLEAD_MAGIC1,
+    RPMLEAD_MAGIC2,
+    RPMLEAD_MAGIC3
+};
+
 /*
  * Read the data of the RPM lead and convert it to JSON data.
  * Returns an allocated json_object (caller must free), NULL on error.
@@ -63,6 +70,85 @@ read_lead_from_rpm(const int fd)
     json_object_object_add(lead, RPM_LEAD_ARCH, json_object_new_int(rawlead.archnum));
     json_object_object_add(lead, RPM_LEAD_OS, json_object_new_int(rawlead.osnum));
     json_object_object_add(lead, RPM_LEAD_SIGTYPE, json_object_new_int(rawlead.signature_type));
+
+    return lead;
+}
+
+/*
+ * Given RPM header metadata, create a new RPM lead data structure.
+ * Returns NULL on failure.  Caller must free the returned structure.
+ */
+struct rpmlead *
+create_rpm_lead(struct json_object *header)
+{
+    struct rpmlead *lead = NULL;
+    struct json_object *obj = NULL;
+    const char *n = NULL;
+    const char *e = NULL;
+    const char *v = NULL;
+    const char *r = NULL;
+    char *nevr = NULL;
+
+    assert(header != NULL);
+
+    /* allocate lead structure */
+    lead = xalloc(sizeof(*lead));
+    assert(lead != NULL);
+
+    /* fill out the lead */
+
+    /*
+     * this is RPMTAG_FORMAT, which appears starting with major
+     * version 4.  all previous [usable] RPM file format versions are
+     * 3.  so if we see this tag, then it's major version 4.
+     * otherwise it's 3.
+     */
+    if (json_object_object_get_ex(header, "Payloadformat", &obj) == 1) {
+        lead->major = 4;
+    } else {
+        lead->major = 3;
+    }
+
+    lead->minor = 0;
+    lead->signature_type = RPMSIGTYPE_HEADERSIG;
+    memcpy(lead->magic, lead_magic, sizeof(lead->magic));
+
+    /*
+     * this is RPMTAG_SOURCEPACKAGE and if it's present, it means we
+     * are looking at a source package which is type 1 in the lead,
+     * otherwise binary packages are type 0.
+     */
+    if (json_object_object_get_ex(header, "Sourcepackage", &obj) == 1) {
+        lead->type = 1;
+    } else {
+        lead->type = 0;
+    }
+
+    /* construct the NEVR string */
+    if (json_object_object_get_ex(header, "tags", &obj) == 0) {
+        warnx(_("*** missing tags in header.json"));
+        return NULL;
+    }
+
+    n = get_tag_value(obj, "Name");
+    v = get_tag_value(obj, "Version");
+    r = get_tag_value(obj, "Release");
+
+    if (n == NULL || v == NULL || r == NULL) {
+        return NULL;
+    }
+
+    e = get_tag_value(obj, "Epoch");
+
+    if (e && strcmp(e, "0")) {
+        xasprintf(&nevr, "%s-%s:%s-%s", n, e, v, r);
+    } else {
+        xasprintf(&nevr, "%s-%s-%s", n, v, r);
+    }
+
+    assert(nevr != NULL);
+    strlcpy(lead->name, nevr, sizeof(lead->name));
+    free(nevr);
 
     return lead;
 }

@@ -59,7 +59,9 @@ main(int argc, char **argv)
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
+    struct rpmlead *rawlead = NULL;
     Header h;
+    FILE *rpm = NULL;
     char *opt = NULL;
     char *short_opts = "txcvf:O:V\?";
     struct option long_opts[] = {
@@ -81,6 +83,13 @@ main(int argc, char **argv)
     setlocale(LC_ALL, "");
     bindtextdomain("tarpm", "/usr/share/locale/");
     textdomain("tarpm");
+
+    /* figure out where we actually are */
+    cwd = getcwd(NULL, 0);
+
+    if (cwd == NULL) {
+        err(EXIT_FAILURE, "getcwd");
+    }
 
     /* Parse command line options */
     while (1) {
@@ -126,7 +135,11 @@ main(int argc, char **argv)
                 if (!access(optarg, flags)) {
                     filename = realpath(optarg, NULL);
                 } else {
-                    filename = strdup(optarg);
+                    if (optarg[0] == '/') {
+                        filename = strdup(optarg);
+                    } else {
+                        filename = joinpath(cwd, optarg, NULL);
+                    }
                 }
 
                 assert(filename != NULL);
@@ -188,7 +201,11 @@ main(int argc, char **argv)
                 filename = realpath(argv[optind + 1], NULL);
             } else {
                 /* the other mode is -c which will create the named file */
-                filename = strdup(argv[optind + 1]);
+                if (argv[optind + 1][0] == '/') {
+                    filename = strdup(argv[optind + 1]);
+                } else {
+                    filename = joinpath(cwd, argv[optind + 1], NULL);
+                }
             }
 
             assert(filename != NULL);
@@ -214,13 +231,6 @@ main(int argc, char **argv)
 
     if (filename == NULL) {
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
-    }
-
-    /* figure out where we actually are */
-    cwd = getcwd(NULL, 0);
-
-    if (cwd == NULL) {
-        err(EXIT_FAILURE, "getcwd");
     }
 
     /* Initialize librpm */
@@ -339,7 +349,7 @@ main(int argc, char **argv)
 
         free_json(header);
         free_json(signature);
-        free_json(lead);
+        free(lead);
         free(payload_file);
         free(tmp);
         free(output_dir);
@@ -377,6 +387,12 @@ main(int argc, char **argv)
             errx(EXIT_FAILURE, _("*** missing header data"));
         }
 
+        /* create the lead from header metadata */
+        rawlead = create_rpm_lead(header);
+
+        if (rawlead == NULL) {
+            errx(EXIT_FAILURE, _("*** unable to construct RPM lead"));
+        }
 
 
 
@@ -387,25 +403,47 @@ main(int argc, char **argv)
 * check for the payload subdirectory, error if not
 * read in signature.json to object
 * read in header.json to object
+* create the lead using data from the header
 
-- create the lead using data from the header
 - create the signature using data from signature.json
 - create the header using data from header.json
-- open a file and get a handle for the target filename
-- write the lead to the output file
+
+* open a file and get a handle for the target filename
+* write the lead to the output file
 - write the signature to the output file
 - write the header to the output file
 - create the payload writer (use librpm) and yeet each payload file in to the output file
-- close the output file
+* close the output file
 
 */
 
+        /* create an RPM for writing */
+        rpm = fopen(filename, "wb");
+
+printf("filename=|%s|\n", filename);
+
+        if (rpm == NULL) {
+            err(EXIT_FAILURE, "fopen");
+        }
+
+        /* write the lead to the RPM */
+        if (fwrite(rawlead, sizeof(*rawlead), 1, rpm) != 1) {
+            warn("fwrite");
+        }
+
+        /* close the RPM */
+        if (fclose(rpm) != 0) {
+            warn("fclose");
+        }
+
+        /* back to the starting point and clean up */
         if (chdir(cwd) == -1) {
             err(EXIT_FAILURE, "chdir");
         }
 
         free_json(header);
         free_json(signature);
+        free(lead);
         free(input_dir);
     }
 
