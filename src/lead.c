@@ -104,14 +104,18 @@ create_rpm_lead(struct json_object *header)
      * otherwise it's 3.
      */
     if (json_object_object_get_ex(header, "Payloadformat", &obj) == 1) {
-        lead->major = 4;
+        lead->major = htons(4);
     } else {
-        lead->major = 3;
+        lead->major = htons(3);
     }
 
-    lead->minor = 0;
-    lead->signature_type = RPMSIGTYPE_HEADERSIG;
+    lead->minor = htons(0);
+    lead->signature_type = htons(RPMSIGTYPE_HEADERSIG);
     memcpy(lead->magic, lead_magic, sizeof(lead->magic));
+
+    /* the archnum and osnum are always zero, legacy now */
+    lead->archnum = htons(0);
+    lead->osnum = htons(0);
 
     /*
      * this is RPMTAG_SOURCEPACKAGE and if it's present, it means we
@@ -119,9 +123,9 @@ create_rpm_lead(struct json_object *header)
      * otherwise binary packages are type 0.
      */
     if (json_object_object_get_ex(header, "Sourcepackage", &obj) == 1) {
-        lead->type = 1;
+        lead->type = htons(1);
     } else {
-        lead->type = 0;
+        lead->type = htons(0);
     }
 
     /* construct the NEVR string */
