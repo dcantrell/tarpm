@@ -24,7 +24,7 @@ read_signature(const int fd)
     struct json_object *jvals = NULL;
     struct json_object *signature = NULL;
 
-    if (fd <= 0) {
+    if (fd < 0) {
         return NULL;
     }
 

@@ -5,7 +5,6 @@
 
 #include <string.h>
 #include <assert.h>
-#include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
@@ -31,7 +30,7 @@ read_lead(const int fd)
     struct json_object *lead = NULL;
     char *s = NULL;
 
-    if (fd <= 0) {
+    if (fd < 0) {
         return NULL;
     }
 
@@ -104,9 +103,9 @@ create_lead(struct json_object *header)
      * otherwise it's 3.
      */
     if (json_object_object_get_ex(header, "Payloadformat", &obj) == 1) {
-        lead->major = htons(4);
+        lead->major = 4;
     } else {
-        lead->major = htons(3);
+        lead->major = 3;
     }
 
     lead->minor = htons(0);
@@ -131,6 +130,7 @@ create_lead(struct json_object *header)
     /* construct the NEVR string */
     if (json_object_object_get_ex(header, "tags", &obj) == 0) {
         warnx(_("*** missing tags in header.json"));
+        free(lead);
         return NULL;
     }
 
@@ -139,6 +139,7 @@ create_lead(struct json_object *header)
     r = get_tag_value(obj, "Release");
 
     if (n == NULL || v == NULL || r == NULL) {
+        free(lead);
         return NULL;
     }
 

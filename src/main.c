@@ -349,7 +349,7 @@ main(int argc, char **argv)
 
         free_json(header);
         free_json(signature);
-        free(lead);
+        free_json(lead);
         free(payload_file);
         free(tmp);
         free(output_dir);
@@ -443,7 +443,7 @@ printf("filename=|%s|\n", filename);
 
         free_json(header);
         free_json(signature);
-        free(lead);
+        free(rawlead);
         free(input_dir);
     }
 

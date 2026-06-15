@@ -49,7 +49,7 @@ read_header_signature(const int fd)
 {
     struct rpmsignature *sig = NULL;
 
-    if (fd <= 0) {
+    if (fd < 0) {
         return NULL;
     }
 
@@ -61,7 +61,7 @@ read_header_signature(const int fd)
     if (read(fd, sig, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
         warn("read");
         free(sig);
-        sig = NULL;
+        return NULL;
     }
 
     sig->magic = ntohl(sig->magic);
@@ -71,7 +71,7 @@ read_header_signature(const int fd)
     /* verify the magic and reserved values are correct */
     if (!valid_header_signature(sig)) {
         free(sig);
-        sig = NULL;
+        return NULL;
     }
 
     return sig;
@@ -88,7 +88,7 @@ read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t
 {
     uint32_t *buffer = NULL;
 
-    if (fd <= 0 || sig == NULL || hlen <= 0) {
+    if (fd < 0 || sig == NULL || hlen <= 0) {
         return NULL;
     }
 

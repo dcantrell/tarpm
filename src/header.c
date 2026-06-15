@@ -5,7 +5,6 @@
 
 #include <string.h>
 #include <assert.h>
-#include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
@@ -57,7 +56,7 @@ read_header(const int fd)
     struct json_object *jvals = NULL;
     struct json_object *header = NULL;
 
-    if (fd <= 0) {
+    if (fd < 0) {
         return NULL;
     }
 
@@ -69,7 +68,7 @@ read_header(const int fd)
     }
 
     /* computed from header values */
-    svals = compute_sigvalues(rawsig, true);
+    svals = compute_sigvalues(rawsig, false);
 
     /* read in the entries */
     buffer = read_header_entries(fd, rawsig, svals->hlen);
@@ -169,7 +168,7 @@ create_header(const struct json_object *data, struct rpmsignature **signature, s
         if (json_object_object_get_ex(entry, "number", &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'number'"));
         } else {
-            v->entry->tag = json_object_get_int(entry);
+            v->entry->tag = json_object_get_int(key);
         }
 
         if (json_object_object_get_ex(entry, "type", &key) == 0) {

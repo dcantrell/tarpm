@@ -63,7 +63,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
         case RPM_INT16_TYPE:
             if (count == 1) {
                 memcpy(&dt.i16, data, sizeof(dt.i16));
-                dt.i16 = ntohl(dt.i16);
+                dt.i16 = ntohs(dt.i16);
                 xasprintf(&s, "%u", dt.i16);
             } else {
                 sa = json_object_new_array();
@@ -72,7 +72,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
 
                 for (i = 0; i < count; i++) {
                     memcpy(&dt.i16, p, sizeof(dt.i16));
-                    dt.i16 = ntohl(dt.i16);
+                    dt.i16 = ntohs(dt.i16);
                     xasprintf(&s, "%u", dt.i16);
                     json_object_array_add(sa, json_object_new_string(s));
                     p += sizeof(dt.i16);
@@ -107,7 +107,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
         case RPM_INT64_TYPE:
             if (count == 1) {
                 memcpy(&dt.i64, data, sizeof(dt.i64));
-                dt.i64 = ntohl(dt.i64);
+                dt.i64 = be64toh(dt.i64);
                 xasprintf(&s, "%lu", dt.i64);
             } else {
                 sa = json_object_new_array();
@@ -116,7 +116,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
 
                 for (i = 0; i < count; i++) {
                     memcpy(&dt.i64, p, sizeof(dt.i64));
-                    dt.i64 = ntohl(dt.i64);
+                    dt.i64 = be64toh(dt.i64);
                     xasprintf(&s, "%lu", dt.i64);
                     json_object_array_add(sa, json_object_new_string(s));
                     p += sizeof(dt.i64);
