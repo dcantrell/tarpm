@@ -21,11 +21,11 @@ clean_test_header(void)
 }
 
 void
-test_read_header_from_rpm(void)
+test_read_header(void)
 {
     /* check that invalid input returns an error */
-    TARPM_ASSERT_TRUE(read_header_from_rpm(-47) == NULL);
-    TARPM_ASSERT_TRUE(read_header_from_rpm(0) == NULL);
+    TARPM_ASSERT_TRUE(read_header(-47) == NULL);
+    TARPM_ASSERT_TRUE(read_header(0) == NULL);
 
     return;
 }
@@ -43,7 +43,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test read_header_from_rpm()", test_read_header_from_rpm) == NULL) {
+    if (CU_add_test(pSuite, "test read_header()", test_read_header) == NULL) {
         return NULL;
     }
 

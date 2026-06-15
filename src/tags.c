@@ -14,7 +14,7 @@
  * string returned.
  */
 const char *
-tag_type(rpmTagType type)
+strtagtype(rpmTagType type)
 {
     switch (type) {
         case RPM_NULL_TYPE:
@@ -39,6 +39,47 @@ tag_type(rpmTagType type)
             return "i18n string";
         default:
             return "(unknown)";
+    }
+}
+
+/*
+ * Convert string type name to rpmTagType value.
+ */
+rpmTagType
+tag_type(struct json_object *tag)
+{
+    const char *s = NULL;
+
+    assert(tag != NULL);
+
+    s = json_object_get_string(tag);
+
+    if (s == NULL) {
+        return RPM_NULL_TYPE;
+    }
+
+    if (!strcmp(s, "(null)")) {
+        return RPM_NULL_TYPE;
+    } else if (!strcmp(s, "char")) {
+        return RPM_CHAR_TYPE;
+    } else if (!strcmp(s, "int8")) {
+        return RPM_INT8_TYPE;
+    } else if (!strcmp(s, "int16")) {
+        return RPM_INT16_TYPE;
+    } else if (!strcmp(s, "int32")) {
+        return RPM_INT32_TYPE;
+    } else if (!strcmp(s, "int64")) {
+        return RPM_INT64_TYPE;
+    } else if (!strcmp(s, "string")) {
+        return RPM_STRING_TYPE;
+    } else if (!strcmp(s, "binary blob")) {
+        return RPM_BIN_TYPE;
+    } else if (!strcmp(s, "string array")) {
+        return RPM_STRING_ARRAY_TYPE;
+    } else if (!strcmp(s, "i18n string")) {
+        return RPM_I18NSTRING_TYPE;
+    } else {
+        return RPM_NULL_TYPE;
     }
 }
 

@@ -22,19 +22,19 @@ clean_test_tags(void)
 }
 
 void
-test_tag_type(void)
+test_strtagtype(void)
 {
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_NULL_TYPE), "(null)") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_CHAR_TYPE), "char") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_INT8_TYPE), "int8") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_INT16_TYPE), "int16") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_INT32_TYPE), "int32") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_INT64_TYPE), "int64") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_STRING_TYPE), "string") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_BIN_TYPE), "binary blob") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_STRING_ARRAY_TYPE), "string array") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(RPM_I18NSTRING_TYPE), "i18n string") == 0);
-    TARPM_ASSERT_TRUE(strcmp(tag_type(47), "(unknown)") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_NULL_TYPE), "(null)") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_CHAR_TYPE), "char") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_INT8_TYPE), "int8") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_INT16_TYPE), "int16") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_INT32_TYPE), "int32") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_INT64_TYPE), "int64") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_STRING_TYPE), "string") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_BIN_TYPE), "binary blob") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_STRING_ARRAY_TYPE), "string array") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(RPM_I18NSTRING_TYPE), "i18n string") == 0);
+    TARPM_ASSERT_TRUE(strcmp(strtagtype(47), "(unknown)") == 0);
 
     return;
 }
@@ -421,7 +421,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL ||
+    if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
         CU_add_test(pSuite, "test signature_tag_name()", test_signature_tag_name) == NULL ||
         CU_add_test(pSuite, "test tag_name()", test_tag_name) == NULL) {
         return NULL;

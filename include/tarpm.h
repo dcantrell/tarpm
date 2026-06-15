@@ -23,10 +23,10 @@ char *abspath(const char *path);
 int init_librpm(void);
 
 /* rpm.c */
-char *extract_rpm_payload(const char *rpm);
-Header get_rpm_header(const char *pkg);
+char *extract_payload(const char *rpm);
+Header get_header(const char *pkg);
 char *get_rpmtag_str(Header h, rpmTagVal tag);
-const char *get_rpm_header_arch(Header h);
+const char *get_header_arch(Header h);
 char *get_nevr(Header h);
 char *get_nevra(Header h);
 
@@ -56,14 +56,16 @@ int mkdirp(const char *path, mode_t mode);
 int unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose);
 
 /* lead.c */
-struct json_object *read_lead_from_rpm(const int fd);
-struct rpmlead *create_rpm_lead(struct json_object *header);
+struct json_object *read_lead(const int fd);
+struct rpmlead *create_lead(struct json_object *header);
 
 /* signature.c */
-struct json_object *read_signature_from_rpm(const int fd);
+struct json_object *read_signature(const int fd);
 
 /* header.c */
-struct json_object *read_header_from_rpm(const int fd);
+bool valid_header_signature(struct rpmsignature *sig);
+struct json_object *read_header(const int fd);
+int create_header(const struct json_object *data, struct rpmsignature **signature, struct rpmsigvalues **sigvalues);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);
@@ -74,7 +76,8 @@ int write_json_file(struct json_object *data, const char *output_dir, const char
 void free_json(struct json_object *data);
 
 /* tags.c */
-const char *tag_type(rpmTagType type);
+const char *strtagtype(rpmTagType type);
+rpmTagType tag_type(struct json_object *tag);
 const char *signature_tag_name(rpmSigTag tag);
 const char *tag_name(rpmTag tag);
 const char *get_tag_value(const struct json_object *tags, const char *name);

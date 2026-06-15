@@ -21,17 +21,17 @@ clean_test_rpm(void)
 }
 
 void
-test_extract_rpm_payload(void)
+test_extract_payload(void)
 {
-    TARPM_ASSERT_TRUE(extract_rpm_payload(NULL) == NULL);
+    TARPM_ASSERT_TRUE(extract_payload(NULL) == NULL);
 
     return;
 }
 
 void
-test_get_rpm_header(void)
+test_get_header(void)
 {
-    TARPM_ASSERT_TRUE(get_rpm_header(NULL) == NULL);
+    TARPM_ASSERT_TRUE(get_header(NULL) == NULL);
 
     return;
 }
@@ -45,9 +45,9 @@ test_get_rpmtag_str(void)
 }
 
 void
-test_get_rpm_header_arch(void)
+test_get_header_arch(void)
 {
-    TARPM_ASSERT_TRUE(get_rpm_header_arch(NULL) == NULL);
+    TARPM_ASSERT_TRUE(get_header_arch(NULL) == NULL);
 
     return;
 }
@@ -81,10 +81,10 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test extract_rpm_payload()", test_extract_rpm_payload) == NULL ||
-        CU_add_test(pSuite, "test get_rpm_header()", test_get_rpm_header) == NULL ||
+    if (CU_add_test(pSuite, "test extract_payload()", test_extract_payload) == NULL ||
+        CU_add_test(pSuite, "test get_header()", test_get_header) == NULL ||
         CU_add_test(pSuite, "test get_rpmtag_str()", test_get_rpmtag_str) == NULL ||
-        CU_add_test(pSuite, "test get_rpm_header_arch()", test_get_rpm_header_arch) == NULL ||
+        CU_add_test(pSuite, "test get_header_arch()", test_get_header_arch) == NULL ||
         CU_add_test(pSuite, "test get_nevr()", test_get_nevr) == NULL ||
         CU_add_test(pSuite, "test get_nevra()", test_get_nevra) == NULL) {
         return NULL;

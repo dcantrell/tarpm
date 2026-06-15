@@ -45,7 +45,7 @@ struct archive *new_archive_reader(void)
  * A lot of this is adapted from rpm2archive.c from the rpm sources.
  */
 char *
-extract_rpm_payload(const char *rpm)
+extract_payload(const char *rpm)
 {
     char *payload = NULL;
     rpmts ts;
@@ -213,7 +213,7 @@ cleanup:
  * Return an RPM header struct for the given package filename.
  */
 Header
-get_rpm_header(const char *pkg)
+get_header(const char *pkg)
 {
     Header h;
     rpmts ts;
@@ -290,7 +290,7 @@ val_cleanup:
  * NOTE: Do not free() what this function returns.
  */
 const char *
-get_rpm_header_arch(Header h)
+get_header_arch(Header h)
 {
     if (h == NULL) {
         return NULL;
@@ -332,6 +332,6 @@ get_nevra(Header h)
         return NULL;
     }
 
-    r = strappend(r, ".", get_rpm_header_arch(h), NULL);
+    r = strappend(r, ".", get_header_arch(h), NULL);
     return r;
 }

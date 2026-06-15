@@ -25,7 +25,7 @@ static unsigned char const lead_magic[] = {
  * Returns an allocated json_object (caller must free), NULL on error.
  */
 struct json_object *
-read_lead_from_rpm(const int fd)
+read_lead(const int fd)
 {
     struct rpmlead rawlead;
     struct json_object *lead = NULL;
@@ -79,7 +79,7 @@ read_lead_from_rpm(const int fd)
  * Returns NULL on failure.  Caller must free the returned structure.
  */
 struct rpmlead *
-create_rpm_lead(struct json_object *header)
+create_lead(struct json_object *header)
 {
     struct rpmlead *lead = NULL;
     struct json_object *obj = NULL;

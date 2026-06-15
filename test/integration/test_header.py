@@ -26,7 +26,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
             if key == "magic":
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(header[key], "0000")
+                self.assertEqual(header[key], "0x0")
             elif key == "index entries":
                 self.assertTrue(int(header[key]) == 51)
             elif key == "index size (bytes)":
@@ -329,7 +329,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
             if key == "magic":
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(header[key], "0000")
+                self.assertEqual(header[key], "0x0")
             elif key == "index entries":
                 self.assertTrue(int(header[key]) == 37)
             elif key == "index size (bytes)":

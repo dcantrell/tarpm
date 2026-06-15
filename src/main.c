@@ -244,7 +244,7 @@ main(int argc, char **argv)
         printf(_("XXX: unable to list RPMs right now\n"));
     } else if (x_flag) {
         /* validate the specified file is an RPM */
-        h = get_rpm_header(filename);
+        h = get_header(filename);
 
         if (h == NULL) {
             errx(EXIT_FAILURE, _("*** %s is not a valid RPM"), filename);
@@ -258,24 +258,24 @@ main(int argc, char **argv)
         }
 
         /* extract the RPM lead -- the first header (unused) */
-        lead = read_lead_from_rpm(rpmfd);
+        lead = read_lead(rpmfd);
 
         if (lead == NULL) {
-            err(EXIT_FAILURE, "read_lead_from_rpm");
+            err(EXIT_FAILURE, "read_lead");
         }
 
         /* extract the RPM signature -- the second header (sort of used) */
-        signature = read_signature_from_rpm(rpmfd);
+        signature = read_signature(rpmfd);
 
         if (signature == NULL) {
-            err(EXIT_FAILURE, "read_signature_from_rpm");
+            err(EXIT_FAILURE, "read_signature");
         }
 
         /* extract the RPM header -- the third header (used) */
-        header = read_header_from_rpm(rpmfd);
+        header = read_header(rpmfd);
 
         if (header == NULL) {
-            err(EXIT_FAILURE, "read_header_from_rpm");
+            err(EXIT_FAILURE, "read_header");
         }
 
         /* close the RPM after reading headers */
@@ -321,10 +321,10 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "chdir");
         }
 
-        payload_file = extract_rpm_payload(filename);
+        payload_file = extract_payload(filename);
 
         if (payload_file == NULL) {
-            errx(EXIT_FAILURE, "extract_rpm_payload");
+            errx(EXIT_FAILURE, "extract_payload");
         }
 
         if (chdir(cwd) == -1) {
@@ -388,7 +388,7 @@ main(int argc, char **argv)
         }
 
         /* create the lead from header metadata */
-        rawlead = create_rpm_lead(header);
+        rawlead = create_lead(header);
 
         if (rawlead == NULL) {
             errx(EXIT_FAILURE, _("*** unable to construct RPM lead"));

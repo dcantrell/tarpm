@@ -26,11 +26,11 @@ generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals)
     json_object_object_add(out, RPM_SIGNATURE_MAGIC_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%04d", sig->reserved);
+    xasprintf(&s, "0x%X", sig->reserved);
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", sig->nentries);
+    xasprintf(&s, "%u", sig->nentries);
     json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
     free(s);
 
@@ -90,7 +90,7 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
         json_object_object_add(arrayentry, RPM_ENTRY_TAG_DESC, json_object_new_string(s));
         free(s);
 
-        xasprintf(&s, "%s", tag_type(datatype));
+        xasprintf(&s, "%s", strtagtype(datatype));
         json_object_object_add(arrayentry, RPM_ENTRY_TYPE_DESC, json_object_new_string(s));
         free(s);
 

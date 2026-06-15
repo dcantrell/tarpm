@@ -14,7 +14,7 @@
  * Returns an allocated json_object (caller must free), NULL on error.
  */
 struct json_object *
-read_signature_from_rpm(const int fd)
+read_signature(const int fd)
 {
     uint32_t *buffer = NULL;
     struct rpmsignature *rawsig = NULL;

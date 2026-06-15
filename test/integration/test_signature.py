@@ -22,7 +22,7 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
             if key == "magic":
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(signature[key], "0000")
+                self.assertEqual(signature[key], "0x0")
             elif key == "index entries":
                 self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
@@ -110,7 +110,7 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
             if key == "magic":
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(signature[key], "0000")
+                self.assertEqual(signature[key], "0x0")
             elif key == "index entries":
                 self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
