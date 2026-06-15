@@ -3,9 +3,37 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <stdint.h>
 #include <assert.h>
 #include <arpa/inet.h>
 #include "tarpm.h"
+
+/*
+ * Used by generate_json_entries() below to sort the 'tags' array.
+ */
+static int
+sort_by_tag_number(const void *a, const void *b)
+{
+    struct json_object *aobj = (struct json_object *) a;
+    struct json_object *bobj = (struct json_object *) b;
+    int64_t atag = 0;
+    int64_t btag = 0;
+    struct json_object *obj = NULL;
+
+    obj = json_object_object_get(aobj, RPM_ENTRY_TAG_DESC);
+    atag = json_object_get_int64(obj);
+
+    obj = json_object_object_get(bobj, RPM_ENTRY_TAG_DESC);
+    btag = json_object_get_int64(obj);
+
+    if (atag == btag) {
+        return 0;
+    } else if (atag >= btag) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
 
 /*
  * Generate a "signature" or "header" JSON structure for output.
@@ -68,8 +96,10 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
         return NULL;
     }
 
+    /* create a new array for these tags */
     jvals = json_object_new_array();
 
+    /* add each tag to the array */
     for (i = 0; i < sig->nentries; i++) {
         tag = ntohl(entry[i].tag);
         offset = ntohl(entry[i].offset);
@@ -105,6 +135,9 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
         add_entry_value(arrayentry, svals->datastart, offset, datatype, count);
         json_object_array_add(jvals, arrayentry);
     }
+
+    /* sort the array in ascending order by tag number */
+    json_object_array_sort(jvals, sort_by_tag_number);
 
     return jvals;
 }
