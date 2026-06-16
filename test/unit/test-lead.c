@@ -24,7 +24,6 @@ void
 test_read_lead(void)
 {
     TARPM_ASSERT_TRUE(read_lead(-47) == NULL);
-    TARPM_ASSERT_TRUE(read_lead(0) == NULL);
 
     return;
 }

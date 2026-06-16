@@ -129,7 +129,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1030)
                         self.assertTrue(tag["type"] == "int16")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(int(tag["value"]) == 4294967295)
+                        self.assertTrue(int(tag["value"]) == 33188)
                     elif t == "Filerdevs":
                         self.assertTrue(int(tag["number"]) == 1033)
                         self.assertTrue(tag["type"] == "int16")

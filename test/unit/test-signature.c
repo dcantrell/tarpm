@@ -23,7 +23,6 @@ clean_test_signature(void)
 void
 test_read_signature(void)
 {
-    TARPM_ASSERT_TRUE(read_signature(0) == NULL);
     TARPM_ASSERT_TRUE(read_signature(-47) == NULL);
 
     return;

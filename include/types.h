@@ -69,10 +69,10 @@ struct rpmhdrentry {
 union datatypes
 {
     char c;
-    int8_t i8;
-    int16_t i16;
-    int32_t i32;
-    int64_t i64;
+    uint8_t i8;
+    uint16_t i16;
+    uint32_t i32;
+    uint64_t i64;
 };
 
 /*
