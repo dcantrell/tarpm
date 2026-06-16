@@ -21,10 +21,10 @@ clean_test_read(void)
 }
 
 void
-test_compute_sigvalues(void)
+test_compute_hdrinfo(void)
 {
-    TARPM_ASSERT_TRUE(compute_sigvalues(NULL, true) == NULL);
-    TARPM_ASSERT_TRUE(compute_sigvalues(NULL, false) == NULL);
+    TARPM_ASSERT_TRUE(compute_hdrinfo(NULL, true) == NULL);
+    TARPM_ASSERT_TRUE(compute_hdrinfo(NULL, false) == NULL);
 
     return;
 }
@@ -70,7 +70,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test compute_sigvalues()", test_compute_sigvalues) == NULL ||
+    if (CU_add_test(pSuite, "test compute_hdrinfo()", test_compute_hdrinfo) == NULL ||
         CU_add_test(pSuite, "test read_header_signature()", test_read_header_signature) == NULL ||
         CU_add_test(pSuite, "test read_header_entries()", test_read_header_entries) == NULL ||
         CU_add_test(pSuite, "test read_header_trailer()", test_read_header_trailer) == NULL) {

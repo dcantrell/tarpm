@@ -47,38 +47,38 @@ sort_by_tag_number(const void *a, const void *b)
  * Generate a "signature" or "header" JSON structure for output.
  */
 struct json_object *
-generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals)
+generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 {
     struct json_object *out = NULL;
     char *s = NULL;
 
-    if (sig == NULL || svals == NULL) {
+    if (hdr == NULL || hdrinfo == NULL) {
         return NULL;
     }
 
     out = json_object_new_object();
 
-    xasprintf(&s, "0x%X", sig->magic);
+    xasprintf(&s, "0x%X", hdr->magic);
     json_object_object_add(out, RPM_SIGNATURE_MAGIC_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "0x%X", sig->reserved);
+    xasprintf(&s, "0x%X", hdr->reserved);
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%u", sig->nentries);
+    xasprintf(&s, "%u", hdr->nentries);
     json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", svals->ilen);
+    xasprintf(&s, "%d", hdrinfo->ilen);
     json_object_object_add(out, RPM_SIGNATURE_ILEN_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", sig->nbytes);
+    xasprintf(&s, "%d", hdr->nbytes);
     json_object_object_add(out, RPM_SIGNATURE_NBYTES_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", svals->hlen);
+    xasprintf(&s, "%d", hdrinfo->hlen);
     json_object_object_add(out, RPM_SIGNATURE_HLEN_DESC, json_object_new_string(s));
     free(s);
 
@@ -86,10 +86,11 @@ generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals)
 }
 
 /*
- * Generate a "signature" or "header" JSON array of entries for output.
+ * Generate a "signature" or "header" JSON array of entries for the
+ * tags for output.
  */
 struct json_object *
-generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues *svals, struct rpmidxentry *entry, const bool signature)
+generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *entry, const bool signature)
 {
     uint32_t i = 0;
     rpmSigTag tag = 0;
@@ -100,7 +101,7 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
     struct json_object *arrayentry = NULL;
     char *s = NULL;
 
-    if (sig == NULL || svals == NULL || entry == NULL) {
+    if (hdr == NULL || hdrinfo == NULL || entry == NULL) {
         return NULL;
     }
 
@@ -108,7 +109,7 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
     jvals = json_object_new_array();
 
     /* add each tag to the array */
-    for (i = 0; i < sig->nentries; i++) {
+    for (i = 0; i < hdr->nentries; i++) {
         tag = ntohl(entry[i].tag);
         offset = ntohl(entry[i].offset);
         datatype = ntohl(entry[i].type);
@@ -140,7 +141,15 @@ generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues 
         json_object_object_add(arrayentry, RPM_ENTRY_COUNT_DESC, json_object_new_string(s));
         free(s);
 
-        add_entry_value(arrayentry, svals->datastart, offset, datatype, count);
+        /*
+         * header tags of these types will have a trailer that we need
+         * to capture and compute
+         */
+        if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
+
+        }
+
+        add_entry_value(arrayentry, hdrinfo->datastart, offset, datatype, count);
         json_object_array_add(jvals, arrayentry);
     }
 

@@ -14,28 +14,28 @@
  * to iterate over it.  Return the computed values as a struct that the
  * caller must free.
  */
-struct rpmsigvalues *
-compute_sigvalues(const struct rpmsignature *sig, const bool signature)
+struct rpmhdrinfo *
+compute_hdrinfo(const struct rpmhdr *hdr, const bool signature)
 {
-    struct rpmsigvalues *vals = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
 
-    if (sig == NULL) {
+    if (hdr == NULL) {
         return NULL;
     }
 
-    vals = calloc(1, sizeof(*vals));
-    assert(vals != NULL);
+    hdrinfo = xalloc(sizeof(*hdrinfo));
+    assert(hdrinfo != NULL);
 
     /* computed from header values */
-    vals->ilen = sig->nentries * sizeof(struct rpmidxentry);
-    vals->hlen = vals->ilen + sig->nbytes;
+    hdrinfo->ilen = hdr->nentries * sizeof(struct rpmhdrentry);
+    hdrinfo->hlen = hdrinfo->ilen + hdr->nbytes;
 
     /* signature is aligned, so padding may be present */
     if (signature) {
-        vals->padlen = (8 - (vals->hlen % 8)) % 8;
+        hdrinfo->padlen = (8 - (hdrinfo->hlen % 8)) % 8;
     }
 
-    return vals;
+    return hdrinfo;
 }
 
 /*
@@ -44,61 +44,61 @@ compute_sigvalues(const struct rpmsignature *sig, const bool signature)
  * allocated struct rpmhdrintro on success (caller must free) or NULL
  * on error.
  */
-struct rpmsignature *
+struct rpmhdr *
 read_header_signature(const int fd)
 {
-    struct rpmsignature *sig = NULL;
+    struct rpmhdr *hdr = NULL;
 
     if (fd < 0) {
         return NULL;
     }
 
     /* zero out the structures */
-    sig = xcalloc(1, sizeof(*sig));
-    assert(sig != NULL);
+    hdr = xcalloc(1, sizeof(*hdr));
+    assert(hdr != NULL);
 
     /* read in the signature */
-    if (read(fd, sig, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
+    if (read(fd, hdr, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
         warn("read");
-        free(sig);
+        free(hdr);
         return NULL;
     }
 
-    sig->magic = ntohl(sig->magic);
-    sig->nentries = ntohl(sig->nentries);
-    sig->nbytes = ntohl(sig->nbytes);
+    hdr->magic = ntohl(hdr->magic);
+    hdr->nentries = ntohl(hdr->nentries);
+    hdr->nbytes = ntohl(hdr->nbytes);
 
     /* verify the magic and reserved values are correct */
-    if (!valid_header_signature(sig)) {
-        free(sig);
+    if (!valid_header_signature(hdr)) {
+        free(hdr);
         return NULL;
     }
 
-    return sig;
+    return hdr;
 }
 
 /*
- * Given a header sig structure, read the entries block in to a
+ * Given a header hdr structure, read the entries block in to a
  * buffer for random access.  Returns an allocated buffer with the
  * data in it, or NULL on error.  The caller is responsible for
  * freeing the buffer.
  */
 uint32_t *
-read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t hlen)
+read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen)
 {
     uint32_t *buffer = NULL;
 
-    if (fd < 0 || sig == NULL || hlen <= 0) {
+    if (fd < 0 || hdr == NULL || hlen <= 0) {
         return NULL;
     }
 
     /* read in entries */
     /* (largely from rpmdump.c) */
-    buffer = xcalloc(sig->nentries, sig->nbytes + hlen);
+    buffer = xcalloc(hdr->nentries, hdr->nbytes + hlen);
     assert(buffer != NULL);
 
-    buffer[0] = htonl(sig->nentries);
-    buffer[1] = htonl(sig->nbytes);
+    buffer[0] = htonl(hdr->nentries);
+    buffer[1] = htonl(hdr->nbytes);
 
     if (read(fd, buffer + 2, hlen) != hlen) {
         warn("read");
@@ -113,10 +113,10 @@ read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t
  * Read and return the trailer if necessary.  Caller is responsible
  * for freeing the allocated trailer.
  */
-struct rpmidxentry *
-read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart)
+struct rpmhdrentry *
+read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart)
 {
-    struct rpmidxentry *trailer = NULL;
+    struct rpmhdrentry *trailer = NULL;
     rpmSigTag tag = 0;
 
     if (entry == NULL || datastart == NULL) {

@@ -29,8 +29,13 @@ struct rpmlead {
 
 /*
  * The next two types are in the "signature" and "header" header.
+ * This is the core structure that begins a new header.  The way the
+ * format is defined is that an RPM can have multiple headers like
+ * this.  Right now RPM files have two: one called a "signature" and
+ * one called a "header".  The latter contains all of the metadata
+ * most packagers are looking for.
  */
-struct rpmsignature {
+struct rpmhdr {
     uint32_t magic;        /* must be "\216\255\350\001" */
     uint32_t reserved;     /* must be "\0\0\0\0" */
     uint32_t nentries;     /* number of index records */
@@ -38,22 +43,22 @@ struct rpmsignature {
 };
 
 /*
- * Header and signature structure.
+ * Computed values for an rpmhdr.
  */
-struct rpmsigvalues {
+struct rpmhdrinfo {
     uint32_t ilen;
     uint32_t hlen;
-    struct rpmidxentry *estart;
-    struct rpmidxentry *entry;
+    struct rpmhdrentry *estart;
+    struct rpmhdrentry *entry;
     uint8_t *datastart;
     uint32_t padlen;
-    struct rpmsignature pad;
+    struct rpmhdr pad;
 };
 
 /* the size of the header intro to read from the file */
 #define RPMHDRINTROSZ (sizeof(uint32_t) * 4)
 
-struct rpmidxentry {
+struct rpmhdrentry {
     uint32_t tag;          /* the key */
     uint32_t type;         /* the data type */
     int32_t offset;        /* where to find the data in the storage area */

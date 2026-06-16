@@ -17,10 +17,10 @@ struct json_object *
 read_signature(const int fd)
 {
     uint32_t *buffer = NULL;
-    struct rpmsignature *rawsig = NULL;
-    struct rpmsigvalues *svals = NULL;
-    struct rpmidxentry *entry = NULL;
-    struct rpmidxentry *trailer = NULL;
+    struct rpmhdr *rawhdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+    struct rpmhdrentry *entry = NULL;
+    struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *signature = NULL;
 
@@ -29,47 +29,47 @@ read_signature(const int fd)
     }
 
     /* read in the signature */
-    rawsig = read_header_signature(fd);
+    rawhdr = read_header_signature(fd);
 
-    if (rawsig == NULL) {
+    if (rawhdr == NULL) {
         err(EXIT_FAILURE, "read_header_signature");
     }
 
     /* computed from header values */
-    svals = compute_sigvalues(rawsig, true);
+    hdrinfo = compute_hdrinfo(rawhdr, true);
 
     /* read in the entries */
-    buffer = read_header_entries(fd, rawsig, svals->hlen);
-    svals->estart = (struct rpmidxentry *) &(buffer[2]);
-    svals->datastart = (uint8_t *) (svals->estart + rawsig->nentries);
+    buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);
+    hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);
+    hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 
     /* signature is aligned, so padding may be present */
-    if (read(fd, &svals->pad, svals->padlen) != svals->padlen) {
+    if (read(fd, &hdrinfo->pad, hdrinfo->padlen) != hdrinfo->padlen) {
         err(EXIT_FAILURE, "read");
     }
 
     /* first entry */
-    entry = (struct rpmidxentry *) (buffer + 2);
+    entry = (struct rpmhdrentry *) (buffer + 2);
 
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(entry, svals->datastart);
+    trailer = read_header_trailer(entry, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
-    signature = generate_json(rawsig, svals);
+    signature = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(rawsig, svals, entry, true);
+    jvals = generate_json_entries(rawhdr, hdrinfo, entry, true);
 
     /* write the signature to a file */
     json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
     /* cleanup */
-    free(svals);
+    free(hdrinfo);
     json_object_put(jvals);
     free(trailer);
     free(buffer);
-    free(rawsig);
+    free(rawhdr);
 
     return signature;
 }

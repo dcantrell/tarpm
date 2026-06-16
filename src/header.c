@@ -22,18 +22,18 @@ const unsigned char rpm_header_magic[8] = {
  * Validates an RPM header signature.  True if valid, false if sig is NULL or sig is invalid.
  */
 bool
-valid_header_signature(struct rpmsignature *sig)
+valid_header_signature(struct rpmhdr *hdr)
 {
-    if (sig == NULL) {
+    if (hdr == NULL) {
         return false;
     }
 
-    if (sig->magic != RPM_SIGNATURE_MAGIC) {
+    if (hdr->magic != RPM_SIGNATURE_MAGIC) {
         warnx("magic value mismatch, not an RPM");
         return false;
     }
 
-    if (sig->reserved != RPM_SIGNATURE_RESERVED) {
+    if (hdr->reserved != RPM_SIGNATURE_RESERVED) {
         warnx("reserved value mismatch, not an RPM");
         return false;
     }
@@ -49,10 +49,10 @@ struct json_object *
 read_header(const int fd)
 {
     uint32_t *buffer = NULL;
-    struct rpmsignature *rawsig = NULL;
-    struct rpmsigvalues *svals = NULL;
-    struct rpmidxentry *entry = NULL;
-    struct rpmidxentry *trailer = NULL;
+    struct rpmhdr *rawhdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+    struct rpmhdrentry *entry = NULL;
+    struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *header = NULL;
 
@@ -61,42 +61,42 @@ read_header(const int fd)
     }
 
     /* read in the signature */
-    rawsig = read_header_signature(fd);
+    rawhdr = read_header_signature(fd);
 
-    if (rawsig == NULL) {
+    if (rawhdr == NULL) {
         err(EXIT_FAILURE, "read_header_signature");
     }
 
     /* computed from header values */
-    svals = compute_sigvalues(rawsig, false);
+    hdrinfo = compute_hdrinfo(rawhdr, false);
 
     /* read in the entries */
-    buffer = read_header_entries(fd, rawsig, svals->hlen);
-    svals->estart = (struct rpmidxentry *) &(buffer[2]);
-    svals->datastart = (uint8_t *) (svals->estart + rawsig->nentries);
+    buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);
+    hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);
+    hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 
     /* first entry */
-    entry = (struct rpmidxentry *) (buffer + 2);
+    entry = (struct rpmhdrentry *) (buffer + 2);
 
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(entry, svals->datastart);
+    trailer = read_header_trailer(entry, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
-    header = generate_json(rawsig, svals);
+    header = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(rawsig, svals, entry, false);
+    jvals = generate_json_entries(rawhdr, hdrinfo, entry, false);
 
     /* write the signature to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
     /* cleanup */
-    free(svals);
+    free(hdrinfo);
     json_object_put(jvals);
     free(trailer);
     free(buffer);
-    free(rawsig);
+    free(rawhdr);
 
     return header;
 }
@@ -111,18 +111,17 @@ read_header(const int fd)
  * functions to add records to.
  *
  * Returns 0 on success, non-zero otherwise.  Pointers should be
- * passed in to structures the caller can use for the rpmsignature and
- * rpmsigvalues.  Those will be allocated and modified by this
- * function.  Caller must free memory associated with those
- * structures.
+ * passed in to structures the caller can use for the rpmhdr and
+ * rpmhdrinfo.  Those will be allocated and modified by this function.
+ * Caller must free memory associated with those structures.
  */
 int
-create_header(const struct json_object *data, struct rpmsignature **signature, struct rpmsigvalues **sigvalues)
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo)
 {
     int r = 0;
     size_t i = 0;
-    struct rpmsignature *s = *signature;
-    struct rpmsigvalues *v = *sigvalues;
+    struct rpmhdr *s = *hdr;
+    struct rpmhdrinfo *v = *hdrinfo;
     struct json_object *tags = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;

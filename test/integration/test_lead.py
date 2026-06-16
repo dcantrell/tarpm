@@ -36,7 +36,7 @@ class VerifyLeadExtractSRPM(TestUnpackSRPM):
                 self.assertEqual(lead[key], 5)
 
 
-class VerifyLeadExtractSRPM(TestUnpackRPM):
+class VerifyLeadExtractRPM(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 

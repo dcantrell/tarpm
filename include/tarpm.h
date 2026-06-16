@@ -63,9 +63,9 @@ struct rpmlead *create_lead(struct json_object *header);
 struct json_object *read_signature(const int fd);
 
 /* header.c */
-bool valid_header_signature(struct rpmsignature *sig);
+bool valid_header_signature(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd);
-int create_header(const struct json_object *data, struct rpmsignature **signature, struct rpmsigvalues **sigvalues);
+int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);
@@ -83,16 +83,16 @@ const char *tag_name(rpmTag tag);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 
 /* read.c */
-struct rpmsigvalues *compute_sigvalues(const struct rpmsignature *sig, const bool signature);
-struct rpmsignature *read_header_signature(const int fd);
-uint32_t *read_header_entries(const int fd, const struct rpmsignature *sig, const uint32_t hlen);
-struct rpmidxentry *read_header_trailer(const struct rpmidxentry *entry, const uint8_t *datastart);
+struct rpmhdrinfo *compute_hdrinfo(const struct rpmhdr *hdr, const bool signature);
+struct rpmhdr *read_header_signature(const int fd);
+uint32_t *read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen);
+struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
 
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
 
 /* write.c */
-struct json_object *generate_json(const struct rpmsignature *sig, const struct rpmsigvalues *svals);
-struct json_object *generate_json_entries(const struct rpmsignature *sig, const struct rpmsigvalues *svals, struct rpmidxentry *entry, const bool signature);
+struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
+struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals, struct rpmhdrentry *entry, const bool signature);
 
 #endif /* _TARPM_TARPM_H */
