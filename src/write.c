@@ -14,25 +14,33 @@
 static int
 sort_by_tag_number(const void *a, const void *b)
 {
-    struct json_object *aobj = (struct json_object *) a;
-    struct json_object *bobj = (struct json_object *) b;
-    int64_t atag = 0;
-    int64_t btag = 0;
+    struct json_object **aobj = (struct json_object **) a;
+    struct json_object **bobj = (struct json_object **) b;
+    int atag = 0;
+    int btag = 0;
     struct json_object *obj = NULL;
 
-    obj = json_object_object_get(aobj, RPM_ENTRY_TAG_DESC);
-    atag = json_object_get_int64(obj);
-
-    obj = json_object_object_get(bobj, RPM_ENTRY_TAG_DESC);
-    btag = json_object_get_int64(obj);
-
-    if (atag == btag) {
+    /* handle special conditions */
+    if (*aobj == NULL && *bobj == NULL) {
         return 0;
-    } else if (atag >= btag) {
-        return 1;
-    } else {
+    }
+
+    if (*aobj == NULL) {
         return -1;
     }
+
+    if (*bobj == NULL) {
+        return 1;
+    }
+
+    /* get the tag numbers for sorting */
+    obj = json_object_object_get(*aobj, RPM_ENTRY_TAG_DESC);
+    atag = json_object_get_int(obj);
+
+    obj = json_object_object_get(*bobj, RPM_ENTRY_TAG_DESC);
+    btag = json_object_get_int(obj);
+
+    return atag - btag;
 }
 
 /*
