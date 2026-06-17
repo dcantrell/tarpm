@@ -22,7 +22,6 @@ if cunit.found()
           joinpath_src,
           json_src,
           read_src,
-          write_src,
           tags_src,
           xalloc_src,
         ],
@@ -58,12 +57,14 @@ if cunit.found()
         'test-json',
         [ 'test-json.c',
           'test-main.c',
+          entry_src,
           joinpath_src,
           json_src,
+          tags_src,
           xalloc_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc ],
+        dependencies : [ cunit, jsonc, rpm ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -72,13 +73,14 @@ if cunit.found()
         [ 'test-lead.c',
           'test-main.c',
           lead_src,
+          entry_src,
           tags_src,
           joinpath_src,
           json_src,
           xalloc_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc ],
+        dependencies : [ cunit, jsonc, rpm ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -102,7 +104,6 @@ if cunit.found()
           read_src,
           json_src,
           joinpath_src,
-          write_src,
           entry_src,
           xalloc_src,
         ],
@@ -136,7 +137,6 @@ if cunit.found()
           tags_src,
           entry_src,
           read_src,
-          write_src,
           xalloc_src,
         ],
         include_directories : inc,
@@ -163,20 +163,6 @@ if cunit.found()
         ],
         include_directories : inc,
         dependencies : [ cunit, libarchive, jsonc ],
-        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
-    )
-
-    test_write = executable(
-        'test-write',
-        [ 'test-write.c',
-          'test-main.c',
-          write_src,
-          tags_src,
-          entry_src,
-          xalloc_src,
-        ],
-        include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -231,7 +217,6 @@ if cunit.found()
     test('test-signature', test_signature)
     test('test-tags', test_tags)
     test('test-unpack', test_unpack)
-    test('test-write', test_write)
     test('test-xalloc', test_xalloc)
     test('test-abspath', test_abspath)
     test('test-listfuncs', test_listfuncs)

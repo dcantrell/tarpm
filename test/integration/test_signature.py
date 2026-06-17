@@ -96,9 +96,9 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                         # run the test suite again.  The data will be
                         # in /tmp/rpm-signature-tag.
                         #
-                        #f = open("/tmp/rpm-signature-tag", "w+")
-                        #f.write(str(tag))
-                        #f.close()
+                        # f = open("/tmp/rpm-signature-tag", "w+")
+                        # f.write(str(tag))
+                        # f.close()
 
                         m = "Unknown tag found in signature: %s" % t
                         self.fail(msg=m)

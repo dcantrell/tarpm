@@ -21,6 +21,23 @@ clean_test_json(void)
 }
 
 void
+test_generate_json(void)
+{
+    TARPM_ASSERT_TRUE(generate_json(NULL, NULL) == NULL);
+
+    return;
+}
+
+void
+test_generate_json_entries(void)
+{
+    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, true) == NULL);
+    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, false) == NULL);
+
+    return;
+}
+
+void
 test_write_json_file(void)
 {
     TARPM_ASSERT_TRUE(write_json_file(NULL, NULL, NULL) == -1);
@@ -41,7 +58,9 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test write_json_file()", test_write_json_file) == NULL) {
+    if (CU_add_test(pSuite, "test generate_json()", test_generate_json) == NULL ||
+        CU_add_test(pSuite, "test generate_json_entries()", test_generate_json_entries) == NULL ||
+        CU_add_test(pSuite, "test write_json_file()", test_write_json_file) == NULL) {
         return NULL;
     }
 
