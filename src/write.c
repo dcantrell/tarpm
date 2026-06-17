@@ -44,6 +44,68 @@ sort_by_tag_number(const void *a, const void *b)
 }
 
 /*
+ * Turn a struct rpmhdrentry in to a json_object.
+ */
+struct json_object *
+create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
+{
+    struct json_object *entry = NULL;
+    rpmSigTag tag = 0;
+    uint32_t offset = 0;
+    rpmTagType datatype = 0;
+    uint32_t count = 0;
+    char *tagname = NULL;
+    char *tagnum = NULL;
+    char *tagtype = NULL;
+    char *tagoffset = NULL;
+    char *tagcount = NULL;
+
+    if (hdrentry == NULL) {
+        return NULL;
+    }
+
+    /* create a new object */
+    entry = json_object_new_object();
+    assert(entry != NULL);
+
+    /* individual values for this object */
+    tag = ntohl(hdrentry->tag);
+    offset = ntohl(hdrentry->offset);
+    datatype = ntohl(hdrentry->type);
+    count = ntohl(hdrentry->count);
+
+    /* add all of the entry values to the object */
+    if (signature) {
+        xasprintf(&tagname, "%s", sig_tag_name(tag));
+    } else {
+        xasprintf(&tagname, "%s", rpmTagGetName(tag));
+    }
+
+    json_object_object_add(entry, RPM_ENTRY_NAME_DESC, json_object_new_string(tagname));
+
+    xasprintf(&tagnum, "%d", tag);
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tagnum));
+
+    xasprintf(&tagtype, "%s", strtagtype(datatype));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
+
+    xasprintf(&tagoffset, "%d", offset);
+    json_object_object_add(entry, RPM_ENTRY_OFFSET_DESC, json_object_new_string(tagoffset));
+
+    xasprintf(&tagcount, "%d", count);
+    json_object_object_add(entry, RPM_ENTRY_COUNT_DESC, json_object_new_string(tagcount));
+
+    /* clean up */
+    free(tagname);
+    free(tagnum);
+    free(tagtype);
+    free(tagoffset);
+    free(tagcount);
+
+    return entry;
+}
+
+/*
  * Generate a "signature" or "header" JSON structure for output.
  */
 struct json_object *
@@ -62,7 +124,7 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     json_object_object_add(out, RPM_SIGNATURE_MAGIC_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "0x%X", hdr->reserved);
+    xasprintf(&s, "%04d", hdr->reserved);
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
@@ -90,71 +152,56 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
  * tags for output.
  */
 struct json_object *
-generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *entry, const bool signature)
+generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature)
 {
     uint32_t i = 0;
     rpmSigTag tag = 0;
     uint32_t offset = 0;
     rpmTagType datatype = 0;
     uint32_t count = 0;
-    struct json_object *jvals = NULL;
-    struct json_object *arrayentry = NULL;
-    char *s = NULL;
+    struct json_object *kvals = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *jtrailer = NULL;
+    struct rpmhdrentry *hdrentry = hdrinfo->estart;
 
-    if (hdr == NULL || hdrinfo == NULL || entry == NULL) {
+    if (hdr == NULL || hdrinfo == NULL || trailer == NULL) {
         return NULL;
     }
 
     /* create a new array for these tags */
-    jvals = json_object_new_array();
+    kvals = json_object_new_array();
+    assert(kvals != NULL);
 
     /* add each tag to the array */
     for (i = 0; i < hdr->nentries; i++) {
-        tag = ntohl(entry[i].tag);
-        offset = ntohl(entry[i].offset);
-        datatype = ntohl(entry[i].type);
-        count = ntohl(entry[i].count);
-        arrayentry = json_object_new_object();
+        tag = ntohl(hdrentry[i].tag);
+        offset = ntohl(hdrentry[i].offset);
+        datatype = ntohl(hdrentry[i].type);
+        count = ntohl(hdrentry[i].count);
 
-        if (signature) {
-            xasprintf(&s, "%s", signature_tag_name(tag));
-        } else {
-            xasprintf(&s, "%s", rpmTagGetName(tag));
-        }
-
-        json_object_object_add(arrayentry, RPM_ENTRY_NAME_DESC, json_object_new_string(s));
-        free(s);
-
-        xasprintf(&s, "%d", tag);
-        json_object_object_add(arrayentry, RPM_ENTRY_TAG_DESC, json_object_new_string(s));
-        free(s);
-
-        xasprintf(&s, "%s", strtagtype(datatype));
-        json_object_object_add(arrayentry, RPM_ENTRY_TYPE_DESC, json_object_new_string(s));
-        free(s);
-
-        xasprintf(&s, "0x%X", offset);
-        json_object_object_add(arrayentry, RPM_ENTRY_OFFSET_DESC, json_object_new_string(s));
-        free(s);
-
-        xasprintf(&s, "%d", count);
-        json_object_object_add(arrayentry, RPM_ENTRY_COUNT_DESC, json_object_new_string(s));
-        free(s);
+        entry = create_json_hdr_entry(&hdrentry[i], signature);
+        assert(entry != NULL);
 
         /*
          * header tags of these types will have a trailer that we need
          * to capture and compute
          */
-        if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
+        if (trailer != NULL && (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE)) {
+            /* create a new array just for the trailer */
+            jtrailer = create_json_hdr_entry(trailer, signature);
+            assert(jtrailer != NULL);
 
+            /* add the trailer to this entry because of the tag type */
+            json_object_object_add(entry, RPM_ENTRY_TRAILER_DESC, jtrailer);
         }
 
-        add_entry_value(arrayentry, hdrinfo->datastart, offset, datatype, count);
-        json_object_array_add(jvals, arrayentry);
+        /* add the entry to the array */
+        add_entry_value(entry, hdrinfo->datastart, offset, datatype, count);
+        json_object_array_add(kvals, entry);
     }
 
     /* sort the array in ascending order by tag number */
-    json_object_array_sort(jvals, sort_by_tag_number);
+    json_object_array_sort(kvals, sort_by_tag_number);
 
-    return jvals;
+    return kvals;
 }

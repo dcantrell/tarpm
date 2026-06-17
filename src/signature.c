@@ -19,7 +19,6 @@ read_signature(const int fd)
     uint32_t *buffer = NULL;
     struct rpmhdr *rawhdr = NULL;
     struct rpmhdrinfo *hdrinfo = NULL;
-    struct rpmhdrentry *entry = NULL;
     struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *signature = NULL;
@@ -48,18 +47,15 @@ read_signature(const int fd)
         err(EXIT_FAILURE, "read");
     }
 
-    /* first entry */
-    entry = (struct rpmhdrentry *) (buffer + 2);
-
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(entry, hdrinfo->datastart);
+    trailer = read_header_trailer(hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
     signature = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(rawhdr, hdrinfo, entry, true);
+    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, true);
 
     /* write the signature to a file */
     json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));

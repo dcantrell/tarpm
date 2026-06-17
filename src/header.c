@@ -51,7 +51,6 @@ read_header(const int fd)
     uint32_t *buffer = NULL;
     struct rpmhdr *rawhdr = NULL;
     struct rpmhdrinfo *hdrinfo = NULL;
-    struct rpmhdrentry *entry = NULL;
     struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *header = NULL;
@@ -75,18 +74,15 @@ read_header(const int fd)
     hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);
     hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 
-    /* first entry */
-    entry = (struct rpmhdrentry *) (buffer + 2);
-
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(entry, hdrinfo->datastart);
+    trailer = read_header_trailer(hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
     header = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(rawhdr, hdrinfo, entry, false);
+    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, false);
 
     /* write the signature to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));

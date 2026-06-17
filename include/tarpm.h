@@ -78,8 +78,7 @@ void free_json(struct json_object *data);
 /* tags.c */
 const char *strtagtype(rpmTagType type);
 rpmTagType tag_type(struct json_object *tag);
-const char *signature_tag_name(rpmSigTag tag);
-const char *tag_name(rpmTag tag);
+const char *sig_tag_name(uint32_t tag);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 
 /* read.c */
@@ -92,7 +91,8 @@ struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const u
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
 
 /* write.c */
+struct json_object *create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature);
 struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
-struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals, struct rpmhdrentry *entry, const bool signature);
+struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature);
 
 #endif /* _TARPM_TARPM_H */

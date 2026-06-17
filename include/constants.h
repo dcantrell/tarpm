@@ -56,5 +56,6 @@
 #define RPM_ENTRY_TAGS_DESC          "tags"
 #define RPM_ENTRY_VALUE_DESC         "value"
 #define RPM_ENTRY_VALUES_DESC        "values"
+#define RPM_ENTRY_TRAILER_DESC       "trailer"
 
 #endif /* _TARPM_CONSTANTS_H */
