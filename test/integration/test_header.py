@@ -20,13 +20,21 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
         f.close()
 
         # Check main header fields
-        for key in ["magic", "reserved", "index entries", "index size (bytes)", "data size (bytes)", "header size (bytes)", "tags"]:
+        for key in [
+            "magic",
+            "reserved",
+            "index entries",
+            "index size (bytes)",
+            "data size (bytes)",
+            "header size (bytes)",
+            "tags",
+        ]:
             self.assertTrue(key in header.keys())
 
             if key == "magic":
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(header[key], "0x0")
+                self.assertEqual(header[key], "0000")
             elif key == "index entries":
                 self.assertTrue(int(header[key]) == 51)
             elif key == "index size (bytes)":
@@ -54,6 +62,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
+                        self.assertTrue("trailer" in tag.keys())
                     elif t == "Headeri18ntable":
                         self.assertTrue(int(tag["number"]) == 100)
                         self.assertTrue(tag["type"] == "string array")
@@ -189,12 +198,15 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1049)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ['rpmlib(CompressedFileNames)', 'rpmlib(FileDigests)'])
+                        self.assertTrue(
+                            tag["value"]
+                            == ["rpmlib(CompressedFileNames)", "rpmlib(FileDigests)"]
+                        )
                     elif t == "Requireversion":
                         self.assertTrue(int(tag["number"]) == 1050)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ['3.0.4-1', '4.6.0-1'])
+                        self.assertTrue(tag["value"] == ["3.0.4-1", "4.6.0-1"])
                     elif t == "Rpmversion":
                         self.assertTrue(int(tag["number"]) == 1064)
                         self.assertTrue(tag["type"] == "string")
@@ -209,7 +221,9 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1081)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"])
+                        self.assertTrue(
+                            tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"]
+                        )
                     elif t == "Changelogtext":
                         self.assertTrue(int(tag["number"]) == 1082)
                         self.assertTrue(tag["type"] == "string array")
@@ -309,10 +323,14 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 5099)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(tag["value"] == "\n\n\nSummary: Dummy summary\nName: vaporware\nVersion: 0.1\nRelease: 1\nLicense: GPL\nGroup: Applications/Productivity\n\n\n%description\nThis is a dummy description.\n\n\n%prep\n\n%build\n\n%install\n\n%files\n\n%changelog\n* Sun Jul 22 2018 John Doe <jdoe@example.com> - 0.1-1\n- Initial version\n\n")
+                        self.assertTrue(
+                            tag["value"]
+                            == "\n\n\nSummary: Dummy summary\nName: vaporware\nVersion: 0.1\nRelease: 1\nLicense: GPL\nGroup: Applications/Productivity\n\n\n%description\nThis is a dummy description.\n\n\n%prep\n\n%build\n\n%install\n\n%files\n\n%changelog\n* Sun Jul 22 2018 John Doe <jdoe@example.com> - 0.1-1\n- Initial version\n\n"
+                        )
                     else:
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)
+
 
 class VerifyHeaderExtractRPM(TestUnpackRPM):
     def runTest(self):
@@ -323,13 +341,21 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
         f.close()
 
         # Check main header fields
-        for key in ["magic", "reserved", "index entries", "index size (bytes)", "data size (bytes)", "header size (bytes)", "tags"]:
+        for key in [
+            "magic",
+            "reserved",
+            "index entries",
+            "index size (bytes)",
+            "data size (bytes)",
+            "header size (bytes)",
+            "tags",
+        ]:
             self.assertTrue(key in header.keys())
 
             if key == "magic":
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(header[key], "0x0")
+                self.assertEqual(header[key], "0000")
             elif key == "index entries":
                 self.assertTrue(int(header[key]) == 37)
             elif key == "index size (bytes)":
@@ -357,6 +383,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
+                        self.assertTrue("trailer" in tag.keys())
                     elif t == "Headeri18ntable":
                         self.assertTrue(int(tag["number"]) == 100)
                         self.assertTrue(tag["type"] == "string array")
@@ -432,22 +459,41 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1047)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ["vaporware", "vaporware(%s)" % platform.uname()[4].replace('_', '-')])
+                        self.assertTrue(
+                            tag["value"]
+                            == [
+                                "vaporware",
+                                "vaporware(%s)" % platform.uname()[4].replace("_", "-"),
+                            ]
+                        )
                     elif t == "Requireflags":
                         self.assertTrue(int(tag["number"]) == 1048)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 4)
-                        self.assertTrue(tag["value"] == ["16777226", "16777226", "16777226", "16777226"])
+                        self.assertTrue(
+                            tag["value"]
+                            == ["16777226", "16777226", "16777226", "16777226"]
+                        )
                     elif t == "Requirename":
                         self.assertTrue(int(tag["number"]) == 1049)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 4)
-                        self.assertTrue(tag["value"] == ['rpmlib(CompressedFileNames)', 'rpmlib(FileDigests)', 'rpmlib(PayloadFilesHavePrefix)', 'rpmlib(PayloadIsZstd)'])
+                        self.assertTrue(
+                            tag["value"]
+                            == [
+                                "rpmlib(CompressedFileNames)",
+                                "rpmlib(FileDigests)",
+                                "rpmlib(PayloadFilesHavePrefix)",
+                                "rpmlib(PayloadIsZstd)",
+                            ]
+                        )
                     elif t == "Requireversion":
                         self.assertTrue(int(tag["number"]) == 1050)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 4)
-                        self.assertTrue(tag["value"] == ['3.0.4-1', '4.6.0-1', '4.0-1', '5.4.18-1'])
+                        self.assertTrue(
+                            tag["value"] == ["3.0.4-1", "4.6.0-1", "4.0-1", "5.4.18-1"]
+                        )
                     elif t == "Rpmversion":
                         self.assertTrue(int(tag["number"]) == 1064)
                         self.assertTrue(tag["type"] == "string")
@@ -462,7 +508,9 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1081)
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"])
+                        self.assertTrue(
+                            tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"]
+                        )
                     elif t == "Changelogtext":
                         self.assertTrue(int(tag["number"]) == 1082)
                         self.assertTrue(tag["type"] == "string array")
@@ -477,7 +525,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1112)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ['8', '8'])
+                        self.assertTrue(tag["value"] == ["8", "8"])
                     elif t == "Provideversion":
                         self.assertTrue(int(tag["number"]) == 1113)
                         self.assertTrue(tag["type"] == "string array")
@@ -507,7 +555,10 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1132)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(tag["value"].startswith(platform.uname()[4]) and (tag["value"].find(platform.uname()[0].lower()) != -1))
+                        self.assertTrue(
+                            tag["value"].startswith(platform.uname()[4])
+                            and (tag["value"].find(platform.uname()[0].lower()) != -1)
+                        )
                     elif t == "Sourcesigmd5":
                         self.assertTrue(int(tag["number"]) == 1146)
                         self.assertTrue(tag["type"] == "binary blob")

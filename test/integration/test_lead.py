@@ -17,7 +17,15 @@ class VerifyLeadExtractSRPM(TestUnpackSRPM):
         lead = json.load(f)
         f.close()
 
-        for key in ["lead magic", "version", "type", "name", "architecture", "os", "signature type"]:
+        for key in [
+            "lead magic",
+            "version",
+            "type",
+            "name",
+            "architecture",
+            "os",
+            "signature type",
+        ]:
             self.assertTrue(key in lead.keys())
 
             if key == "lead magic":
@@ -44,7 +52,15 @@ class VerifyLeadExtractRPM(TestUnpackRPM):
         lead = json.load(f)
         f.close()
 
-        for key in ["lead magic", "version", "type", "name", "architecture", "os", "signature type"]:
+        for key in [
+            "lead magic",
+            "version",
+            "type",
+            "name",
+            "architecture",
+            "os",
+            "signature type",
+        ]:
             self.assertTrue(key in lead.keys())
 
             if key == "lead magic":

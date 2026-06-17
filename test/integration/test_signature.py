@@ -16,13 +16,21 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
         f.close()
 
         # Check main signature fields
-        for key in ["magic", "reserved", "index entries", "index size (bytes)", "data size (bytes)", "header size (bytes)", "tags"]:
+        for key in [
+            "magic",
+            "reserved",
+            "index entries",
+            "index size (bytes)",
+            "data size (bytes)",
+            "header size (bytes)",
+            "tags",
+        ]:
             self.assertTrue(key in signature.keys())
 
             if key == "magic":
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(signature[key], "0x0")
+                self.assertEqual(signature[key], "0000")
             elif key == "index entries":
                 self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
@@ -45,37 +53,38 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
 
                     t = tag["name"]
 
-                    if t == "(unknown)":
+                    if t == "Headersignatures":
                         self.assertTrue(int(tag["number"]) == 62)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
-                    elif t == "RPMSIGTAG_SHA1":
+                        self.assertTrue("trailer" in tag.keys())
+                    elif t == "Sha1":
                         self.assertTrue(int(tag["number"]) == 269)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) == 40)
-                    elif t == "RPMSIGTAG_SHA256":
+                    elif t == "Sha256":
                         self.assertTrue(int(tag["number"]) == 273)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) == 64)
-                    elif t == "RPMSIGTAG_SIZE":
+                    elif t == "Size":
                         self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) > 1)
-                    elif t == "RPMSIGTAG_MD5":
+                    elif t == "Md5":
                         self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
-                    elif t == "RPMSIGTAG_PAYLOADSIZE":
+                    elif t == "Payloadsize":
                         self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) > 1)
-                    elif t == "RPMSIGTAG_RESERVEDSPACE":
+                    elif t == "Reservedspace":
                         self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 4128)
@@ -104,13 +113,21 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
         f.close()
 
         # Check main signature fields
-        for key in ["magic", "reserved", "index entries", "index size (bytes)", "data size (bytes)", "header size (bytes)", "tags"]:
+        for key in [
+            "magic",
+            "reserved",
+            "index entries",
+            "index size (bytes)",
+            "data size (bytes)",
+            "header size (bytes)",
+            "tags",
+        ]:
             self.assertTrue(key in signature.keys())
 
             if key == "magic":
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
-                self.assertEqual(signature[key], "0x0")
+                self.assertEqual(signature[key], "0000")
             elif key == "index entries":
                 self.assertTrue(int(signature[key]) == 7)
             elif key == "index size (bytes)":
@@ -133,37 +150,37 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
 
                     t = tag["name"]
 
-                    if t == "(unknown)":
+                    if t == "Headersignatures":
                         self.assertTrue(int(tag["number"]) == 62)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
-                    elif t == "RPMSIGTAG_SHA1":
+                    elif t == "Sha1":
                         self.assertTrue(int(tag["number"]) == 269)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) == 40)
-                    elif t == "RPMSIGTAG_SHA256":
+                    elif t == "Sha256":
                         self.assertTrue(int(tag["number"]) == 273)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) == 64)
-                    elif t == "RPMSIGTAG_SIZE":
+                    elif t == "Size":
                         self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) > 1)
-                    elif t == "RPMSIGTAG_MD5":
+                    elif t == "Md5":
                         self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 16)
                         self.assertTrue(len(tag["value"]) == 25)
-                    elif t == "RPMSIGTAG_PAYLOADSIZE":
+                    elif t == "Payloadsize":
                         self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
                         self.assertTrue(len(tag["value"]) > 1)
-                    elif t == "RPMSIGTAG_RESERVEDSPACE":
+                    elif t == "Reservedspace":
                         self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(int(tag["count"]) == 4128)
@@ -175,9 +192,9 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                         # run the test suite again.  The data will be
                         # in /tmp/rpm-signature-tag.
                         #
-                        #f = open("/tmp/rpm-signature-tag", "w+")
-                        #f.write(str(tag))
-                        #f.close()
+                        # f = open("/tmp/rpm-signature-tag", "w+")
+                        # f.write(str(tag))
+                        # f.close()
 
                         m = "Unknown tag found in signature: %s" % t
                         self.fail(msg=m)

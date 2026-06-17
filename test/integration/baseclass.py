@@ -131,9 +131,9 @@ class RequiresTarpm(unittest.TestCase):
         self.output_dir = tempfile.mkdtemp(prefix="tarpm-integration-test")
 
         # output from a tarpm extraction
-        self.lead = os.path.join(self.output_dir, 'lead.json')
-        self.signature = os.path.join(self.output_dir, 'signature.json')
-        self.header = os.path.join(self.output_dir, 'header.json')
+        self.lead = os.path.join(self.output_dir, "lead.json")
+        self.signature = os.path.join(self.output_dir, "signature.json")
+        self.header = os.path.join(self.output_dir, "header.json")
 
         # tarpm opts
         self.opts = []
@@ -163,7 +163,11 @@ class TestUnpackSRPM(RequiresTarpm):
     def runTest(self):
         self.rpm.do_make()
 
-        args = [ self.tarpm, self.mode ] + self.opts + [ "-f", self.rpm.get_built_srpm(), "-O", self.output_dir ]
+        args = (
+            [self.tarpm, self.mode]
+            + self.opts
+            + ["-f", self.rpm.get_built_srpm(), "-O", self.output_dir]
+        )
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (self.out, self.err) = proc.communicate()
 
@@ -191,7 +195,16 @@ class TestUnpackRPM(RequiresTarpm):
     def runTest(self):
         self.rpm.do_make()
 
-        args = [ self.tarpm, self.mode ] + self.opts + [ "-f", self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()), "-O", self.output_dir ]
+        args = (
+            [self.tarpm, self.mode]
+            + self.opts
+            + [
+                "-f",
+                self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+                "-O",
+                self.output_dir,
+            ]
+        )
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (self.out, self.err) = proc.communicate()
 
