@@ -71,6 +71,9 @@ int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rp
 char *joinpath(const char *path, ...);
 
 /* json.c */
+struct json_object *create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature);
+struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
+struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature);
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
 void free_json(struct json_object *data);
@@ -89,10 +92,5 @@ struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const u
 
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
-
-/* write.c */
-struct json_object *create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature);
-struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
-struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature);
 
 #endif /* _TARPM_TARPM_H */

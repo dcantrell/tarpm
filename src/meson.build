@@ -16,7 +16,6 @@ signature_src = files('signature.c')
 strfuncs_src = files('strfuncs.c')
 tags_src = files('tags.c')
 unpack_src = files('unpack.c')
-write_src = files('write.c')
 xalloc_src = files('xalloc.c')
 
 sources = [
@@ -36,7 +35,6 @@ sources = [
     strfuncs_src,
     tags_src,
     unpack_src,
-    write_src,
     xalloc_src,
 ]
 
