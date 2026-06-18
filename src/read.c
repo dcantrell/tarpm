@@ -48,6 +48,9 @@ struct rpmhdr *
 read_header_signature(const int fd)
 {
     struct rpmhdr *hdr = NULL;
+    struct rpmhdr *readbuf = NULL;
+    ssize_t n = 0;
+    ssize_t count = 0;
 
     if (fd < 0) {
         return NULL;
@@ -58,10 +61,20 @@ read_header_signature(const int fd)
     assert(hdr != NULL);
 
     /* read in the signature */
-    if (read(fd, hdr, RPMHDRINTROSZ) != RPMHDRINTROSZ) {
-        warn("read");
-        free(hdr);
-        return NULL;
+    count = RPMHDRINTROSZ;
+    readbuf = hdr;
+
+    while (n < count) {
+        n = read(fd, readbuf, count);
+
+        if (n == -1) {
+            warn("read");
+            free(hdr);
+            return NULL;
+        }
+
+        count -= n;
+        readbuf += n;
     }
 
     hdr->magic = ntohl(hdr->magic);
@@ -87,23 +100,36 @@ uint32_t *
 read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen)
 {
     uint32_t *buffer = NULL;
+    uint32_t *readbuf = NULL;
+    ssize_t n = 0;
+    ssize_t count = 0;
 
-    if (fd < 0 || hdr == NULL || hlen <= 0) {
+    if (fd < 0 || hdr == NULL || hlen == 0) {
         return NULL;
     }
 
     /* read in entries */
     /* (largely from rpmdump.c) */
-    buffer = xcalloc(hdr->nentries, hdr->nbytes + hlen);
+    buffer = xalloc(hlen + 2 * sizeof(uint32_t));
     assert(buffer != NULL);
 
     buffer[0] = htonl(hdr->nentries);
     buffer[1] = htonl(hdr->nbytes);
 
-    if (read(fd, buffer + 2, hlen) != hlen) {
-        warn("read");
-        free(buffer);
-        return NULL;
+    count = hlen;
+    readbuf = buffer + 2;
+
+    while (n < count) {
+        n = read(fd, readbuf, count);
+
+        if (n == -1) {
+            warn("read");
+            free(buffer);
+            return NULL;
+        }
+
+        count -= n;
+        readbuf += n;
     }
 
     return buffer;

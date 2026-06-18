@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <string.h>
 #include <err.h>
+#include <inttypes.h>
 #include <arpa/inet.h>
 #include <rpm/rpmbase64.h>
 #include <json.h>
@@ -108,7 +109,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
             if (count == 1) {
                 memcpy(&dt.i64, data, sizeof(dt.i64));
                 dt.i64 = be64toh(dt.i64);
-                xasprintf(&s, "%lu", dt.i64);
+                xasprintf(&s, "%" PRIu64, dt.i64);
             } else {
                 sa = json_object_new_array();
                 is_array = true;
@@ -117,7 +118,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
                 for (i = 0; i < count; i++) {
                     memcpy(&dt.i64, p, sizeof(dt.i64));
                     dt.i64 = be64toh(dt.i64);
-                    xasprintf(&s, "%lu", dt.i64);
+                    xasprintf(&s, "%" PRIu64, dt.i64);
                     json_object_array_add(sa, json_object_new_string(s));
                     p += sizeof(dt.i64);
                     free(s);

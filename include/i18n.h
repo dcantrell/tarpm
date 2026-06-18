@@ -15,7 +15,7 @@
 #define N_(MSGID, MSGID_PLURAL, N) ngettext((MSGID), (MSGID_PLURAL), (N))
 #else
 #define _(MSGID) (MSGID)
-#define N_(MSGID, MSGID_PLURAL, N) ((MSGID_PLURAL))
+#define N_(MSGID, MSGID_PLURAL, N) ((MSGID))
 #endif
 
 #endif /* _TARPM_I18N_H */

@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-#include <string.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
@@ -77,12 +76,6 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
         ret = -1;
     } else if (archive_entry_size(entry) > 0) {
         if (copy_data(input, output) != ARCHIVE_OK) {
-            ret = -1;
-        }
-
-        if (r != ARCHIVE_OK) {
-            warnx("archive_write_header: %s", archive_error_string(output));
-        } else if (r < ARCHIVE_WARN) {
             ret = -1;
         }
     }
@@ -180,8 +173,10 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
 
         if (r != ARCHIVE_OK) {
             warnx("archive_read_next_header: %s", archive_error_string(input));
-        } else if (r < ARCHIVE_WARN) {
-            ret = -1;
+
+            if (r < ARCHIVE_WARN) {
+                ret = -1;
+            }
         }
 
         if (verbose) {

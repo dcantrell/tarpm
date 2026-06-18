@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <err.h>
+#include <inttypes.h>
 #include <arpa/inet.h>
 #include <json.h>
 #include "tarpm.h"
@@ -135,15 +136,15 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", hdrinfo->ilen);
+    xasprintf(&s, "%" PRIu32, hdrinfo->ilen);
     json_object_object_add(out, RPM_SIGNATURE_ILEN_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", hdr->nbytes);
+    xasprintf(&s, "%" PRIu32, hdr->nbytes);
     json_object_object_add(out, RPM_SIGNATURE_NBYTES_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%d", hdrinfo->hlen);
+    xasprintf(&s, "%" PRIu32, hdrinfo->hlen);
     json_object_object_add(out, RPM_SIGNATURE_HLEN_DESC, json_object_new_string(s));
     free(s);
 
@@ -167,7 +168,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     struct json_object *jtrailer = NULL;
     struct rpmhdrentry *hdrentry = hdrinfo->estart;
 
-    if (hdr == NULL || hdrinfo == NULL || trailer == NULL) {
+    if (hdr == NULL || hdrinfo == NULL) {
         return NULL;
     }
 
@@ -259,6 +260,7 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
 
     if (fp == NULL) {
         warn("fopen");
+        free(s);
         return -1;
     }
 
@@ -282,34 +284,5 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
         warn("fclose");
     }
 
-    return 0;
-}
-
-/*
- * Free memory used by JSON object
- */
-void
-free_json(struct json_object *data)
-{
-    int r = 0;
-    int len = 0;
-    struct json_object_iter iter;
-
-    if (data == NULL) {
-        return;
-    }
-
-    /* clean up the JSON object memory usage */
-    json_object_object_foreachC(data, iter) {
-        if (json_object_get_type(iter.val) == json_type_array) {
-            len = json_object_array_length(iter.val);
-
-            for (r = 0; r < len; r++) {
-                json_object_array_put_idx(iter.val, r, NULL);
-            }
-        }
-    }
-
-    json_object_put(data);
-    return;
+    return r;
 }

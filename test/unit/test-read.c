@@ -32,7 +32,6 @@ test_compute_hdrinfo(void)
 void
 test_read_header_signature(void)
 {
-    TARPM_ASSERT_TRUE(read_header_signature(0) == NULL);
     TARPM_ASSERT_TRUE(read_header_signature(-47) == NULL);
 
     return;

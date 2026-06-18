@@ -140,11 +140,15 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     /* get the tags for this header */
     if (json_object_object_get_ex(data, "tags", &tags) == 0) {
         warnx(_("*** missing tags in header data"));
+        free(s);
+        free(v);
         return -1;
     }
 
     if (json_object_get_type(tags) != json_type_array) {
         warnx(_("*** create_header: tags must be an array"));
+        free(s);
+        free(v);
         return -1;
     }
 
@@ -209,6 +213,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
 
+    *hdr = s;
+    *hdrinfo = v;
 
     return r;
 }

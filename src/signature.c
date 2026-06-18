@@ -22,6 +22,9 @@ read_signature(const int fd)
     struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *signature = NULL;
+    struct rpmhdr *readbuf = NULL;
+    ssize_t n = 0;
+    ssize_t count = 0;
 
     if (fd < 0) {
         return NULL;
@@ -43,8 +46,18 @@ read_signature(const int fd)
     hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 
     /* signature is aligned, so padding may be present */
-    if (read(fd, &hdrinfo->pad, hdrinfo->padlen) != hdrinfo->padlen) {
-        err(EXIT_FAILURE, "read");
+    count = hdrinfo->padlen;
+    readbuf = &hdrinfo->pad;
+
+    while (n < count) {
+        n = read(fd, readbuf, count);
+
+        if (n == -1) {
+            err(EXIT_FAILURE, "read");
+        }
+
+        count -= n;
+        readbuf += n;
     }
 
     /* handle trailer */

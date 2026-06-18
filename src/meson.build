@@ -3,7 +3,6 @@
 abspath_src = files('abspath.c')
 entry_src = files('entry.c')
 header_src = files('header.c')
-init_src = files('init.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
 lead_src = files('lead.c')
@@ -11,6 +10,7 @@ listfuncs_src = files('listfuncs.c')
 main_src = files('main.c')
 mkdirp_src = files('mkdirp.c')
 read_src = files('read.c')
+reset_src = files('reset.c')
 rpm_src = files('rpm.c')
 signature_src = files('signature.c')
 strfuncs_src = files('strfuncs.c')
@@ -22,7 +22,6 @@ sources = [
     abspath_src,
     entry_src,
     header_src,
-    init_src,
     joinpath_src,
     json_src,
     lead_src,
@@ -30,6 +29,7 @@ sources = [
     main_src,
     mkdirp_src,
     read_src,
+    reset_src,
     rpm_src,
     signature_src,
     strfuncs_src,

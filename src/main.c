@@ -24,6 +24,7 @@ usage(void)
     printf(_("Usage: %s [OPTIONS] [.rpm file] [directory]\n"), COMMAND_NAME);
     printf(_("Options:\n"));
     printf(_("    -t, --list                        List RPM payload contents\n"));
+    printf(_("    -c, --create                      Create an RPM file\n"));
     printf(_("    -x, --extract                     Extract RPM file\n"));
     printf(_("    -v, --verbose                     Verbose progress output\n"));
     printf(_("    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"));
@@ -233,9 +234,9 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
     }
 
-    /* Initialize librpm */
-    if (init_librpm() != RPMRC_OK) {
-        errx(EXIT_FAILURE, _("*** unable to read RPM configuration"));
+    /* Reset librpm */
+    if (reset_librpm() != RPMRC_OK) {
+        errx(EXIT_FAILURE, _("*** unable to reset RPM configuration"));
     }
 
     /* Main operations begin here */
@@ -347,9 +348,9 @@ main(int argc, char **argv)
             err(EXIT_FAILURE, "unlink");
         }
 
-        free_json(header);
-        free_json(signature);
-        free_json(lead);
+        json_object_put(header);
+        json_object_put(signature);
+        json_object_put(lead);
         free(payload_file);
         free(tmp);
         free(output_dir);
@@ -398,6 +399,8 @@ main(int argc, char **argv)
 
 /*
 
+TODO:
+
 * make sure the input directory exists, error if not
 * check for the JSON metadata files (signature and header), error if not
 * check for the payload subdirectory, error if not
@@ -420,8 +423,6 @@ main(int argc, char **argv)
         /* create an RPM for writing */
         rpm = fopen(filename, "wb");
 
-printf("filename=|%s|\n", filename);
-
         if (rpm == NULL) {
             err(EXIT_FAILURE, "fopen");
         }
@@ -441,8 +442,8 @@ printf("filename=|%s|\n", filename);
             err(EXIT_FAILURE, "chdir");
         }
 
-        free_json(header);
-        free_json(signature);
+        json_object_put(header);
+        json_object_put(signature);
         free(rawlead);
         free(input_dir);
     }

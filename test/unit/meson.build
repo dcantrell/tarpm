@@ -30,17 +30,6 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
-    test_init = executable(
-        'test-init',
-        [ 'test-init.c',
-          'test-main.c',
-          init_src,
-        ],
-        include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc ],
-        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
-    )
-
     test_joinpath = executable(
         'test-joinpath',
         [ 'test-joinpath.c',
@@ -109,6 +98,17 @@ if cunit.found()
         ],
         include_directories : inc,
         dependencies : [ cunit, jsonc, rpm ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_reset = executable(
+        'test-reset',
+        [ 'test-reset.c',
+          'test-main.c',
+          reset_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, rpm, jsonc ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -207,12 +207,12 @@ if cunit.found()
     # Unit tests
     test('test-strfuncs', test_strfuncs)
     test('test-header', test_header)
-    test('test-init', test_init)
     test('test-joinpath', test_joinpath)
     test('test-json', test_json)
     test('test-lead', test_lead)
     test('test-mkdirp', test_mkdirp)
     test('test-read', test_read)
+    test('test-reset', test_reset)
     test('test-rpm', test_rpm)
     test('test-signature', test_signature)
     test('test-tags', test_tags)

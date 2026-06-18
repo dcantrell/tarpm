@@ -19,9 +19,6 @@
 /* abspath.c */
 char *abspath(const char *path);
 
-/* init.c */
-int init_librpm(void);
-
 /* rpm.c */
 char *extract_payload(const char *rpm);
 Header get_header(const char *pkg);
@@ -76,7 +73,6 @@ struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdri
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature);
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
-void free_json(struct json_object *data);
 
 /* tags.c */
 const char *strtagtype(rpmTagType type);
@@ -89,6 +85,9 @@ struct rpmhdrinfo *compute_hdrinfo(const struct rpmhdr *hdr, const bool signatur
 struct rpmhdr *read_header_signature(const int fd);
 uint32_t *read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen);
 struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
+
+/* reset.c */
+int reset_librpm(void);
 
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
