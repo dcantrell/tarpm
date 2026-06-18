@@ -92,4 +92,7 @@ int reset_librpm(void);
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
 
+/* xread.c */
+bool xread(int fd, void *buf, size_t count);
+
 #endif /* _TARPM_TARPM_H */

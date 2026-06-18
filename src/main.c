@@ -61,6 +61,8 @@ main(int argc, char **argv)
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
     struct rpmlead *rawlead = NULL;
+    struct rpmhdr *sig = NULL;
+    struct rpmhdrinfo *siginfo = NULL;
     Header h;
     FILE *rpm = NULL;
     char *opt = NULL;
@@ -395,6 +397,10 @@ main(int argc, char **argv)
             errx(EXIT_FAILURE, _("*** unable to construct RPM lead"));
         }
 
+        /* create the signature */
+        if (create_header(signature, &sig, &siginfo) == -1) {
+            errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
+        }
 
 
 /*
@@ -429,6 +435,21 @@ TODO:
 
         /* write the lead to the RPM */
         if (fwrite(rawlead, sizeof(*rawlead), 1, rpm) != 1) {
+            warn("fwrite");
+        }
+
+        /* write the signature to the RPM */
+        if (fwrite(sig, sizeof(*sig), 1, rpm) != 1) {
+            warn("fwrite");
+        }
+
+        /* write the signature index entries */
+        if (fwrite(siginfo->estart, sizeof(struct rpmhdrentry), sig->nentries, rpm) != sig->nentries) {
+            warn("fwrite");
+        }
+
+        /* write the signature data */
+        if (fwrite(siginfo->datastart, 1, sig->nbytes, rpm) != sig->nbytes) {
             warn("fwrite");
         }
 

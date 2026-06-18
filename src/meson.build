@@ -17,6 +17,7 @@ strfuncs_src = files('strfuncs.c')
 tags_src = files('tags.c')
 unpack_src = files('unpack.c')
 xalloc_src = files('xalloc.c')
+xread_src = files('xread.c')
 
 sources = [
     abspath_src,
@@ -36,6 +37,7 @@ sources = [
     tags_src,
     unpack_src,
     xalloc_src,
+    xread_src,
 ]
 
 deps = [

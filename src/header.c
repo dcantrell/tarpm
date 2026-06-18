@@ -121,6 +121,10 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct json_object *tags = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
+    uint8_t *datapos = NULL;
+    int32_t offset = 0;
+    const char *value = NULL;
+    int len = 0;
 
     if (data == NULL) {
         return 0;
@@ -160,10 +164,31 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     v->entry = v->estart;
     assert(v->estart != NULL);
 
+    /* calculate total data size needed */
+    size_t total_data_size = 0;
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+        if (json_object_object_get_ex(entry, "value", &key)) {
+            total_data_size += json_object_get_string_len(key) + 1;
+        }
+    }
+
+    /* allocate the data buffer */
+    v->datastart = xcalloc(total_data_size, sizeof(uint8_t));
+    assert(v->datastart != NULL);
+
+    /* set the data size in the header */
+    s->nbytes = total_data_size;
+
+    /* position the data buffer and offset */
+    datapos = v->datastart;
+    offset = 0;
+
     /* walk the header tags and add them to the values structure */
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
 
+        /* gather the number, type, and count */
         if (json_object_object_get_ex(entry, "number", &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'number'"));
         } else {
@@ -176,42 +201,30 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
             v->entry->type = tag_type(key);
         }
 
+        if (json_object_object_get_ex(entry, "count", &key) == 0) {
+            warnx(_("*** invalid header tag entry, missing 'count'"));
+        } else {
+            v->entry->count = json_object_get_int(key);
+        }
 
+        /* the offset is computed by us, so write that */
+        v->entry->offset = offset;
 
+        /* now get the data and put it in the buffer and update the offset */
+        if (json_object_object_get_ex(entry, "value", &key) == 0) {
+            warnx(_("*** invalid header tag entry, missing 'value'"));
+        } else {
+            value = json_object_get_string(key);
+            len = json_object_get_string_len(key);
 
+            memcpy(datapos, value, len);
+            datapos += len + 1;
+            offset += len + 1;
+        }
 
-/*
-
-
-      "offset": "0x10A4",
-      "count": "16",
-      "value": "AAAAPgAAAAf///+QAAAAEA==\n"
-
-
-
-
-    {
-      "name": "RPMSIGTAG_SHA1",
-      "number": "269",
-      "type": "string",
-      "offset": "0x0",
-      "count": "1",
-      "value": "a786742fedf70b74401955b18c07bf0ad79cf9d5"
-    },
-    {
-      "name": "RPMSIGTAG_SHA256",
-      "number": "273",
-      "type": "string",
-      "offset": "0x29",
-      "count": "1",
-      "value": "d7f406002d9dd8f2339e0cfa64eebadca12fbdbe6cd7840f88f967f70dcc1f5d"
-    },
-
-*/
-
-
+        /* move to next entry */
+        v->entry++;
     }
-
 
     *hdr = s;
     *hdrinfo = v;

@@ -27,11 +27,8 @@ struct json_object *
 read_lead(const int fd)
 {
     struct rpmlead rawlead;
-    struct rpmlead *readbuf = NULL;
     struct json_object *lead = NULL;
     char *s = NULL;
-    ssize_t n = 0;
-    ssize_t count = 0;
 
     if (fd < 0) {
         return NULL;
@@ -41,18 +38,8 @@ read_lead(const int fd)
     memset(&rawlead, 0, sizeof(rawlead));
 
     /* read in the lead */
-    count = RPMLEAD_SIZE;
-    readbuf = &rawlead;
-
-    while (n < count) {
-        n = read(fd, readbuf, count);
-
-        if (n == -1) {
-            err(EXIT_FAILURE, "read");
-        }
-
-        count -= n;
-        readbuf += n;
+    if (!xread(fd, &rawlead, RPMLEAD_SIZE)) {
+        exit(EXIT_FAILURE);
     }
 
     /* convert some lead fields from network byte order to host byte order */

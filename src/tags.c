@@ -4,6 +4,7 @@
  */
 
 #include <string.h>
+#include <assert.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
 
