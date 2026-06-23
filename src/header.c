@@ -8,6 +8,7 @@
 #include <err.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
+#include <rpm/rpmbase64.h>
 #include <rpm/rpmtd.h>
 #include <json.h>
 
@@ -125,6 +126,14 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     int32_t offset = 0;
     const char *value = NULL;
     int len = 0;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    uint8_t i8;
+    uint16_t i16;
+    uint32_t i32;
+    uint64_t i64;
+    size_t totalsize = 0;
+    rpmTagType entry_type = RPM_NULL_TYPE;
 
     if (data == NULL) {
         return 0;
@@ -138,8 +147,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     assert(v != NULL);
 
     /* fill out the beginning with the magic and reserved values */
-    s->magic = RPM_SIGNATURE_MAGIC;
-    s->reserved = RPM_SIGNATURE_RESERVED;
+    s->magic = htonl(RPM_SIGNATURE_MAGIC);
+    s->reserved = htonl(RPM_SIGNATURE_RESERVED);
 
     /* get the tags for this header */
     if (json_object_object_get_ex(data, "tags", &tags) == 0) {
@@ -163,22 +172,52 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     v->estart = xcalloc(s->nentries, sizeof(*(v->estart)));
     v->entry = v->estart;
     assert(v->estart != NULL);
+    s->nentries = htonl(s->nentries);
 
     /* calculate total data size needed */
-    size_t total_data_size = 0;
     for (i = 0; i < json_object_array_length(tags); i++) {
+        /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
+
+        /* get the tag type */
+        entry_type = RPM_NULL_TYPE;
+
+        if (json_object_object_get_ex(entry, "type", &key)) {
+            entry_type = tag_type(key);
+        }
+
+        /* get the value and calculate size */
         if (json_object_object_get_ex(entry, "value", &key)) {
-            total_data_size += json_object_get_string_len(key) + 1;
+            if (entry_type == RPM_BIN_TYPE) {
+                /* binary data: base64 decode to get actual size */
+                value = json_object_get_string(key);
+                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+
+                if (r == 0) {
+                    totalsize += blobsize;
+                    free(blob);
+                }
+            } else if (entry_type == RPM_INT8_TYPE) {
+                totalsize += sizeof(uint8_t);
+            } else if (entry_type == RPM_INT16_TYPE) {
+                totalsize += sizeof(uint16_t);
+            } else if (entry_type == RPM_INT32_TYPE) {
+                totalsize += sizeof(uint32_t);
+            } else if (entry_type == RPM_INT64_TYPE) {
+                totalsize += sizeof(uint64_t);
+            } else {
+                /* string data: length + null terminator */
+                totalsize += json_object_get_string_len(key) + 1;
+            }
         }
     }
 
     /* allocate the data buffer */
-    v->datastart = xcalloc(total_data_size, sizeof(uint8_t));
+    v->datastart = xcalloc(totalsize, sizeof(uint8_t));
     assert(v->datastart != NULL);
 
     /* set the data size in the header */
-    s->nbytes = total_data_size;
+    s->nbytes = htonl(totalsize);
 
     /* position the data buffer and offset */
     datapos = v->datastart;
@@ -214,13 +253,54 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         if (json_object_object_get_ex(entry, "value", &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'value'"));
         } else {
-            value = json_object_get_string(key);
-            len = json_object_get_string_len(key);
+            /* handle each data type */
+            if (v->entry->type == RPM_BIN_TYPE) {
+                value = json_object_get_string(key);
+                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
 
-            memcpy(datapos, value, len);
-            datapos += len + 1;
-            offset += len + 1;
+                if (r == 0) {
+                    memcpy(datapos, blob, blobsize);
+                    datapos += blobsize;
+                    offset += blobsize;
+                    free(blob);
+                } else {
+                    warnx(_("*** rpmBase64Decode failed with code %d"), r);
+                }
+            } else if (v->entry->type == RPM_INT8_TYPE) {
+                i8 = json_object_get_int(key);
+                memcpy(datapos, &i8, sizeof(i8));
+                datapos += sizeof(i8);
+                offset += sizeof(i8);
+            } else if (v->entry->type == RPM_INT16_TYPE) {
+                i16 = htons(json_object_get_uint64(key));
+                memcpy(datapos, &i16, sizeof(i16));
+                datapos += sizeof(i16);
+                offset += sizeof(i16);
+            } else if (v->entry->type == RPM_INT32_TYPE) {
+                i32 = htonl(json_object_get_uint64(key));
+                memcpy(datapos, &i32, sizeof(i32));
+                datapos += sizeof(i32);
+                offset += sizeof(i32);
+            } else if (v->entry->type == RPM_INT64_TYPE) {
+                i64 = htobe64(json_object_get_uint64(key));
+                memcpy(datapos, &i64, sizeof(i64));
+                datapos += sizeof(i64);
+                offset += sizeof(i64);
+            } else {
+                /* string data */
+                value = json_object_get_string(key);
+                len = json_object_get_string_len(key);
+                memcpy(datapos, value, len);
+                datapos += len + 1;
+                offset += len + 1;
+            }
         }
+
+        /* convert entry fields to network byte order */
+        v->entry->tag = htonl(v->entry->tag);
+        v->entry->type = htonl(v->entry->type);
+        v->entry->offset = htonl(v->entry->offset);
+        v->entry->count = htonl(v->entry->count);
 
         /* move to next entry */
         v->entry++;

@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <err.h>
 #include <assert.h>
+#include <arpa/inet.h>
 #include <rpm/header.h>
 
 #include "tarpm.h"
@@ -64,6 +65,7 @@ main(int argc, char **argv)
     struct rpmhdr *sig = NULL;
     struct rpmhdrinfo *siginfo = NULL;
     Header h;
+    uint32_t n = 0;
     FILE *rpm = NULL;
     char *opt = NULL;
     char *short_opts = "txcvf:O:V\?";
@@ -444,12 +446,16 @@ TODO:
         }
 
         /* write the signature index entries */
-        if (fwrite(siginfo->estart, sizeof(struct rpmhdrentry), sig->nentries, rpm) != sig->nentries) {
+        n = ntohl(sig->nentries);
+
+        if (fwrite(siginfo->estart, sizeof(struct rpmhdrentry), n, rpm) != n) {
             warn("fwrite");
         }
 
         /* write the signature data */
-        if (fwrite(siginfo->datastart, 1, sig->nbytes, rpm) != sig->nbytes) {
+        n = ntohl(sig->nbytes);
+
+        if (fwrite(siginfo->datastart, 1, n, rpm) != n) {
             warn("fwrite");
         }
 

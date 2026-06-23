@@ -178,6 +178,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
 
     /* add each tag to the array */
     for (i = 0; i < hdr->nentries; i++) {
+        /* the header entries are still in network byte order from the file */
         tag = ntohl(hdrentry[i].tag);
         offset = ntohl(hdrentry[i].offset);
         datatype = ntohl(hdrentry[i].type);
