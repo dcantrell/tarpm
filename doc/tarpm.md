@@ -28,7 +28,7 @@ before creating a new RPM package.
 Keep in mind the source RPM and corresponding spec file are not used
 by **tarpm**.  You are working with individual packages only.  Care
 must be taken when modifying the metadata or payload as rpm(8) may
-refuse to work with your newly generated package.
+refuse to work with your newly created package.
 
 Some of the JSON metadata is for informational purposes only and may
 not be modified.
