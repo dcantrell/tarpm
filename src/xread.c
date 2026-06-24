@@ -18,6 +18,10 @@ xread(int fd, void *buf, size_t count)
     ssize_t total = 0;
     ssize_t n = 0;
 
+    if (buf == NULL) {
+        return false;
+    }
+
     while (total < c) {
         n = read(fd, readbuf + total, c - total);
 
