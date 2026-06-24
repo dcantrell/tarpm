@@ -27,12 +27,15 @@ compute_hdrinfo(const struct rpmhdr *hdr, const bool signature)
     assert(hdrinfo != NULL);
 
     /* computed from header values */
+    /* NOTE: these values are already in host byte order */
     hdrinfo->ilen = hdr->nentries * sizeof(struct rpmhdrentry);
     hdrinfo->hlen = hdrinfo->ilen + hdr->nbytes;
 
     /* signature is aligned, so padding may be present */
     if (signature) {
         hdrinfo->padlen = (8 - (hdrinfo->hlen % 8)) % 8;
+    } else {
+        hdrinfo->padlen = 0;
     }
 
     return hdrinfo;

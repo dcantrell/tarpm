@@ -85,6 +85,7 @@ extract_payload(const char *rpm)
     if (rc == RPMRC_NOTFOUND || rc == RPMRC_FAIL) {
         warn("*** rpmReadPackageFile");
         Fclose(fdi);
+        fdi = NULL;
         goto cleanup;
     }
 
@@ -198,9 +199,12 @@ extract_payload(const char *rpm)
     }
 
 cleanup:
+    if (gzdi) {
+        Fclose(gzdi);
+    }
+
     free(hardlink);
     free(buf);
-    Fclose(gzdi);
     archive_entry_free(entry);
     archive_write_close(archive);
     archive_write_free(archive);

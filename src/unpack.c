@@ -120,7 +120,7 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
     flags |= ARCHIVE_EXTRACT_UNLINK;
 
     /* full location to the archive */
-    if ((rfilename = realpath(archive, rfilename)) == NULL) {
+    if ((rfilename = realpath(archive, NULL)) == NULL) {
         if (errno == ENOENT) {
             return 0;
         } else {

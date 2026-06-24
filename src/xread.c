@@ -28,7 +28,11 @@ xread(int fd, void *buf, size_t count)
 
         if (n == 0) {
             /* EOF */
-            return true;
+            if (total < c) {
+                return false;
+            } else {
+                return true;
+            }
         }
 
         total += n;

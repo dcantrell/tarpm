@@ -50,13 +50,14 @@ char *joinpath(const char *path, ...)
     char *tmp = NULL;
     char *near = NULL;
     char *far = NULL;
+    size_t s = PATH_MAX + 1;
 
     if (path == NULL) {
         return NULL;
     }
 
     /* Allocate a large buffer to use for building the path. */
-    tail = built = xalloc(PATH_MAX + 1);
+    tail = built = xalloc(s);
 
     /* Make sure the full path starts with a slash. */
     if (*path == '/') {
@@ -69,7 +70,7 @@ char *joinpath(const char *path, ...)
     }
 
     /* begin our joined path */
-    tail = stpcpy(tail, path);
+    tail = stpncpy(tail, path, s - (tail - built));
 
     /* the remaining elements come in this way */
     va_start(ap, path);
@@ -104,10 +105,10 @@ char *joinpath(const char *path, ...)
 
         /* perform the concatenations */
         if (needsep) {
-            tail = stpcpy(tail, "/");
+            tail = stpncpy(tail, "/", s - (tail - built));
         }
 
-        tail = stpcpy(tail, element);
+        tail = stpncpy(tail, element, s - (tail - built));
     }
 
     va_end(ap);

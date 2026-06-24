@@ -56,7 +56,7 @@ main(int argc, char **argv)
     char *input_dir = NULL;
     int flags = R_OK;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-    int rpmfd = 0;
+    int rpmfd = -1;
     struct stat sb;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
@@ -207,6 +207,8 @@ main(int argc, char **argv)
                 filename = realpath(argv[optind + 1], NULL);
             } else {
                 /* the other mode is -c which will create the named file */
+                flags |= W_OK;
+
                 if (argv[optind + 1][0] == '/') {
                     filename = strdup(argv[optind + 1]);
                 } else {
@@ -417,12 +419,12 @@ TODO:
 * read in header.json to object
 * create the lead using data from the header
 
-- create the signature using data from signature.json
+* create the signature using data from signature.json
 - create the header using data from header.json
 
 * open a file and get a handle for the target filename
 * write the lead to the output file
-- write the signature to the output file
+* write the signature to the output file
 - write the header to the output file
 - create the payload writer (use librpm) and yeet each payload file in to the output file
 * close the output file
