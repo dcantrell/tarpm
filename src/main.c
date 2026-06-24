@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
+#include <rpm/rpmbase64.h>
 
 #include "tarpm.h"
 
@@ -44,7 +45,7 @@ usage(void)
 }
 
 /* Handler for -x mode (extract) */
-void
+static void
 extract_rpm(const char *filename, const char *cwd, const char *output_dir)
 {
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
@@ -179,13 +180,111 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir)
     return;
 }
 
+/* Helper for create_rpm() that writes header data to the RPM */
+static void
+write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_signature, struct json_object *data)
+{
+    uint32_t i = 0;
+    uint32_t n = 0;
+    uint32_t nentries = 0;
+    uint32_t nbytes = 0;
+    uint32_t hlen = 0;
+    uint32_t padlen = 0;
+    uint8_t padding[8] = {0};
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *trailer_obj = NULL;
+    struct json_object *value_obj = NULL;
+    const char *trailer_value = NULL;
+    uint8_t *trailer_data = NULL;
+    size_t trailer_size = 0;
+    int r = 0;
+    bool has_trailer = false;
+
+    assert(rpm != NULL);
+    assert(hdr != NULL);
+    assert(hdrinfo != NULL);
+
+    if (fwrite(hdr, sizeof(*hdr), 1, rpm) != 1) {
+        warn("fwrite");
+    }
+
+    /* write the signature index entries */
+    nentries = ntohl(hdr->nentries);
+
+    if (fwrite(hdrinfo->estart, sizeof(struct rpmhdrentry), nentries, rpm) != nentries) {
+        warn("fwrite");
+    }
+
+    /* write the signature data */
+    nbytes = ntohl(hdr->nbytes);
+    n = nbytes;
+
+    /*
+     * in HEADER_SIGNATURES or HEADER_IMMUTABLE, actual data is 16
+     * bytes less, because the trailer is counted in nbytes but
+     * not written in the main data section
+     */
+    for (i = 0; i < nentries; i++) {
+        if (ntohl(hdrinfo->estart[i].tag) == HEADER_SIGNATURES || ntohl(hdrinfo->estart[i].tag) == HEADER_IMMUTABLE) {
+            /* trailer size */
+            n -= 16;
+            has_trailer = true;
+            break;
+        }
+    }
+
+    if (fwrite(hdrinfo->datastart, 1, n, rpm) != n) {
+        warn("fwrite");
+    }
+
+    /* write trailer and padding after signature data to align to 8-byte boundary */
+    if (is_signature) {
+        /* write the trailer before padding if present */
+        if (has_trailer && data != NULL) {
+            if (json_object_object_get_ex(data, "tags", &tags) == 1) {
+                for (i = 0; i < json_object_array_length(tags); i++) {
+                    entry = json_object_array_get_idx(tags, i);
+
+                    if (json_object_object_get_ex(entry, "trailer", &trailer_obj) == 1) {
+                        if (json_object_object_get_ex(entry, "value", &value_obj) == 1) {
+                            trailer_value = json_object_get_string(value_obj);
+                            r = rpmBase64Decode(trailer_value, (void **) &trailer_data, &trailer_size);
+
+                            if (r == 0 && trailer_size == 16) {
+                                if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
+                                    warn("fwrite");
+                                }
+
+                                free(trailer_data);
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        /* padding is based on index entries + full nbytes (including trailer) */
+        hlen = nentries * sizeof(struct rpmhdrentry) + nbytes;
+        padlen = (8 - (hlen % 8)) % 8;
+
+        if (padlen > 0) {
+            if (fwrite(padding, 1, padlen, rpm) != padlen) {
+                warn("fwrite");
+            }
+        }
+    }
+
+    return;
+}
+
 /* Handler for -c mode (create) */
 static void
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const int flags)
 {
     FILE *rpm = NULL;
-    uint32_t n = 0;
-    uint32_t i = 0;
     struct stat sb;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
@@ -261,12 +360,12 @@ TODO:
 * create the lead using data from the header
 
 * create the signature using data from signature.json
-- create the header using data from header.json
+* create the header using data from header.json
 
 * open a file and get a handle for the target filename
 * write the lead to the output file
 * write the signature to the output file
-- write the header to the output file
+* write the header to the output file
 - create the payload writer (use librpm) and yeet each payload file in to the output file
 * close the output file
 
@@ -285,36 +384,14 @@ TODO:
     }
 
     /* write the signature to the RPM */
-    if (fwrite(sig, sizeof(*sig), 1, rpm) != 1) {
-        warn("fwrite");
-    }
+    write_header(rpm, sig, siginfo, true, signature);
 
-    /* write the signature index entries */
-    n = ntohl(sig->nentries);
+    /* write the header to the RPM */
+    write_header(rpm, hdr, hdrinfo, false, header);
 
-    if (fwrite(siginfo->estart, sizeof(struct rpmhdrentry), n, rpm) != n) {
-        warn("fwrite");
-    }
 
-    /* write the signature data */
-    n = ntohl(sig->nbytes);
+/* XXX */
 
-    /*
-     * in HEADER_SIGNATURES or HEADER_IMMUTABLE, actual data is 16
-     * bytes less, because the trailer is counted in nbytes but
-     * not written
-     */
-    for (i = 0; i < ntohl(sig->nentries); i++) {
-        if (ntohl(siginfo->estart[i].tag) == HEADER_SIGNATURES || ntohl(siginfo->estart[i].tag) == HEADER_IMMUTABLE) {
-            /* trailer size */
-            n -= 16;
-            break;
-        }
-    }
-
-    if (fwrite(siginfo->datastart, 1, n, rpm) != n) {
-        warn("fwrite");
-    }
 
     /* close the RPM */
     if (fclose(rpm) != 0) {

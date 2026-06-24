@@ -30,13 +30,27 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     uint32_t tag_number = 0;
+    uint32_t tag_offset = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
     uint8_t *blob = NULL;
     size_t blobsize = 0;
     int32_t padding = 0;
+    size_t item_size = 0;
+    size_t max_end = 0;
+    bool has_offsets = false;
+    size_t j = 0;
+    size_t arr_len = 0;
+    struct json_object *str_obj = NULL;
 
     if (tags == NULL) {
         return 0;
+    }
+
+    /* check if first entry has offset field */
+    entry = json_object_array_get_idx(tags, 0);
+
+    if (json_object_object_get_ex(entry, "offset", &key)) {
+        has_offsets = true;
     }
 
     for (i = 0; i < json_object_array_length(tags); i++) {
@@ -62,6 +76,8 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, "value", &key)) {
+            item_size = 0;
+
             if (entry_type == RPM_BIN_TYPE) {
                 /* binary data: base64 decode to get actual size */
                 value = json_object_get_string(key);
@@ -73,34 +89,79 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
                         *trailer_index = i;
                         *trailer_size = blobsize;
                     } else {
-                        datasize += blobsize;
+                        item_size = blobsize;
                     }
 
                     free(blob);
                     blob = NULL;
                 }
             } else if (entry_type == RPM_INT8_TYPE) {
-                datasize += sizeof(uint8_t);
-            } else if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
-                /* add alignment padding for integer types (4-byte alignment) */
-                padding = (4 - (datasize % 4)) % 4;
-                datasize += padding;
-
-                if (entry_type == RPM_INT16_TYPE) {
-                    datasize += sizeof(uint16_t);
-                } else if (entry_type == RPM_INT32_TYPE) {
-                    datasize += sizeof(uint32_t);
+                if (json_object_get_type(key) == json_type_array) {
+                    item_size = sizeof(uint8_t) * json_object_array_length(key);
                 } else {
-                    datasize += sizeof(uint64_t);
+                    item_size = sizeof(uint8_t);
+                }
+            } else if (entry_type == RPM_INT16_TYPE) {
+                if (json_object_get_type(key) == json_type_array) {
+                    item_size = sizeof(uint16_t) * json_object_array_length(key);
+                } else {
+                    item_size = sizeof(uint16_t);
+                }
+            } else if (entry_type == RPM_INT32_TYPE) {
+                if (json_object_get_type(key) == json_type_array) {
+                    item_size = sizeof(uint32_t) * json_object_array_length(key);
+                } else {
+                    item_size = sizeof(uint32_t);
+                }
+            } else if (entry_type == RPM_INT64_TYPE) {
+                if (json_object_get_type(key) == json_type_array) {
+                    item_size = sizeof(uint64_t) * json_object_array_length(key);
+                } else {
+                    item_size = sizeof(uint64_t);
+                }
+            } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
+                /* string array: sum of all string lengths + NULs */
+                j = 0;
+                arr_len = 0;
+                str_obj = NULL;
+
+                arr_len = json_object_array_length(key);
+
+                for (j = 0; j < arr_len; j++) {
+                    str_obj = json_object_array_get_idx(key, j);
+                    item_size += strlen(json_object_get_string(str_obj)) + 1;
                 }
             } else {
                 /* string data: length + NUL */
-                datasize += json_object_get_string_len(key) + 1;
+                item_size = json_object_get_string_len(key) + 1;
+            }
+
+            if (has_offsets) {
+                /* calculate buffer size based on max(offset + size) */
+                if (json_object_object_get_ex(entry, "offset", &key)) {
+                    tag_offset = json_object_get_uint64(key);
+
+                    if (tag_offset + item_size > max_end) {
+                        max_end = tag_offset + item_size;
+                    }
+                }
+            } else {
+                /* sequential calculation with alignment */
+                if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
+                    padding = (4 - (datasize % 4)) % 4;
+                    datasize += padding;
+                }
+
+                datasize += item_size;
             }
         }
     }
 
-    return datasize;
+    if (has_offsets) {
+        return max_end;
+    } else {
+        return datasize;
+    }
 }
 
 /* Add the header tags and their values to the data buffer */
@@ -122,6 +183,10 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     uint8_t *blob = NULL;
     size_t blobsize = 0;
     int32_t padding = 0;
+    size_t j = 0;
+    size_t arr_len = 0;
+    struct json_object *int_obj = NULL;
+    struct json_object *str_obj = NULL;
 
     if (tags == NULL || v == NULL) {
         return -1;
@@ -157,13 +222,19 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             v->entry->count = json_object_get_uint64(key);
         }
 
-        /* check if this is the trailer entry */
-        if (trailer_index >= 0 && i == (size_t)trailer_index) {
+        /* get the offset from JSON if present, otherwise calculate it */
+        if (json_object_object_get_ex(entry, "offset", &key) == 1) {
+            /* use offset from JSON for exact recreation */
+            v->entry->offset = json_object_get_uint64(key);
+            offset = v->entry->offset;
+            datapos = v->datastart + offset;
+        } else if (trailer_index >= 0 && i == (size_t)trailer_index) {
             /* trailer offset points to end of data (past actual data) */
             v->entry->offset = totalsize;
+            offset = totalsize;
             /* trailer is not written to data buffer when creating */
         } else {
-            /* normal entry - compute offset and write data sequentially */
+            /* compute offset and write data sequentially */
             /* add alignment padding for integer types (4-byte alignment) */
             if (v->entry->type == RPM_INT16_TYPE || v->entry->type == RPM_INT32_TYPE || v->entry->type == RPM_INT64_TYPE) {
                 /* align to 4-byte boundary */
@@ -173,7 +244,10 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             }
 
             v->entry->offset = offset;
+        }
 
+        /* write data for all entries except trailer */
+        if (!(trailer_index >= 0 && i == (size_t)trailer_index)) {
             /* now get the data and put it in the buffer and update the offset */
             if (json_object_object_get_ex(entry, "value", &key) == 0) {
                 warnx(_("*** invalid header tag entry, missing 'value'"));
@@ -194,25 +268,97 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                         r = -1;
                     }
                 } else if (v->entry->type == RPM_INT8_TYPE) {
-                    i8 = json_object_get_int(key);
-                    memcpy(datapos, &i8, sizeof(i8));
-                    datapos += sizeof(i8);
-                    offset += sizeof(i8);
+                    if (json_object_get_type(key) == json_type_array) {
+                        j = 0;
+                        arr_len = json_object_array_length(key);
+                        int_obj = NULL;
+
+                        for (j = 0; j < arr_len; j++) {
+                            int_obj = json_object_array_get_idx(key, j);
+                            i8 = json_object_get_int(int_obj);
+                            memcpy(datapos, &i8, sizeof(i8));
+                            datapos += sizeof(i8);
+                            offset += sizeof(i8);
+                        }
+                    } else {
+                        i8 = json_object_get_int(key);
+                        memcpy(datapos, &i8, sizeof(i8));
+                        datapos += sizeof(i8);
+                        offset += sizeof(i8);
+                    }
                 } else if (v->entry->type == RPM_INT16_TYPE) {
-                    i16 = htons(json_object_get_uint64(key));
-                    memcpy(datapos, &i16, sizeof(i16));
-                    datapos += sizeof(i16);
-                    offset += sizeof(i16);
+                    if (json_object_get_type(key) == json_type_array) {
+                        j = 0;
+                        arr_len = json_object_array_length(key);
+                        int_obj = NULL;
+
+                        for (j = 0; j < arr_len; j++) {
+                            int_obj = json_object_array_get_idx(key, j);
+                            i16 = htons(json_object_get_uint64(int_obj));
+                            memcpy(datapos, &i16, sizeof(i16));
+                            datapos += sizeof(i16);
+                            offset += sizeof(i16);
+                        }
+                    } else {
+                        i16 = htons(json_object_get_uint64(key));
+                        memcpy(datapos, &i16, sizeof(i16));
+                        datapos += sizeof(i16);
+                        offset += sizeof(i16);
+                    }
                 } else if (v->entry->type == RPM_INT32_TYPE) {
-                    i32 = htonl(json_object_get_uint64(key));
-                    memcpy(datapos, &i32, sizeof(i32));
-                    datapos += sizeof(i32);
-                    offset += sizeof(i32);
+                    if (json_object_get_type(key) == json_type_array) {
+                        j = 0;
+                        arr_len = json_object_array_length(key);
+                        int_obj = NULL;
+
+                        for (j = 0; j < arr_len; j++) {
+                            int_obj = json_object_array_get_idx(key, j);
+                            i32 = htonl(json_object_get_uint64(int_obj));
+                            memcpy(datapos, &i32, sizeof(i32));
+                            datapos += sizeof(i32);
+                            offset += sizeof(i32);
+                        }
+                    } else {
+                        i32 = htonl(json_object_get_uint64(key));
+                        memcpy(datapos, &i32, sizeof(i32));
+                        datapos += sizeof(i32);
+                        offset += sizeof(i32);
+                    }
                 } else if (v->entry->type == RPM_INT64_TYPE) {
-                    i64 = htobe64(json_object_get_uint64(key));
-                    memcpy(datapos, &i64, sizeof(i64));
-                    datapos += sizeof(i64);
-                    offset += sizeof(i64);
+                    if (json_object_get_type(key) == json_type_array) {
+                        j = 0;
+                        arr_len = json_object_array_length(key);
+                        int_obj = NULL;
+
+                        for (j = 0; j < arr_len; j++) {
+                            int_obj = json_object_array_get_idx(key, j);
+                            i64 = htobe64(json_object_get_uint64(int_obj));
+                            memcpy(datapos, &i64, sizeof(i64));
+                            datapos += sizeof(i64);
+                            offset += sizeof(i64);
+                        }
+                    } else {
+                        i64 = htobe64(json_object_get_uint64(key));
+                        memcpy(datapos, &i64, sizeof(i64));
+                        datapos += sizeof(i64);
+                        offset += sizeof(i64);
+                    }
+                } else if (v->entry->type == RPM_STRING_ARRAY_TYPE) {
+                    /* string array: write each string with NUL terminator */
+                    j = 0;
+                    arr_len = 0;
+                    str_obj = NULL;
+
+                    arr_len = json_object_array_length(key);
+
+                    for (j = 0; j < arr_len; j++) {
+                        str_obj = json_object_array_get_idx(key, j);
+                        value = json_object_get_string(str_obj);
+                        len = strlen(value);
+                        memcpy(datapos, value, len + 1);
+                        datapos += len + 1;
+                        offset += len + 1;
+                    }
                 } else {
                     /* string data */
                     value = json_object_get_string(key);

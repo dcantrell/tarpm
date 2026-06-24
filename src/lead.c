@@ -82,11 +82,16 @@ create_lead(struct json_object *header)
 {
     struct rpmlead *lead = NULL;
     struct json_object *obj = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *key = NULL;
     const char *n = NULL;
     const char *e = NULL;
     const char *v = NULL;
     const char *r = NULL;
+    const char *name = NULL;
     char *nevr = NULL;
+    size_t i = 0;
+    bool is_source = false;
 
     assert(header != NULL);
 
@@ -94,20 +99,17 @@ create_lead(struct json_object *header)
     lead = xalloc(sizeof(*lead));
     assert(lead != NULL);
 
-    /* fill out the lead */
-
-    /*
-     * this is RPMTAG_FORMAT, which appears starting with major
-     * version 4.  all previous [usable] RPM file format versions are
-     * 3.  so if we see this tag, then it's major version 4.
-     * otherwise it's 3.
-     */
-    if (json_object_object_get_ex(header, "Payloadformat", &obj) == 1) {
-        lead->major = 4;
-    } else {
-        lead->major = 3;
+    /* get the tags array */
+    if (json_object_object_get_ex(header, "tags", &obj) == 0) {
+        warnx(_("*** missing tags in header.json"));
+        free(lead);
+        return NULL;
     }
 
+    /* fill out the lead */
+
+    /* RPM lead is deprecated, all modern RPMs use version 3.0 */
+    lead->major = 3;
     lead->minor = 0;
     lead->signature_type = htons(RPMSIGTYPE_HEADERSIG);
     memcpy(lead->magic, lead_magic, sizeof(lead->magic));
@@ -121,18 +123,26 @@ create_lead(struct json_object *header)
      * are looking at a source package which is type 1 in the lead,
      * otherwise binary packages are type 0.
      */
-    if (json_object_object_get_ex(header, "Sourcepackage", &obj) == 1) {
+    for (i = 0; i < json_object_array_length(obj); i++) {
+        entry = json_object_array_get_idx(obj, i);
+
+        if (json_object_object_get_ex(entry, "name", &key) == 1) {
+            name = json_object_get_string(key);
+
+            if (strcmp(name, "Sourcepackage") == 0) {
+                is_source = true;
+                break;
+            }
+        }
+    }
+
+    if (is_source) {
         lead->type = htons(1);
     } else {
         lead->type = htons(0);
     }
 
     /* construct the NEVR string */
-    if (json_object_object_get_ex(header, "tags", &obj) == 0) {
-        warnx(_("*** missing tags in header.json"));
-        free(lead);
-        return NULL;
-    }
 
     n = get_tag_value(obj, "Name");
     v = get_tag_value(obj, "Version");
