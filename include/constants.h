@@ -24,7 +24,7 @@
 #define RPMLEAD_MAGIC0               0xED
 #define RPMLEAD_MAGIC1               0xAB
 #define RPMLEAD_MAGIC2               0xEE
-#define RPMLEAD_MAGIC3               0XDB
+#define RPMLEAD_MAGIC3               0xDB
 
 #define RPMSIGTYPE_HEADERSIG         5
 

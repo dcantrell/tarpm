@@ -87,7 +87,7 @@ uint32_t *read_header_entries(const int fd, const struct rpmhdr *hdr, const uint
 struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
 
 /* reset.c */
-int reset_librpm(void);
+void reset_librpm(void);
 
 /* entry.c */
 void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);

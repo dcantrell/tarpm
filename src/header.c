@@ -147,12 +147,17 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
                 }
             } else {
                 /* sequential calculation with alignment */
-                if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
+                if (entry_type == RPM_INT16_TYPE) {
+                    padding = (2 - (datasize % 2)) % 2;
+                } else if (entry_type == RPM_INT32_TYPE) {
                     padding = (4 - (datasize % 4)) % 4;
-                    datasize += padding;
+                } else if (entry_type == RPM_INT64_TYPE) {
+                    padding = (8 - (datasize % 8)) % 8;
+                } else {
+                    padding = 0;
                 }
 
-                datasize += item_size;
+                datasize += padding + item_size;
             }
         }
     }
@@ -169,6 +174,7 @@ static int
 add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index)
 {
     int r = 0;
+    int b = 0;
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
@@ -256,15 +262,15 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 /* handle each data type */
                 if (v->entry->type == RPM_BIN_TYPE) {
                     value = json_object_get_string(key);
-                    r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+                    b = rpmBase64Decode(value, (void **) &blob, &blobsize);
 
-                    if (r == 0) {
+                    if (b == 0) {
                         memcpy(datapos, blob, blobsize);
                         datapos += blobsize;
                         offset += blobsize;
                         free(blob);
                     } else {
-                        warnx(_("*** rpmBase64Decode failed with code %d"), r);
+                        warnx(_("*** rpmBase64Decode failed with code %d"), b);
                         r = -1;
                     }
                 } else if (v->entry->type == RPM_INT8_TYPE) {
@@ -488,7 +494,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     size_t trailer_size = 0;
 
     if (data == NULL) {
-        return 0;
+        return -1;
     }
 
     /* allocate the two structures for the header */

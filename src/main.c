@@ -238,34 +238,34 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
         warn("fwrite");
     }
 
-    /* write trailer and padding after signature data to align to 8-byte boundary */
-    if (is_signature) {
-        /* write the trailer before padding if present */
-        if (has_trailer && data != NULL) {
-            if (json_object_object_get_ex(data, "tags", &tags) == 1) {
-                for (i = 0; i < json_object_array_length(tags); i++) {
-                    entry = json_object_array_get_idx(tags, i);
+    /* write the trailer if present (for both signature and header sections) */
+    if (has_trailer && data != NULL) {
+        if (json_object_object_get_ex(data, "tags", &tags) == 1) {
+            for (i = 0; i < json_object_array_length(tags); i++) {
+                entry = json_object_array_get_idx(tags, i);
 
-                    if (json_object_object_get_ex(entry, "trailer", &trailer_obj) == 1) {
-                        if (json_object_object_get_ex(entry, "value", &value_obj) == 1) {
-                            trailer_value = json_object_get_string(value_obj);
-                            r = rpmBase64Decode(trailer_value, (void **) &trailer_data, &trailer_size);
+                if (json_object_object_get_ex(entry, "trailer", &trailer_obj) == 1) {
+                    if (json_object_object_get_ex(entry, "value", &value_obj) == 1) {
+                        trailer_value = json_object_get_string(value_obj);
+                        r = rpmBase64Decode(trailer_value, (void **) &trailer_data, &trailer_size);
 
-                            if (r == 0 && trailer_size == 16) {
-                                if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
-                                    warn("fwrite");
-                                }
-
-                                free(trailer_data);
+                        if (r == 0 && trailer_size == 16) {
+                            if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
+                                warn("fwrite");
                             }
                         }
 
-                        break;
+                        free(trailer_data);
                     }
+
+                    break;
                 }
             }
         }
+    }
 
+    /* write padding after signature data to align to 8-byte boundary */
+    if (is_signature) {
         /* padding is based on index entries + full nbytes (including trailer) */
         hlen = nentries * sizeof(struct rpmhdrentry) + nbytes;
         padlen = (8 - (hlen % 8)) % 8;
@@ -299,7 +299,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const i
     assert(input_dir != NULL);
 
     /* make sure the input directory exists */
-    if (input_dir == NULL || access(input_dir, flags)) {
+    if (access(input_dir, flags)) {
         errx(EXIT_FAILURE, _("*** %s does not exist"), input_dir);
     }
 
@@ -578,7 +578,7 @@ main(int argc, char **argv)
             }
 
             assert(filename != NULL);
-            optind++;
+            optind += 2;
         }
     }
 
@@ -603,9 +603,7 @@ main(int argc, char **argv)
     }
 
     /* Reset librpm */
-    if (reset_librpm() != RPMRC_OK) {
-        errx(EXIT_FAILURE, _("*** unable to reset RPM configuration"));
-    }
+    reset_librpm();
 
     /* Main operations begin here */
     if (t_flag) {

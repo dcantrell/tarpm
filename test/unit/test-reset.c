@@ -23,8 +23,7 @@ clean_test_reset(void)
 void
 test_reset_librpm(void)
 {
-    TARPM_ASSERT_TRUE(reset_librpm() == 0);
-    TARPM_ASSERT_TRUE(reset_librpm() == RPMRC_OK);
+    reset_librpm();
 
     return;
 }

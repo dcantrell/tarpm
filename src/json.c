@@ -59,10 +59,7 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     rpmTagType datatype = 0;
     uint32_t count = 0;
     char *tagname = NULL;
-    char *tagnum = NULL;
     char *tagtype = NULL;
-    char *tagoffset = NULL;
-    char *tagcount = NULL;
 
     if (hdrentry == NULL) {
         return NULL;
@@ -87,24 +84,18 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     json_object_object_add(entry, RPM_ENTRY_NAME_DESC, json_object_new_string(tagname));
 
-    xasprintf(&tagnum, "%d", tag);
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tagnum));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_int64(tag));
 
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 
-    xasprintf(&tagoffset, "%d", offset);
-    json_object_object_add(entry, RPM_ENTRY_OFFSET_DESC, json_object_new_string(tagoffset));
+    json_object_object_add(entry, RPM_ENTRY_OFFSET_DESC, json_object_new_int64(offset));
 
-    xasprintf(&tagcount, "%d", count);
-    json_object_object_add(entry, RPM_ENTRY_COUNT_DESC, json_object_new_string(tagcount));
+    json_object_object_add(entry, RPM_ENTRY_COUNT_DESC, json_object_new_int64(count));
 
     /* clean up */
     free(tagname);
-    free(tagnum);
     free(tagtype);
-    free(tagoffset);
-    free(tagcount);
 
     return entry;
 }
@@ -273,13 +264,13 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
     }
 
     fprintf(fp, "%s\n", js);
-    r = fflush(fp);
+    r += fflush(fp);
 
     if (r != 0) {
         warn("fflush");
     }
 
-    r = fclose(fp);
+    r += fclose(fp);
 
     if (r != 0) {
         warn("fclose");

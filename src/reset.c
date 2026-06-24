@@ -7,18 +7,18 @@
 #include <rpm/rpmlib.h>
 #include <rpm/rpmmacro.h>
 
-int
+void
 reset_librpm(void)
 {
     static bool reset = false;
 
     if (reset) {
-        return RPMRC_OK;
+        return;
     }
 
     rpmFreeMacros(rpmGlobalMacroContext);
     rpmFreeRpmrc();
     reset = true;
 
-    return 0;
+    return;
 }

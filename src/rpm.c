@@ -17,26 +17,6 @@
 #include "tarpm.h"
 
 /*
-static
-struct archive *new_archive_reader(void)
-{
-    struct archive *a = NULL;
-
-    a = archive_read_new();
-    assert(a != NULL);
-
-#if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_read_support_compression_all(a);
-#else
-    archive_read_support_filter_all(a);
-#endif
-    archive_read_support_format_all(a);
-
-    return a;
-}
-*/
-
-/*
  * Given a path to an RPM package, extract the payload to a tar file
  * for later use with extract_rpm().  This happens in cases where
  * libarchive cannot detect the cpio stream in an opened RPM file.
@@ -99,7 +79,7 @@ extract_payload(const char *rpm)
     free(rpmio_flags);
 
     if (gzdi == NULL) {
-        warnx("*** Fdopen: %s", Fstrerror(gzdi));
+        warnx("*** Fdopen: %s", Fstrerror(fdi));
         goto cleanup;
     }
 
@@ -201,13 +181,22 @@ extract_payload(const char *rpm)
 cleanup:
     if (gzdi) {
         Fclose(gzdi);
+    } else {
+        Fclose(fdi);
     }
 
     free(hardlink);
     free(buf);
-    archive_entry_free(entry);
-    archive_write_close(archive);
-    archive_write_free(archive);
+
+    if (entry) {
+        archive_entry_free(entry);
+    }
+
+    if (archive) {
+        archive_write_close(archive);
+        archive_write_free(archive);
+    }
+
     rpmfilesFree(files);
     rpmfiFree(fi);
     headerFree(hdr);
@@ -332,6 +321,11 @@ char *
 get_nevra(Header h)
 {
     char *r = NULL;
+    const char *a = NULL;
+
+    if (h == NULL) {
+        return NULL;
+    }
 
     r = get_nevr(h);
 
@@ -339,6 +333,11 @@ get_nevra(Header h)
         return NULL;
     }
 
-    r = strappend(r, ".", get_header_arch(h), NULL);
+    a = get_header_arch(h);
+
+    if (a) {
+        return strappend(r, ".", a, NULL);
+    }
+
     return r;
 }
