@@ -485,6 +485,10 @@ TODO:
 
         json_object_put(header);
         json_object_put(signature);
+        free(sig);
+        free(siginfo->estart);
+        free(siginfo->datastart);
+        free(siginfo);
         free(rawlead);
         free(input_dir);
     }
