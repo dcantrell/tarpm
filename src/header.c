@@ -187,7 +187,10 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
 
-        /* get the tag number to detect RPMSIGTAG_HEADERSIGNATURES (62) */
+        /*
+         * get the tag number to detect HEADER_SIGNATURES or
+         * HEADER_IMMUTABLE
+         */
         tag_number = 0;
 
         if (json_object_object_get_ex(entry, "number", &key)) {
@@ -209,8 +212,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
                 r = rpmBase64Decode(value, (void **) &blob, &blobsize);
 
                 if (r == 0) {
-                    /* tag 62 (HEADERSIGNATURES) is the trailer - track it separately */
-                    if (tag_number == 62) {
+                    /* in the trailer - track it separately */
+                    if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
                         trailer_index = i;
                         trailer_size = blobsize;
                         trailer_data = blob;
@@ -294,7 +297,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
             v->entry->count = json_object_get_uint64(key);
         }
 
-        /* check if this is the trailer entry (tag 62) */
+        /* check if this is the trailer entry */
         if (trailer_index >= 0 && i == (size_t)trailer_index) {
             /* trailer offset points to end of data (past actual data) */
             v->entry->offset = totalsize;

@@ -456,10 +456,13 @@ TODO:
         /* write the signature data */
         n = ntohl(sig->nbytes);
 
-        /* if tag 62 (HEADERSIGNATURES) exists, actual data is 16 bytes less */
-        /* because the trailer is counted in nbytes but not written */
+        /*
+         * in HEADER_SIGNATURES or HEADER_IMMUTABLE, actual data is 16
+         * bytes less, because the trailer is counted in nbytes but
+         * not written
+         */
         for (i = 0; i < ntohl(sig->nentries); i++) {
-            if (ntohl(siginfo->estart[i].tag) == 62) {
+            if (ntohl(siginfo->estart[i].tag) == HEADER_SIGNATURES || ntohl(siginfo->estart[i].tag) == HEADER_IMMUTABLE) {
                 /* trailer size */
                 n -= 16;
                 break;
