@@ -19,6 +19,90 @@ const unsigned char rpm_header_magic[8] = {
     0x8e, 0xad, 0xe8, 0x01, 0x0, 0x00, 0x0, 0x0
 };
 
+/* Calculate the size of the data buffer for this header. */
+static size_t
+get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size)
+{
+    size_t datasize = 0;
+    size_t i = 0;
+    int r = 0;
+    const char *value = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *key = NULL;
+    uint32_t tag_number = 0;
+    rpmTagType entry_type = RPM_NULL_TYPE;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    int32_t padding = 0;
+
+    if (tags == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        /* get the tag in the array */
+        entry = json_object_array_get_idx(tags, i);
+
+        /*
+         * get the tag number to detect HEADER_SIGNATURES or
+         * HEADER_IMMUTABLE
+         */
+        tag_number = 0;
+
+        if (json_object_object_get_ex(entry, "number", &key)) {
+            tag_number = json_object_get_uint64(key);
+        }
+
+        /* get the tag type */
+        entry_type = RPM_NULL_TYPE;
+
+        if (json_object_object_get_ex(entry, "type", &key)) {
+            entry_type = tag_type(key);
+        }
+
+        /* get the value and calculate size */
+        if (json_object_object_get_ex(entry, "value", &key)) {
+            if (entry_type == RPM_BIN_TYPE) {
+                /* binary data: base64 decode to get actual size */
+                value = json_object_get_string(key);
+                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+
+                if (r == 0) {
+                    /* in the trailer - track it separately */
+                    if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
+                        *trailer_index = i;
+                        *trailer_size = blobsize;
+                    } else {
+                        datasize += blobsize;
+                    }
+
+                    free(blob);
+                    blob = NULL;
+                }
+            } else if (entry_type == RPM_INT8_TYPE) {
+                datasize += sizeof(uint8_t);
+            } else if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
+                /* add alignment padding for integer types (4-byte alignment) */
+                padding = (4 - (datasize % 4)) % 4;
+                datasize += padding;
+
+                if (entry_type == RPM_INT16_TYPE) {
+                    datasize += sizeof(uint16_t);
+                } else if (entry_type == RPM_INT32_TYPE) {
+                    datasize += sizeof(uint32_t);
+                } else {
+                    datasize += sizeof(uint64_t);
+                }
+            } else {
+                /* string data: length + NUL */
+                datasize += json_object_get_string_len(key) + 1;
+            }
+        }
+    }
+
+    return datasize;
+}
+
 /*
  * Validates an RPM header signature.  True if valid, false if sig is NULL or sig is invalid.
  */
@@ -132,13 +216,10 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     uint16_t i16;
     uint32_t i32;
     uint64_t i64;
-    size_t totalsize = 0;
-    rpmTagType entry_type = RPM_NULL_TYPE;
-    uint32_t tag_number = 0;
     int32_t padding = 0;
+    size_t totalsize = 0;
     int32_t trailer_index = -1;
     size_t trailer_size = 0;
-    uint8_t *trailer_data = NULL;
 
     if (data == NULL) {
         return 0;
@@ -179,81 +260,11 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     assert(v->estart != NULL);
     s->nentries = htonl(s->nentries);
 
-    /* calculate total data size needed and detect trailer */
-    /* use a separate offset tracker for alignment calculation */
-    offset = 0;
-
-    for (i = 0; i < json_object_array_length(tags); i++) {
-        /* get the tag in the array */
-        entry = json_object_array_get_idx(tags, i);
-
-        /*
-         * get the tag number to detect HEADER_SIGNATURES or
-         * HEADER_IMMUTABLE
-         */
-        tag_number = 0;
-
-        if (json_object_object_get_ex(entry, "number", &key)) {
-            tag_number = json_object_get_uint64(key);
-        }
-
-        /* get the tag type */
-        entry_type = RPM_NULL_TYPE;
-
-        if (json_object_object_get_ex(entry, "type", &key)) {
-            entry_type = tag_type(key);
-        }
-
-        /* get the value and calculate size */
-        if (json_object_object_get_ex(entry, "value", &key)) {
-            if (entry_type == RPM_BIN_TYPE) {
-                /* binary data: base64 decode to get actual size */
-                value = json_object_get_string(key);
-                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
-
-                if (r == 0) {
-                    /* in the trailer - track it separately */
-                    if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
-                        trailer_index = i;
-                        trailer_size = blobsize;
-                        trailer_data = blob;
-
-                        /*
-                         * don't free blob yet, we'll use it later.
-                         * trailer doesn't contribute to offset since
-                         * it goes at the end
-                         */
-                    } else {
-                        offset += blobsize;
-                        free(blob);
-                    }
-                }
-            } else if (entry_type == RPM_INT8_TYPE) {
-                offset += sizeof(uint8_t);
-            } else if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
-                /* add alignment padding for integer types (4-byte alignment) */
-                padding = (4 - (offset % 4)) % 4;
-                offset += padding;
-
-                if (entry_type == RPM_INT16_TYPE) {
-                    offset += sizeof(uint16_t);
-                } else if (entry_type == RPM_INT32_TYPE) {
-                    offset += sizeof(uint32_t);
-                } else {
-                    offset += sizeof(uint64_t);
-                }
-            } else {
-                /* string data: length + NUL */
-                offset += json_object_get_string_len(key) + 1;
-            }
-        }
-    }
-
     /*
      * total size is just the sequential data, NOT including trailer
      * trailer offset will point past the end of data
      */
-    totalsize = offset;
+    totalsize = get_data_buffer_size(tags, &trailer_index, &trailer_size);
 
     /* allocate the data buffer */
     v->datastart = xcalloc(totalsize, sizeof(uint8_t));
@@ -372,7 +383,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         v->entry++;
     }
 
-    free(trailer_data);
     *hdr = s;
     *hdrinfo = v;
 
