@@ -134,6 +134,11 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     uint64_t i64;
     size_t totalsize = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
+    uint32_t tag_number = 0;
+    int32_t padding = 0;
+    int32_t trailer_index = -1;
+    size_t trailer_size = 0;
+    uint8_t *trailer_data = NULL;
 
     if (data == NULL) {
         return 0;
@@ -174,10 +179,20 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     assert(v->estart != NULL);
     s->nentries = htonl(s->nentries);
 
-    /* calculate total data size needed */
+    /* calculate total data size needed and detect trailer */
+    /* use a separate offset tracker for alignment calculation */
+    offset = 0;
+
     for (i = 0; i < json_object_array_length(tags); i++) {
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
+
+        /* get the tag number to detect RPMSIGTAG_HEADERSIGNATURES (62) */
+        tag_number = 0;
+
+        if (json_object_object_get_ex(entry, "number", &key)) {
+            tag_number = json_object_get_uint64(key);
+        }
 
         /* get the tag type */
         entry_type = RPM_NULL_TYPE;
@@ -194,30 +209,63 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
                 r = rpmBase64Decode(value, (void **) &blob, &blobsize);
 
                 if (r == 0) {
-                    totalsize += blobsize;
-                    free(blob);
+                    /* tag 62 (HEADERSIGNATURES) is the trailer - track it separately */
+                    if (tag_number == 62) {
+                        trailer_index = i;
+                        trailer_size = blobsize;
+                        trailer_data = blob;
+
+                        /*
+                         * don't free blob yet, we'll use it later.
+                         * trailer doesn't contribute to offset since
+                         * it goes at the end
+                         */
+                    } else {
+                        offset += blobsize;
+                        free(blob);
+                    }
                 }
             } else if (entry_type == RPM_INT8_TYPE) {
-                totalsize += sizeof(uint8_t);
-            } else if (entry_type == RPM_INT16_TYPE) {
-                totalsize += sizeof(uint16_t);
-            } else if (entry_type == RPM_INT32_TYPE) {
-                totalsize += sizeof(uint32_t);
-            } else if (entry_type == RPM_INT64_TYPE) {
-                totalsize += sizeof(uint64_t);
+                offset += sizeof(uint8_t);
+            } else if (entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
+                /* add alignment padding for integer types (4-byte alignment) */
+                padding = (4 - (offset % 4)) % 4;
+                offset += padding;
+
+                if (entry_type == RPM_INT16_TYPE) {
+                    offset += sizeof(uint16_t);
+                } else if (entry_type == RPM_INT32_TYPE) {
+                    offset += sizeof(uint32_t);
+                } else {
+                    offset += sizeof(uint64_t);
+                }
             } else {
-                /* string data: length + null terminator */
-                totalsize += json_object_get_string_len(key) + 1;
+                /* string data: length + NUL */
+                offset += json_object_get_string_len(key) + 1;
             }
         }
     }
+
+    /*
+     * total size is just the sequential data, NOT including trailer
+     * trailer offset will point past the end of data
+     */
+    totalsize = offset;
 
     /* allocate the data buffer */
     v->datastart = xcalloc(totalsize, sizeof(uint8_t));
     assert(v->datastart != NULL);
 
-    /* set the data size in the header */
-    s->nbytes = htonl(totalsize);
+    /*
+     * set the data size in the header
+     * nbytes includes trailer size even though trailer data isn't
+     * written
+     */
+    if (trailer_index >= 0) {
+        s->nbytes = htonl(totalsize + trailer_size);
+    } else {
+        s->nbytes = htonl(totalsize);
+    }
 
     /* position the data buffer and offset */
     datapos = v->datastart;
@@ -231,7 +279,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         if (json_object_object_get_ex(entry, "number", &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'number'"));
         } else {
-            v->entry->tag = json_object_get_int(key);
+            v->entry->tag = json_object_get_uint64(key);
         }
 
         if (json_object_object_get_ex(entry, "type", &key) == 0) {
@@ -243,56 +291,71 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         if (json_object_object_get_ex(entry, "count", &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'count'"));
         } else {
-            v->entry->count = json_object_get_int(key);
+            v->entry->count = json_object_get_uint64(key);
         }
 
-        /* the offset is computed by us, so write that */
-        v->entry->offset = offset;
-
-        /* now get the data and put it in the buffer and update the offset */
-        if (json_object_object_get_ex(entry, "value", &key) == 0) {
-            warnx(_("*** invalid header tag entry, missing 'value'"));
+        /* check if this is the trailer entry (tag 62) */
+        if (trailer_index >= 0 && i == (size_t)trailer_index) {
+            /* trailer offset points to end of data (past actual data) */
+            v->entry->offset = totalsize;
+            /* trailer is not written to data buffer when creating */
         } else {
-            /* handle each data type */
-            if (v->entry->type == RPM_BIN_TYPE) {
-                value = json_object_get_string(key);
-                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+            /* normal entry - compute offset and write data sequentially */
+            /* add alignment padding for integer types (4-byte alignment) */
+            if (v->entry->type == RPM_INT16_TYPE || v->entry->type == RPM_INT32_TYPE || v->entry->type == RPM_INT64_TYPE) {
+                /* align to 4-byte boundary */
+                padding = (4 - (offset % 4)) % 4;
+                offset += padding;
+                datapos += padding;
+            }
 
-                if (r == 0) {
-                    memcpy(datapos, blob, blobsize);
-                    datapos += blobsize;
-                    offset += blobsize;
-                    free(blob);
-                } else {
-                    warnx(_("*** rpmBase64Decode failed with code %d"), r);
-                }
-            } else if (v->entry->type == RPM_INT8_TYPE) {
-                i8 = json_object_get_int(key);
-                memcpy(datapos, &i8, sizeof(i8));
-                datapos += sizeof(i8);
-                offset += sizeof(i8);
-            } else if (v->entry->type == RPM_INT16_TYPE) {
-                i16 = htons(json_object_get_uint64(key));
-                memcpy(datapos, &i16, sizeof(i16));
-                datapos += sizeof(i16);
-                offset += sizeof(i16);
-            } else if (v->entry->type == RPM_INT32_TYPE) {
-                i32 = htonl(json_object_get_uint64(key));
-                memcpy(datapos, &i32, sizeof(i32));
-                datapos += sizeof(i32);
-                offset += sizeof(i32);
-            } else if (v->entry->type == RPM_INT64_TYPE) {
-                i64 = htobe64(json_object_get_uint64(key));
-                memcpy(datapos, &i64, sizeof(i64));
-                datapos += sizeof(i64);
-                offset += sizeof(i64);
+            v->entry->offset = offset;
+
+            /* now get the data and put it in the buffer and update the offset */
+            if (json_object_object_get_ex(entry, "value", &key) == 0) {
+                warnx(_("*** invalid header tag entry, missing 'value'"));
             } else {
-                /* string data */
-                value = json_object_get_string(key);
-                len = json_object_get_string_len(key);
-                memcpy(datapos, value, len);
-                datapos += len + 1;
-                offset += len + 1;
+                /* handle each data type */
+                if (v->entry->type == RPM_BIN_TYPE) {
+                    value = json_object_get_string(key);
+                    r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+
+                    if (r == 0) {
+                        memcpy(datapos, blob, blobsize);
+                        datapos += blobsize;
+                        offset += blobsize;
+                        free(blob);
+                    } else {
+                        warnx(_("*** rpmBase64Decode failed with code %d"), r);
+                    }
+                } else if (v->entry->type == RPM_INT8_TYPE) {
+                    i8 = json_object_get_int(key);
+                    memcpy(datapos, &i8, sizeof(i8));
+                    datapos += sizeof(i8);
+                    offset += sizeof(i8);
+                } else if (v->entry->type == RPM_INT16_TYPE) {
+                    i16 = htons(json_object_get_uint64(key));
+                    memcpy(datapos, &i16, sizeof(i16));
+                    datapos += sizeof(i16);
+                    offset += sizeof(i16);
+                } else if (v->entry->type == RPM_INT32_TYPE) {
+                    i32 = htonl(json_object_get_uint64(key));
+                    memcpy(datapos, &i32, sizeof(i32));
+                    datapos += sizeof(i32);
+                    offset += sizeof(i32);
+                } else if (v->entry->type == RPM_INT64_TYPE) {
+                    i64 = htobe64(json_object_get_uint64(key));
+                    memcpy(datapos, &i64, sizeof(i64));
+                    datapos += sizeof(i64);
+                    offset += sizeof(i64);
+                } else {
+                    /* string data */
+                    value = json_object_get_string(key);
+                    len = json_object_get_string_len(key);
+                    memcpy(datapos, value, len);
+                    datapos += len + 1;
+                    offset += len + 1;
+                }
             }
         }
 
@@ -306,6 +369,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         v->entry++;
     }
 
+    free(trailer_data);
     *hdr = s;
     *hdrinfo = v;
 

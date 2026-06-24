@@ -66,6 +66,7 @@ main(int argc, char **argv)
     struct rpmhdrinfo *siginfo = NULL;
     Header h;
     uint32_t n = 0;
+    uint32_t i = 0;
     FILE *rpm = NULL;
     char *opt = NULL;
     char *short_opts = "txcvf:O:V\?";
@@ -454,6 +455,16 @@ TODO:
 
         /* write the signature data */
         n = ntohl(sig->nbytes);
+
+        /* if tag 62 (HEADERSIGNATURES) exists, actual data is 16 bytes less */
+        /* because the trailer is counted in nbytes but not written */
+        for (i = 0; i < ntohl(sig->nentries); i++) {
+            if (ntohl(siginfo->estart[i].tag) == 62) {
+                /* trailer size */
+                n -= 16;
+                break;
+            }
+        }
 
         if (fwrite(siginfo->datastart, 1, n, rpm) != n) {
             warn("fwrite");
