@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2024-08-09 11:53-0400\n"
+"POT-Creation-Date: 2026-06-25 14:34-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,61 +17,193 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/main.c:19
-#, c-format
-msgid "Binary RPM extraction and creation utility\n"
+#: src/header.c:211
+msgid "*** invalid header tag entry, missing 'number'"
 msgstr ""
 
-#: src/main.c:20
-#, c-format
-msgid "Usage: %s [OPTIONS] [binary .rpm file]\n"
+#: src/header.c:218
+msgid "*** invalid header tag entry, missing 'type'"
 msgstr ""
 
-#: src/main.c:21
+#: src/header.c:225
+msgid "*** invalid header tag entry, missing 'count'"
+msgstr ""
+
+#: src/header.c:262
+msgid "*** invalid header tag entry, missing 'value'"
+msgstr ""
+
+#: src/header.c:276
+#, c-format
+msgid "*** rpmBase64Decode failed with code %d"
+msgstr ""
+
+#: src/header.c:516
+msgid "*** missing tags in header data"
+msgstr ""
+
+#: src/header.c:523
+msgid "*** create_header: tags must be an array"
+msgstr ""
+
+#: src/json.c:216
+#, c-format
+msgid "*** missing or unreadable %s"
+msgstr ""
+
+#: src/json.c:223
+#, c-format
+msgid "*** json_object_from_file: %s"
+msgstr ""
+
+#: src/lead.c:104
+msgid "*** missing tags in header.json"
+msgstr ""
+
+#: src/main.c:31
+#, c-format
+msgid "RPM extraction and creation utility\n"
+msgstr ""
+
+#: src/main.c:32
+#, c-format
+msgid "Usage: %s [OPTIONS] [.rpm file] [directory]\n"
+msgstr ""
+
+#: src/main.c:33
 #, c-format
 msgid "Options:\n"
 msgstr ""
 
-#: src/main.c:22
+#: src/main.c:34
 #, c-format
-msgid "    -x, --extract                     Extract binary RPM file\n"
+msgid "    -t, --list                        List RPM payload contents\n"
 msgstr ""
 
-#: src/main.c:23
+#: src/main.c:35
+#, c-format
+msgid "    -c, --create                      Create an RPM file\n"
+msgstr ""
+
+#: src/main.c:36
+#, c-format
+msgid "    -x, --extract                     Extract RPM file\n"
+msgstr ""
+
+#: src/main.c:37
 #, c-format
 msgid "    -v, --verbose                     Verbose progress output\n"
 msgstr ""
 
-#: src/main.c:24
+#: src/main.c:38
 #, c-format
 msgid "    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"
 msgstr ""
 
-#: src/main.c:25
+#: src/main.c:39
+#, c-format
+msgid "    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"
+msgstr ""
+
+#: src/main.c:40
 #, c-format
 msgid "    -V, --version                     Display version information\n"
 msgstr ""
 
-#: src/main.c:26
+#: src/main.c:41
 #, c-format
 msgid "    -?, --help                        Display this screen\n"
 msgstr ""
 
-#: src/main.c:27
+#: src/main.c:42
 #, c-format
-msgid "See the tarpm(!) man page for more information.\n"
+msgid "See the %s(1) man page for more information.\n"
 msgstr ""
 
-#: src/main.c:70
-msgid "*** -x and -c specified together; unsupported"
+#: src/main.c:69
+#, c-format
+msgid "*** %s is not a valid RPM"
 msgstr ""
 
-#: src/main.c:82
+#: src/main.c:303
+#, c-format
+msgid "*** %s does not exist"
+msgstr ""
+
+#: src/main.c:317
+#, c-format
+msgid "*** %s is not a directory"
+msgstr ""
+
+#: src/main.c:324
+msgid "*** missing signature data"
+msgstr ""
+
+#: src/main.c:330
+msgid "*** missing header data"
+msgstr ""
+
+#: src/main.c:337
+msgid "*** unable to construct RPM lead"
+msgstr ""
+
+#: src/main.c:342
+msgid "*** unable to construct RPM signature"
+msgstr ""
+
+#: src/main.c:347
+msgid "*** unable to construct RPM header"
+msgstr ""
+
+#: src/main.c:472 src/main.c:480 src/main.c:488 src/main.c:593
+msgid "*** only one of -t, -x, or -c may be specified"
+msgstr ""
+
+#: src/main.c:499 src/main.c:554
+msgid "*** -f already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:516
+msgid "*** -O already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:522
 #, c-format
 msgid "%s version %s\n"
 msgstr ""
 
-#: src/main.c:88
+#: src/main.c:528
 #, c-format
 msgid "*** ?? getopt returned character code 0%o ??"
+msgstr ""
+
+#: src/main.c:598
+msgid "*** must specify at least -t, -x, or -c"
+msgstr ""
+
+#: src/main.c:602
+msgid "*** missing filename (-f) argument"
+msgstr ""
+
+#: src/main.c:611
+#, c-format
+msgid "XXX: unable to list RPMs right now\n"
+msgstr ""
+
+#: src/mkdirp.c:80 src/mkdirp.c:93
+#, c-format
+msgid "*** unable to mkdir %s"
+msgstr ""
+
+#: src/rpm.c:172
+msgid "*** error reading file from RPM payload"
+msgstr ""
+
+#: src/rpm.c:226
+#, c-format
+msgid "Fopen failed for %s: %s"
+msgstr ""
+
+#: src/tags.c:168
+msgid "*** get_tag_value: tags must be an array"
 msgstr ""
