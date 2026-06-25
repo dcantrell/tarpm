@@ -14,11 +14,6 @@
 
 #include "tarpm.h"
 
-/* the header magic and reserved bytes -- from librpm source */
-const unsigned char rpm_header_magic[8] = {
-    0x8e, 0xad, 0xe8, 0x01, 0x0, 0x00, 0x0, 0x0
-};
-
 /* Calculate the size of the data buffer for this header. */
 static size_t
 get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size)
@@ -242,13 +237,16 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
         } else {
             /* compute offset and write data sequentially */
             /* add alignment padding for integer types (4-byte alignment) */
-            if (v->entry->type == RPM_INT16_TYPE || v->entry->type == RPM_INT32_TYPE || v->entry->type == RPM_INT64_TYPE) {
-                /* align to 4-byte boundary */
+            if (v->entry->type == RPM_INT16_TYPE) {
+                padding = (2 - (offset % 2)) % 2;
+            } else if (v->entry->type == RPM_INT32_TYPE) {
                 padding = (4 - (offset % 4)) % 4;
-                offset += padding;
-                datapos += padding;
+            } else if (v->entry->type == RPM_INT64_TYPE) {
+                padding = (8 - (offset % 8)) % 8;
             }
 
+            offset += padding;
+            datapos += padding;
             v->entry->offset = offset;
         }
 
@@ -369,7 +367,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     /* string data */
                     value = json_object_get_string(key);
                     len = json_object_get_string_len(key);
-                    memcpy(datapos, value, len);
+                    memcpy(datapos, value, len + 1);
                     datapos += len + 1;
                     offset += len + 1;
                 }
@@ -486,8 +484,8 @@ int
 create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo)
 {
     int r = 0;
-    struct rpmhdr *s = *hdr;
-    struct rpmhdrinfo *v = *hdrinfo;
+    struct rpmhdr *s;
+    struct rpmhdrinfo *v;
     struct json_object *tags = NULL;
     size_t totalsize = 0;
     int32_t trailer_index = -1;

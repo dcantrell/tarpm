@@ -48,7 +48,7 @@ extract_payload(const char *rpm)
     char *filename = NULL;
     rpm_loff_t left;
     size_t len = 0;
-    size_t read = 0;
+    size_t rd = 0;
 
     if (rpm == NULL) {
         return NULL;
@@ -164,9 +164,9 @@ extract_payload(const char *rpm)
 
             while (left) {
                 len = (left > BUFSIZ ? BUFSIZ : left);
-                read = rpmfiArchiveRead(fi, buf, len);
+                rd = rpmfiArchiveRead(fi, buf, len);
 
-                if (read == len) {
+                if (rd == len) {
                     archive_write_data(archive, buf, len);
                 } else {
                     warnx(_("*** error reading file from RPM payload"));

@@ -618,6 +618,7 @@ main(int argc, char **argv)
     /* Cleanup and exit */
     free(filename);
     free(cwd);
+    free(output_dir);
     free(input_dir);
 
     return EXIT_SUCCESS;

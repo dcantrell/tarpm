@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-#include <stdio.h>
-#include <assert.h>
-
 #ifndef _TARPM_HELPERS_H
 #define _TARPM_HELPERS_H
+
+#include <stdio.h>
+#include <assert.h>
 
 /* Macros */
 #ifdef NDEBUG

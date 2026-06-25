@@ -44,7 +44,7 @@ sort_by_tag_number(const void *a, const void *b)
     obj = json_object_object_get(*bobj, RPM_ENTRY_TAG_DESC);
     btag = json_object_get_int(obj);
 
-    return atag - btag;
+    return (atag > btag) - (atag < btag);
 }
 
 /*
@@ -238,6 +238,7 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
     const char *js = NULL;
     FILE *fp = NULL;
     int r = 0;
+    int q = 0;
     int flags = JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY;
 
     if (data == NULL || output_dir == NULL || output_file == NULL) {
@@ -264,17 +265,17 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
     }
 
     fprintf(fp, "%s\n", js);
-    r += fflush(fp);
+    r = fflush(fp);
 
     if (r != 0) {
         warn("fflush");
     }
 
-    r += fclose(fp);
+    q = fclose(fp);
 
-    if (r != 0) {
+    if (q != 0) {
         warn("fclose");
     }
 
-    return r;
+    return (r || q);
 }
