@@ -98,8 +98,10 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test xcalloc()", test_xcalloc) == NULL ||
         CU_add_test(pSuite, "test xalloc()", test_xalloc) == NULL ||
-        CU_add_test(pSuite, "test xrealloc()", test_xrealloc) == NULL ||
-        CU_add_test(pSuite, "test xreallocarray()", test_xreallocarray) == NULL) {
+#ifdef _HAVE_REALLOCARRAY
+        CU_add_test(pSuite, "test xreallocarray()", test_xreallocarray) == NULL ||
+#endif
+        CU_add_test(pSuite, "test xrealloc()", test_xrealloc) == NULL) {
         return NULL;
     }
 
