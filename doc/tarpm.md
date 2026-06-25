@@ -85,7 +85,7 @@ JSON files are:
 :    expecting to find.  Things from the spec file, changelog
 :    information, dependency information, and so on.  It is also marked
 :    with a magic number followed by the number of records and the size
-:    of the data area.  Informatikon is stored in key=value manner but
+:    of the data area.  Information is stored in key=value manner but
 :    value may be an array.
 
 The contents of **lead.json** cannot be modified, but it might be
