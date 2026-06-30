@@ -41,7 +41,7 @@ not be modified.
 **-V**, **-\-version**
 :    Display version information.
 
-**-t**, **-\0list**
+**-t**, **-\-list**
 :    List the contents of the RPM package without metadata (cannot be used with **-c** or **-x**).
 
 **-x**, **-\-extract**
