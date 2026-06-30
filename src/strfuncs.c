@@ -69,11 +69,11 @@ char *
 strappend(char *dest, ...)
 {
     va_list sl;
-    char *s = NULL;
+    const char *s = NULL;
 
     va_start(sl, dest);
 
-    while ((s = va_arg(sl, char *)) != NULL) {
+    while ((s = va_arg(sl, const char *)) != NULL) {
         if (dest == NULL) {
             dest = strdup(s);
             assert(dest != NULL);

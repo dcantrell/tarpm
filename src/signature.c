@@ -44,7 +44,7 @@ read_signature(const int fd)
 
     /* signature is aligned, so padding may be present */
     if (!xread(fd, &hdrinfo->pad, hdrinfo->padlen)) {
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     /* handle trailer */

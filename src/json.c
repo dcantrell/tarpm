@@ -277,5 +277,9 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
         warn("fclose");
     }
 
-    return (r || q);
+    if (r || q) {
+        return -1;
+    }
+
+    return 0;
 }

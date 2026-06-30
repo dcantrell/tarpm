@@ -39,7 +39,7 @@ read_lead(const int fd)
 
     /* read in the lead */
     if (!xread(fd, &rawlead, RPMLEAD_SIZE)) {
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     /* convert some lead fields from network byte order to host byte order */
@@ -162,7 +162,11 @@ create_lead(struct json_object *header)
     }
 
     assert(nevr != NULL);
+#ifdef _HAVE_STRLCPY
     strlcpy(lead->name, nevr, sizeof(lead->name));
+#else
+    snprintf(lead->name, sizeof(lead->name), "%s", nevr);
+#endif
     free(nevr);
 
     return lead;

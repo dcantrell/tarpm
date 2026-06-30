@@ -282,7 +282,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 
 /* Handler for -c mode (create) */
 static void
-create_rpm(const char *filename, const char *cwd, const char *input_dir, const int flags)
+create_rpm(const char *filename, const char *cwd, const char *input_dir)
 {
     FILE *rpm = NULL;
     struct stat sb;
@@ -299,7 +299,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const i
     assert(input_dir != NULL);
 
     /* make sure the input directory exists */
-    if (access(input_dir, flags)) {
+    if (access(input_dir, R_OK|X_OK)) {
         errx(EXIT_FAILURE, _("*** %s does not exist"), input_dir);
     }
 
@@ -538,6 +538,7 @@ main(int argc, char **argv)
     if ((optind + 1) != argc) {
         /* process common short syntax options that may exist */
         opt = argv[optind];
+        havefilename = false;
 
         while (opt && *opt != '\0') {
             if (*opt == 't') {
@@ -562,14 +563,12 @@ main(int argc, char **argv)
         }
 
         /* pick up the 'f' filename if we don't have one */
-        if (havefilename) {
+        if (havefilename && optind < argc) {
             if ((t_flag || x_flag) && !access(argv[optind + 1], flags)) {
                 /* for -t and -x, the filename specified needs to exist */
                 filename = realpath(argv[optind + 1], NULL);
             } else {
                 /* the other mode is -c which will create the named file */
-                flags |= W_OK;
-
                 if (argv[optind + 1][0] == '/') {
                     filename = strdup(argv[optind + 1]);
                 } else {
@@ -612,7 +611,7 @@ main(int argc, char **argv)
     } else if (x_flag) {
         extract_rpm(filename, cwd, output_dir);
     } else if (c_flag) {
-        create_rpm(filename, cwd, input_dir, flags);
+        create_rpm(filename, cwd, input_dir);
     }
 
     /* Cleanup and exit */

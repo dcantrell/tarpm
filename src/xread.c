@@ -14,12 +14,9 @@ bool
 xread(int fd, void *buf, size_t count)
 {
     char *readbuf = (char *) buf;
-    ssize_t c = 0;
+    ssize_t c = count;
     ssize_t total = 0;
     ssize_t n = 0;
-
-    assert(count <= SIZE_MAX);
-    c = count;
 
     if (buf == NULL) {
         return false;

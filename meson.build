@@ -37,9 +37,14 @@ add_global_arguments('-D_GNU_SOURCE', language : 'c')
 # Define this to get around a problematic json_object.h macro
 add_global_arguments('-D__STRICT_ANSI__', language : 'c')
 
-# See if we have reallocarray in libc
+# Check for reallocarray in libc
 if cc.has_function('reallocarray')
     add_global_arguments('-D_HAVE_REALLOCARRAY', language : 'c')
+endif
+
+# Check for strlcpy in libc
+if cc.has_function('strlcpy')
+    add_global_arguments('-D_HAVE_STRLCPY', language : 'c')
 endif
 
 # Check for sys/queue.h

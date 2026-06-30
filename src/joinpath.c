@@ -96,7 +96,9 @@ char *joinpath(const char *path, ...)
             i = 0;
         }
 
-        while (*(element + i) == '/') element++;
+        while (*(element + i) == '/') {
+            element++;
+        }
 
         /* make sure we have at least one slash in case there are none */
         if (*element != '/' && *tail != '/') {
