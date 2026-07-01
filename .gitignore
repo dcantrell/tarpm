@@ -1,4 +1,6 @@
 build
 log
+*.pyc
+__pycache__
 RPMS
 SRPMS
