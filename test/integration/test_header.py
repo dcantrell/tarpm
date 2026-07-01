@@ -183,7 +183,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1045)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(tag["value"] == "4294967295")
+                        self.assertTrue(tag["value"] == -1)
                     elif t == "Providename":
                         self.assertTrue(int(tag["number"]) == 1047)
                         self.assertTrue(tag["type"] == "string array")
@@ -193,7 +193,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1048)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ["16777226", "16777226"])
+                        self.assertTrue(tag["value"] == [16777226, 16777226])
                     elif t == "Requirename":
                         self.assertTrue(int(tag["number"]) == 1049)
                         self.assertTrue(tag["type"] == "string array")
@@ -472,7 +472,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["count"]) == 4)
                         self.assertTrue(
                             tag["value"]
-                            == ["16777226", "16777226", "16777226", "16777226"]
+                            == [16777226, 16777226, 16777226, 16777226]
                         )
                     elif t == "Requirename":
                         self.assertTrue(int(tag["number"]) == 1049)
@@ -525,7 +525,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1112)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 2)
-                        self.assertTrue(tag["value"] == ["8", "8"])
+                        self.assertTrue(tag["value"] == [8, 8])
                     elif t == "Provideversion":
                         self.assertTrue(int(tag["number"]) == 1113)
                         self.assertTrue(tag["type"] == "string array")

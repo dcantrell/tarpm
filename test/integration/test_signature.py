@@ -73,7 +73,7 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(len(tag["value"]) > 1)
+                        self.assertTrue(tag["value"] > 1)
                     elif t == "Md5":
                         self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
@@ -83,7 +83,7 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(len(tag["value"]) > 1)
+                        self.assertTrue(tag["value"] > 1)
                     elif t == "Reservedspace":
                         self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
@@ -169,7 +169,7 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(len(tag["value"]) > 1)
+                        self.assertTrue(tag["value"] > 1)
                     elif t == "Md5":
                         self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
@@ -179,7 +179,7 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                         self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["count"]) == 1)
-                        self.assertTrue(len(tag["value"]) > 1)
+                        self.assertTrue(tag["value"] > 1)
                     elif t == "Reservedspace":
                         self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
