@@ -499,7 +499,7 @@ main(int argc, char **argv)
                     errx(EXIT_FAILURE, _("*** -f already specified; only allowed once"));
                 }
 
-                if (!access(optarg, flags)) {
+                if ((t_flag || x_flag) && !access(optarg, R_OK)) {
                     filename = realpath(optarg, NULL);
                 } else {
                     if (optarg[0] == '/') {
@@ -567,7 +567,7 @@ main(int argc, char **argv)
             if ((t_flag || x_flag) && !access(argv[optind + 1], flags)) {
                 /* for -t and -x, the filename specified needs to exist */
                 filename = realpath(argv[optind + 1], NULL);
-            } else {
+            } else if (optind + 1 < argc) {
                 /* the other mode is -c which will create the named file */
                 if (argv[optind + 1][0] == '/') {
                     filename = strdup(argv[optind + 1]);
@@ -582,7 +582,7 @@ main(int argc, char **argv)
     }
 
     /* Pick up the input directory for -c */
-    if (c_flag && optind < argc && !access(argv[optind], flags)) {
+    if (c_flag && optind < argc && !access(argv[optind], R_OK|X_OK)) {
         input_dir = realpath(argv[optind], NULL);
         assert(input_dir != NULL);
     }
@@ -611,7 +611,11 @@ main(int argc, char **argv)
     } else if (x_flag) {
         extract_rpm(filename, cwd, output_dir);
     } else if (c_flag) {
-        create_rpm(filename, cwd, input_dir);
+        if (input_dir == NULL) {
+            warnx(_("*** missing input directory, unable to create RPM"));
+        } else {
+            create_rpm(filename, cwd, input_dir);
+        }
     }
 
     /* Cleanup and exit */

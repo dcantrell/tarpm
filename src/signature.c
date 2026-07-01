@@ -44,6 +44,9 @@ read_signature(const int fd)
 
     /* signature is aligned, so padding may be present */
     if (!xread(fd, &hdrinfo->pad, hdrinfo->padlen)) {
+        free(buffer);
+        free(hdrinfo);
+        free(rawhdr);
         return NULL;
     }
 

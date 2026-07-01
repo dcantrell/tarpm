@@ -8,7 +8,8 @@
 #include "tarpm.h"
 
 /*
- * Wrapper for read(2)
+ * Wrapper for read(2).  NOTE: Passing in a count of 0 is valid and
+ * will return true without calling read(2).  We know this.
  */
 bool
 xread(int fd, void *buf, size_t count)

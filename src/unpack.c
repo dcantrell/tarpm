@@ -118,6 +118,9 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
     flags |= ARCHIVE_EXTRACT_ACL;
     flags |= ARCHIVE_EXTRACT_FFLAGS;
     flags |= ARCHIVE_EXTRACT_UNLINK;
+    flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
+    flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    flags |= ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS;
 
     /* full location to the archive */
     if ((rfilename = realpath(archive, NULL)) == NULL) {

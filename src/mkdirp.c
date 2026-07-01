@@ -76,7 +76,7 @@ mkdirp(const char *path, mode_t mode)
                 *p = '/';
                 p++;
                 continue;
-            } else if (mkdir(start, mode) == -1) {
+            } else if (mkdir(start, mode) == -1 && errno != EEXIST) {
                 warn(_("*** unable to mkdir %s"), start);
                 free(start);
                 return -1;

@@ -12,7 +12,6 @@
 #include <rpm/rpmlib.h>
 #include <rpm/header.h>
 #include <rpm/rpmts.h>
-#include <rpm/rpmlib.h>
 
 #include "tarpm.h"
 

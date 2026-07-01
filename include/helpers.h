@@ -8,22 +8,16 @@
 #define _TARPM_HELPERS_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
+#include <err.h>
 
 /* Macros */
-#ifdef NDEBUG
-/* Don't create unused variables if not using assert() */
 #define xasprintf(dest, ...) {                         \
     *(dest) = NULL;                                    \
-    asprintf((dest), __VA_ARGS__);                     \
+    if (asprintf((dest), __VA_ARGS__) == -1) {         \
+        err(EXIT_FAILURE, "asprintf");                 \
+    }                                                  \
 }
-#else
-#define xasprintf(dest, ...) {                         \
-    int _xasprintf_result;                             \
-    *(dest) = NULL;                                    \
-    _xasprintf_result = asprintf((dest), __VA_ARGS__); \
-    assert(_xasprintf_result != -1);                   \
-}
-#endif
 
 #endif /* _TARPM_HELPERS_H */

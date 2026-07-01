@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <err.h>
 
 /* Always 0-initialized, unless the compiler disagrees. */
 void *
@@ -14,7 +15,11 @@ xcalloc(size_t n, size_t s)
     void *ret = NULL;
 
     ret = calloc(n, s);
-    assert(ret != NULL);
+
+    if (ret == NULL) {
+        err(EXIT_FAILURE, "calloc");
+    }
+
     return ret;
 }
 
@@ -35,7 +40,11 @@ xrealloc(void *p, size_t s)
     }
 
     ret = realloc(p, s);
-    assert(ret);
+
+    if (ret == NULL) {
+        err(EXIT_FAILURE, "realloc");
+    }
+
     return ret;
 }
 
@@ -50,7 +59,11 @@ xreallocarray(void *p, size_t n, size_t s)
     }
 
     ret = reallocarray(p, n, s);
-    assert(ret);
+
+    if (ret == NULL) {
+        err(EXIT_FAILURE, "reallocarray");
+    }
+
     return ret;
 }
 #endif

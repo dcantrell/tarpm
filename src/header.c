@@ -134,7 +134,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
             if (has_offsets) {
                 /* calculate buffer size based on max(offset + size) */
                 if (json_object_object_get_ex(entry, "offset", &key)) {
-                    tag_offset = json_object_get_uint64(key);
+                    tag_offset = json_object_get_int64(key);
 
                     if (tag_offset + item_size > max_end) {
                         max_end = tag_offset + item_size;
@@ -199,6 +199,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
     /* create header tags and copy in the values */
     for (i = 0; i < json_object_array_length(tags); i++) {
+        padding = 0;
         entry = json_object_array_get_idx(tags, i);
 
         /* gather the number, type, and count */
@@ -317,13 +318,13 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
                         for (j = 0; j < arr_len; j++) {
                             int_obj = json_object_array_get_idx(key, j);
-                            i32 = htonl(json_object_get_uint64(int_obj));
+                            i32 = htonl((uint32_t)json_object_get_int(int_obj));
                             memcpy(datapos, &i32, sizeof(i32));
                             datapos += sizeof(i32);
                             offset += sizeof(i32);
                         }
                     } else {
-                        i32 = htonl(json_object_get_uint64(key));
+                        i32 = htonl((uint32_t)json_object_get_int(key));
                         memcpy(datapos, &i32, sizeof(i32));
                         datapos += sizeof(i32);
                         offset += sizeof(i32);
@@ -336,13 +337,13 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
                         for (j = 0; j < arr_len; j++) {
                             int_obj = json_object_array_get_idx(key, j);
-                            i64 = htobe64(json_object_get_uint64(int_obj));
+                            i64 = htobe64((uint64_t)json_object_get_int64(int_obj));
                             memcpy(datapos, &i64, sizeof(i64));
                             datapos += sizeof(i64);
                             offset += sizeof(i64);
                         }
                     } else {
-                        i64 = htobe64(json_object_get_uint64(key));
+                        i64 = htobe64((uint64_t)json_object_get_int64(key));
                         memcpy(datapos, &i64, sizeof(i64));
                         datapos += sizeof(i64);
                         offset += sizeof(i64);
@@ -428,7 +429,7 @@ read_header(const int fd)
         return NULL;
     }
 
-    /* read in the signature */
+    /* read in the header signature -- identifies the start of an RPM header block */
     rawhdr = read_header_signature(fd);
 
     if (rawhdr == NULL) {
@@ -450,10 +451,10 @@ read_header(const int fd)
     /* generate a JSON structure for the signature */
     header = generate_json(rawhdr, hdrinfo);
 
-    /* dump all of the tags in the signature */
+    /* dump all of the tags in the header block */
     jvals = generate_json_entries(rawhdr, hdrinfo, trailer, false);
 
-    /* write the signature to a file */
+    /* write the header to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
     /* cleanup */
