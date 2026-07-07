@@ -98,4 +98,7 @@ bool xread(int fd, void *buf, size_t count);
 /* extract.c */
 void extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose);
 
+/* create.c */
+void create_rpm(const char *filename, const char *cwd, const char *input_dir);
+
 #endif /* _TARPM_TARPM_H */
