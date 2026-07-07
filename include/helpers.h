@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <err.h>
+#include <archive.h>
 
 /* Macros */
 #define xasprintf(dest, ...) {                         \
@@ -19,5 +20,16 @@
         err(EXIT_FAILURE, "asprintf");                 \
     }                                                  \
 }
+
+/* libarchive compatibility */
+#if ARCHIVE_VERSION_NUMBER < 3000000
+#define archive_write_set_compression_bzip2 archive_write_add_filter_bzip2
+#define archive_write_set_compression_compress archive_write_add_filter_compress
+#define archive_write_set_compression_gzip archive_write_add_filter_gzip
+#define archive_write_set_compression_zstd archive_write_add_filter_zstd
+#define archive_write_set_compression_lzma archive_write_add_filter_lzma
+#define archive_write_set_compression_xz archive_write_add_filter_xz
+#define archive_write_set_compression_none archive_write_add_filter_none
+#endif
 
 #endif /* _TARPM_HELPERS_H */
