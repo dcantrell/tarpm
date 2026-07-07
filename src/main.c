@@ -44,142 +44,6 @@ usage(void)
     return;
 }
 
-/* Handler for -x mode (extract) */
-static void
-extract_rpm(const char *filename, const char *cwd, const char *output_dir)
-{
-    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-    int rpmfd = -1;
-    char *candidate_path = NULL;
-    char *tmp = NULL;
-    char *payload_file = NULL;
-    char *dest_dir = NULL;
-    Header h;
-    struct json_object *lead = NULL;
-    struct json_object *signature = NULL;
-    struct json_object *header = NULL;
-
-    assert(cwd != NULL);
-    assert(filename != NULL);
-
-    /* validate the specified file is an RPM */
-    h = get_header(filename);
-
-    if (h == NULL) {
-        errx(EXIT_FAILURE, _("*** %s is not a valid RPM"), filename);
-    }
-
-    /* open the RPM file (this handle will be passed around) */
-    rpmfd = open(filename, O_RDONLY);
-
-    if (rpmfd == -1) {
-        err(EXIT_FAILURE, "open");
-    }
-
-    /* extract the RPM lead -- the first header (unused) */
-    lead = read_lead(rpmfd);
-
-    if (lead == NULL) {
-        err(EXIT_FAILURE, "read_lead");
-    }
-
-    /* extract the RPM signature -- the second header (sort of used) */
-    signature = read_signature(rpmfd);
-
-    if (signature == NULL) {
-        err(EXIT_FAILURE, "read_signature");
-    }
-
-    /* extract the RPM header -- the third header (used) */
-    header = read_header(rpmfd);
-
-    if (header == NULL) {
-        err(EXIT_FAILURE, "read_header");
-    }
-
-    /* close the RPM after reading headers */
-    if (close(rpmfd) == -1) {
-        warn("close");
-    }
-
-    /* make a unique output directory name if we need to */
-    if (output_dir == NULL) {
-        tmp = get_nevra(h);
-        assert(tmp != NULL);
-
-        xasprintf(&candidate_path, "%s/%s", cwd, tmp);
-        assert(candidate_path != NULL);
-
-        dest_dir = abspath(candidate_path);
-
-        free(candidate_path);
-        free(tmp);
-    } else {
-        dest_dir = strdup(output_dir);
-    }
-
-    assert(dest_dir != NULL);
-
-    /* create the output directory */
-    if (mkdirp(dest_dir, mode) == -1) {
-        err(EXIT_FAILURE, "mkdirp");
-    }
-
-    /* write out the header metadata */
-    if (write_json_file(lead, dest_dir, OUTPUT_LEAD) != 0) {
-        warn("write_json_file");
-    }
-
-    if (write_json_file(signature, dest_dir, OUTPUT_SIGNATURE) != 0) {
-        warn("write_json_file");
-    }
-
-    if (write_json_file(header, dest_dir, OUTPUT_HEADER) != 0) {
-        warn("write_json_file");
-    }
-
-    /* extract the RPM payload as an archive we can read in libarchive */
-    if (chdir(dest_dir) == -1) {
-        err(EXIT_FAILURE, "chdir");
-    }
-
-    payload_file = extract_payload(filename);
-
-    if (payload_file == NULL) {
-        errx(EXIT_FAILURE, "extract_payload");
-    }
-
-    if (chdir(cwd) == -1) {
-        err(EXIT_FAILURE, "chdir");
-    }
-
-    /* unpack the RPM payload */
-    xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
-    assert(tmp != NULL);
-
-    if (mkdirp(tmp, mode) == -1) {
-        err(EXIT_FAILURE, "mkdir");
-    }
-
-    if (unpack_archive(payload_file, tmp, false, v_flag) != 0) {
-        err(EXIT_FAILURE, "unpack_archive");
-    }
-
-    if (unlink(payload_file) == -1) {
-        err(EXIT_FAILURE, "unlink");
-    }
-
-    json_object_put(header);
-    json_object_put(signature);
-    json_object_put(lead);
-    free(payload_file);
-    free(tmp);
-    free(dest_dir);
-    headerFree(h);
-
-    return;
-}
-
 /* Helper for create_rpm() that writes header data to the RPM */
 static void
 write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_signature, struct json_object *data)
@@ -280,6 +144,66 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     return;
 }
 
+/* Helper for create_rpm() that writes the payload data to the RPM */
+//static void
+//write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
+//{
+//    const char *tag = NULL;
+//    char *opts = NULL;
+//    struct archive *payload = NULL;
+//
+//    assert(rpm != NULL);
+//    assert(header != NULL);
+//
+//    /* create a new payload writer */
+//    output = archive_write_new();
+//
+//    /* get the compression algorithm type */
+//    tag = get_tag_value(header, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+//
+//    if (!strcmp(tag, "gzip")) {
+//        archive_write_add_filter_gzip(output);
+//    } else if (!strcmp(tag, "bzip2")) {
+//        archive_write_add_filter_bzip2(output);
+//    } else if (!strcmp(tag, "xz")) {
+//        archive_write_add_filter_xz(output);
+//    } else if (!strcmp(tag, "lzma")) {
+//        archive_write_add_filter_lzma(output);
+//    } else if (!strcmp(tag, "zstd")) {
+//        archive_write_add_filter_zstd(output);
+//    } else {
+//        /* default to no compression */
+//        archive_write_add_filter_none(output);
+//    }
+//
+//    /* set the compression level */
+//    tag = get_tag_value(header, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+//
+//    if (tag != NULL) {
+//        xasprintf(&opts, "compression-level=%s", tag);
+//        archive_write_set_options(output, opts);
+//        free(opts);
+//    }
+//
+//
+//
+//
+//
+//
+///*
+//
+//4) Create a new libarchive object from the rpm fd
+//5) Use nftw() to loop over payload_subdir and add each entry to the libarchive object
+//6) Close the libarchive object
+//7) return
+//
+//Errors here should be reported with warn() or err() and either return early or exit
+//
+//*/
+//
+//    return;
+//}
+
 /* Handler for -c mode (create) */
 static void
 create_rpm(const char *filename, const char *cwd, const char *input_dir)
@@ -347,30 +271,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, _("*** unable to construct RPM header"));
     }
 
-
-/*
-
-TODO:
-
-* make sure the input directory exists, error if not
-* check for the JSON metadata files (signature and header), error if not
-* check for the payload subdirectory, error if not
-* read in signature.json to object
-* read in header.json to object
-* create the lead using data from the header
-
-* create the signature using data from signature.json
-* create the header using data from header.json
-
-* open a file and get a handle for the target filename
-* write the lead to the output file
-* write the signature to the output file
-* write the header to the output file
-- create the payload writer (use librpm) and yeet each payload file in to the output file
-* close the output file
-
-*/
-
     /* create an RPM for writing */
     rpm = fopen(filename, "wb");
 
@@ -389,9 +289,8 @@ TODO:
     /* write the header to the RPM */
     write_header(rpm, hdr, hdrinfo, false, header);
 
-
-/* XXX */
-
+    /* write the payload to the RPM */
+//    write_payload(rpm, header, PAYLOAD_SUBDIR);
 
     /* close the RPM */
     if (fclose(rpm) != 0) {
@@ -609,7 +508,7 @@ main(int argc, char **argv)
         /* XXX: can't list yet */
         printf(_("XXX: unable to list RPMs right now\n"));
     } else if (x_flag) {
-        extract_rpm(filename, cwd, output_dir);
+        extract_rpm(filename, cwd, output_dir, v_flag);
     } else if (c_flag) {
         if (input_dir == NULL) {
             warnx(_("*** missing input directory, unable to create RPM"));

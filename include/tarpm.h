@@ -95,4 +95,7 @@ void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t o
 /* xread.c */
 bool xread(int fd, void *buf, size_t count);
 
+/* extract.c */
+void extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose);
+
 #endif /* _TARPM_TARPM_H */

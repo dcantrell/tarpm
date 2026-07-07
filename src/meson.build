@@ -2,6 +2,7 @@
 # tests.
 abspath_src = files('abspath.c')
 entry_src = files('entry.c')
+extract_src = files('extract.c')
 header_src = files('header.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
@@ -22,6 +23,7 @@ xread_src = files('xread.c')
 sources = [
     abspath_src,
     entry_src,
+    extract_src,
     header_src,
     joinpath_src,
     json_src,
