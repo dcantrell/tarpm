@@ -101,4 +101,9 @@ void extract_rpm(const char *filename, const char *cwd, const char *output_dir, 
 /* create.c */
 void create_rpm(const char *filename, const char *cwd, const char *input_dir);
 
+/* inodes.c */
+char *lookup_inode(const ino_t inode);
+int add_inodes(const char *path);
+void free_inodes(void);
+
 #endif /* _TARPM_TARPM_H */
