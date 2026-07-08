@@ -9,6 +9,7 @@ inodes_src = files('inodes.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
 lead_src = files('lead.c')
+list_src = files('list.c')
 listfuncs_src = files('listfuncs.c')
 main_src = files('main.c')
 mkdirp_src = files('mkdirp.c')
@@ -32,6 +33,7 @@ sources = [
     joinpath_src,
     json_src,
     lead_src,
+    list_src,
     listfuncs_src,
     main_src,
     mkdirp_src,

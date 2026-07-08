@@ -16,7 +16,7 @@
 #include "tarpm.h"
 
 /*
- * Given a path to an RPM package, extract the payload to a tar file
+ * Given a path to an RPM package, convert the payload to a tar file
  * for later use with extract_rpm().  This happens in cases where
  * libarchive cannot detect the cpio stream in an opened RPM file.
  * The caller must free the returned path string.
@@ -24,7 +24,7 @@
  * A lot of this is adapted from rpm2archive.c from the rpm sources.
  */
 char *
-extract_payload(const char *rpm)
+convert_payload(const char *rpm)
 {
     char *payload = NULL;
     rpmts ts;

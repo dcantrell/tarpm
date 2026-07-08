@@ -114,10 +114,10 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         err(EXIT_FAILURE, "chdir");
     }
 
-    payload_file = extract_payload(filename);
+    payload_file = convert_payload(filename);
 
     if (payload_file == NULL) {
-        errx(EXIT_FAILURE, "extract_payload");
+        errx(EXIT_FAILURE, "convert_payload");
     }
 
     if (chdir(cwd) == -1) {

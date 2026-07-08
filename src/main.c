@@ -229,8 +229,7 @@ main(int argc, char **argv)
 
     /* Main operations begin here */
     if (t_flag) {
-        /* XXX: can't list yet */
-        printf(_("XXX: unable to list RPMs right now\n"));
+        list_rpm(filename);
     } else if (x_flag) {
         extract_rpm(filename, cwd, output_dir, v_flag);
     } else if (c_flag) {

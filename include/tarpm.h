@@ -20,7 +20,7 @@
 char *abspath(const char *path);
 
 /* rpm.c */
-char *extract_payload(const char *rpm);
+char *convert_payload(const char *rpm);
 Header get_header(const char *pkg);
 char *get_rpmtag_str(Header h, rpmTagVal tag);
 const char *get_header_arch(Header h);
@@ -105,5 +105,8 @@ void create_rpm(const char *filename, const char *cwd, const char *input_dir);
 char *lookup_inode(const ino_t inode);
 int add_inodes(const char *path);
 void free_inodes(void);
+
+/* list.c */
+void list_rpm(const char *rpm);
 
 #endif /* _TARPM_TARPM_H */
