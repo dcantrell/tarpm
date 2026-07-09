@@ -5,7 +5,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <rpm/rpmlib.h>
 #include <rpm/header.h>
@@ -58,7 +57,6 @@ list_rpm(const char *rpm)
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
     xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
-    assert(rpmio_flags != NULL);
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
@@ -88,7 +86,6 @@ list_rpm(const char *rpm)
         }
 
         xasprintf(&filename, ".%s%s", dn, rpmfiBN(fi));
-        assert(filename != NULL);
 
 /* XXX - need to get 'tar -tvf' style output */
 

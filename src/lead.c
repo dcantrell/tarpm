@@ -4,7 +4,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
@@ -93,11 +92,12 @@ create_lead(struct json_object *header)
     size_t i = 0;
     bool is_source = false;
 
-    assert(header != NULL);
+    if (header == NULL) {
+        return NULL;
+    }
 
     /* allocate lead structure */
     lead = xalloc(sizeof(*lead));
-    assert(lead != NULL);
 
     /* get the tags array */
     if (json_object_object_get_ex(header, "tags", &obj) == 0) {
@@ -161,7 +161,6 @@ create_lead(struct json_object *header)
         xasprintf(&nevr, "%s-%s-%s", n, v, r);
     }
 
-    assert(nevr != NULL);
 #ifdef _HAVE_STRLCPY
     strlcpy(lead->name, nevr, sizeof(lead->name));
 #else

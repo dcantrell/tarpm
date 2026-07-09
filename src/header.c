@@ -4,7 +4,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
@@ -318,13 +317,13 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
                         for (j = 0; j < arr_len; j++) {
                             int_obj = json_object_array_get_idx(key, j);
-                            i32 = htonl((uint32_t)json_object_get_int(int_obj));
+                            i32 = htonl((uint32_t) json_object_get_int64(int_obj));
                             memcpy(datapos, &i32, sizeof(i32));
                             datapos += sizeof(i32);
                             offset += sizeof(i32);
                         }
                     } else {
-                        i32 = htonl((uint32_t)json_object_get_int(key));
+                        i32 = htonl((uint32_t) json_object_get_int64(key));
                         memcpy(datapos, &i32, sizeof(i32));
                         datapos += sizeof(i32);
                         offset += sizeof(i32);
@@ -337,13 +336,13 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
                         for (j = 0; j < arr_len; j++) {
                             int_obj = json_object_array_get_idx(key, j);
-                            i64 = htobe64((uint64_t)json_object_get_int64(int_obj));
+                            i64 = htobe64((uint64_t) json_object_get_int64(int_obj));
                             memcpy(datapos, &i64, sizeof(i64));
                             datapos += sizeof(i64);
                             offset += sizeof(i64);
                         }
                     } else {
-                        i64 = htobe64((uint64_t)json_object_get_int64(key));
+                        i64 = htobe64((uint64_t) json_object_get_int64(key));
                         memcpy(datapos, &i64, sizeof(i64));
                         datapos += sizeof(i64);
                         offset += sizeof(i64);
@@ -498,10 +497,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     /* allocate the two structures for the header */
     s = xalloc(sizeof(*s));
-    assert(s != NULL);
 
     v = xalloc(sizeof(*v));
-    assert(v != NULL);
 
     /* fill out the beginning with the magic and reserved values */
     s->magic = htonl(RPM_SIGNATURE_MAGIC);
@@ -528,7 +525,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     /* allocate an array for the header index entries */
     v->estart = xcalloc(s->nentries, sizeof(*(v->estart)));
     v->entry = v->estart;
-    assert(v->estart != NULL);
     s->nentries = htonl(s->nentries);
 
     /*
@@ -539,7 +535,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     /* allocate the data buffer */
     v->datastart = xcalloc(totalsize, sizeof(uint8_t));
-    assert(v->datastart != NULL);
 
     /*
      * set the data size in the header

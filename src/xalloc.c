@@ -5,7 +5,6 @@
  */
 
 #include <stdlib.h>
-#include <assert.h>
 #include <err.h>
 
 /* Always 0-initialized, unless the compiler disagrees. */

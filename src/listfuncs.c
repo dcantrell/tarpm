@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +36,10 @@ char *list_to_string(const str_list_t *list, const char *delimiter)
     }
 
     s = strdup("");
-    assert(s != NULL);
+
+    if (s == NULL) {
+        err(EXIT_FAILURE, "strdup");
+    }
 
     TAILQ_FOREACH(entry, list, items) {
         if (pos > 0 && delimiter != NULL) {
@@ -100,7 +102,11 @@ str_list_t *list_add(str_list_t *list, const char *s)
 
     entry = xalloc(sizeof(*entry));
     entry->str = strdup(s);
-    assert(entry->str != NULL);
+
+    if (entry->str == NULL) {
+        warn("strdup");
+    }
+
     TAILQ_INSERT_TAIL(list, entry, items);
 
     return list;

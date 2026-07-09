@@ -5,7 +5,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <archive.h>
 #include <archive_entry.h>
@@ -71,7 +70,6 @@ convert_payload(const char *rpm)
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
     xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
-    assert(rpmio_flags != NULL);
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
@@ -99,7 +97,6 @@ convert_payload(const char *rpm)
     }
 
     xasprintf(&payload, "%s.tar", rpm);
-    assert(payload != NULL);
 
     if (archive_write_open_filename(archive, payload) != ARCHIVE_OK) {
         warnx("*** archive_write_open_filename: %s", archive_error_string(archive));
@@ -130,7 +127,6 @@ convert_payload(const char *rpm)
         }
 
         xasprintf(&filename, ".%s%s", dn, rpmfiBN(fi));
-        assert(filename != NULL);
         archive_entry_copy_pathname(entry, filename);
         free(filename);
 
@@ -150,7 +146,10 @@ convert_payload(const char *rpm)
             if (rpmfiArchiveHasContent(fi)) {
                 free(hardlink);
                 hardlink = strdup(archive_entry_pathname(entry));
-                assert(hardlink != NULL);
+
+                if (hardlink == NULL) {
+                    err(EXIT_FAILURE, "strdup");
+                }
             } else {
                 archive_entry_set_hardlink(entry, hardlink);
             }
@@ -260,7 +259,10 @@ get_rpmtag_str(Header h, rpmTagVal tag)
     }
 
     td = rpmtdNew();
-    assert(td != NULL);
+
+    if (td == NULL) {
+        return NULL;
+    }
 
     /* NOTE: this function returns 1 for success, not RPMRC_OK */
     if (headerGet(h, tag, td, HEADERGET_MINMEM | HEADERGET_EXT) != 1) {

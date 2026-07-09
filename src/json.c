@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <err.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
@@ -67,7 +66,6 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     /* create a new object */
     entry = json_object_new_object();
-    assert(entry != NULL);
 
     /* individual values for this object */
     tag = ntohl(hdrentry->tag);
@@ -165,7 +163,6 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
 
     /* create a new array for these tags */
     kvals = json_object_new_array();
-    assert(kvals != NULL);
 
     /* add each tag to the array */
     for (i = 0; i < hdr->nentries; i++) {
@@ -176,7 +173,6 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         count = ntohl(hdrentry[i].count);
 
         entry = create_json_hdr_entry(&hdrentry[i], signature);
-        assert(entry != NULL);
 
         /*
          * header tags of these types will have a trailer that we need
@@ -185,7 +181,6 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         if (trailer != NULL && (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE)) {
             /* create a new array just for the trailer */
             jtrailer = create_json_hdr_entry(trailer, signature);
-            assert(jtrailer != NULL);
 
             /* add the trailer to this entry because of the tag type */
             json_object_object_add(entry, RPM_ENTRY_TRAILER_DESC, jtrailer);
@@ -210,7 +205,9 @@ read_json_file(const char *input_file)
 {
     struct json_object *obj = NULL;
 
-    assert(input_file != NULL);
+    if (input_file == NULL) {
+        return NULL;
+    }
 
     if (access(input_file, R_OK) == -1) {
         warn(_("*** missing or unreadable %s"), input_file);
@@ -247,7 +244,11 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
 
     /* write the JSON data for a file */
     s = joinpath(output_dir, output_file, NULL);
-    assert(s != NULL);
+
+    if (s == NULL) {
+        warn("joinpath");
+        return -1;
+    }
 
     fp = fopen(s, "w");
 

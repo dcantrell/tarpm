@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <limits.h>
 
 #include "tarpm.h"
@@ -36,7 +35,10 @@ char *abspath(const char *path)
 
     /* split path in to tokens */
     tokens = strsplit(path, delim);
-    assert(tokens != NULL);
+
+    if (tokens == NULL) {
+        return NULL;
+    }
 
     /* our new path elements */
     newpath = xalloc(sizeof(*newpath));

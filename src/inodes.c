@@ -7,7 +7,6 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
-#include <assert.h>
 #include <unistd.h>
 #include <string.h>
 #include <ftw.h>
@@ -41,7 +40,6 @@ init_inodes(void)
 {
     if (inodes == NULL) {
         inodes = xcalloc(1, sizeof(*inodes));
-        assert(inodes != NULL);
         TAILQ_INIT(inodes);
         return;
     }
@@ -76,11 +74,7 @@ add_inode(const char *fpath, const struct stat *sb, __attribute__((unused)) int 
         return 0;
     }
 
-    if ((newinode = xcalloc(1, sizeof(*newinode))) == NULL) {
-        warn("xcalloc");
-        return -2;
-    }
-
+    newinode = xcalloc(1, sizeof(*newinode));
     newinode->inode = sb->st_ino;
 
     /* the +2 here is to advance past the "./" */
@@ -122,14 +116,15 @@ add_inodes(const char *path)
 {
     char cwd[PATH_MAX + 1];
 
-    assert(path != NULL);
+    if (path == NULL) {
+        return -1;
+    }
+
     memset(cwd, '\0', sizeof(cwd));
 
     if (getcwd(cwd, PATH_MAX) == NULL) {
         err(EXIT_FAILURE, "getcwd");
     }
-
-    assert(cwd != NULL);
 
     if (chdir(path) != 0) {
         warn("chdir");
@@ -171,6 +166,7 @@ free_inodes(void)
     }
 
     free(inodes);
+    inodes = NULL;
 
     return;
 }

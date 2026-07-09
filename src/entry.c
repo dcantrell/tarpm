@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#include <assert.h>
 #include <string.h>
 #include <err.h>
 #include <inttypes.h>
@@ -25,8 +24,9 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
     int c = -1;
     struct json_object *sa = NULL;
 
-    assert(arrayentry != NULL);
-    assert(buffer != NULL);
+    if (arrayentry == NULL || buffer == NULL) {
+        return;
+    }
 
     /* move to the position of this entry's data */
     data = buffer + offset;
@@ -115,6 +115,8 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
                     json_object_array_add(sa, json_object_new_int64(dt.i64));
                     p += sizeof(dt.i64);
                 }
+
+                json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);
             }
 
             break;
@@ -123,7 +125,6 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
             break;
         case RPM_BIN_TYPE:
             blob = xalloc(count);
-            assert(blob != NULL);
             memcpy(blob, data, count);
             s = rpmBase64Encode(blob, count, -1);
             free(blob);

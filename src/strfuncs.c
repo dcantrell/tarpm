@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-#include <assert.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -76,7 +75,10 @@ strappend(char *dest, ...)
     while ((s = va_arg(sl, const char *)) != NULL) {
         if (dest == NULL) {
             dest = strdup(s);
-            assert(dest != NULL);
+
+            if (dest == NULL) {
+                err(EXIT_FAILURE, "strdup");
+            }
         } else {
             dest = xrealloc(dest, strlen(dest) + strlen(s) + 1);
             dest = strcat(dest, s);
@@ -111,8 +113,11 @@ str_list_t *strsplit(const char *s, const char *delim)
     }
 
     walk = strdup(s);
-    assert(walk != NULL);
     walkp = walk;
+
+    if (walk == NULL) {
+        err(EXIT_FAILURE, "strdup");
+    }
 
     /* split the string and build the list */
     while ((token = strsep(&walk, delim)) != NULL) {

@@ -4,7 +4,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
 
@@ -51,7 +50,9 @@ tag_type(struct json_object *tag)
 {
     const char *s = NULL;
 
-    assert(tag != NULL);
+    if (tag == NULL) {
+        return RPM_NULL_TYPE;
+    }
 
     s = json_object_get_string(tag);
 

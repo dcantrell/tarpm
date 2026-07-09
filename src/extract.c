@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <assert.h>
 #include <err.h>
 #include <fcntl.h>
 #include <rpm/header.h>
@@ -30,8 +29,13 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
 
-    assert(cwd != NULL);
-    assert(filename != NULL);
+    if (cwd == NULL) {
+        errx(EXIT_FAILURE, _("missing cwd in %s call"), __func__);
+    }
+
+    if (filename == NULL) {
+        errx(EXIT_FAILURE, _("missing filename in %s call"), __func__);
+    }
 
     /* validate the specified file is an RPM */
     h = get_header(filename);
@@ -76,11 +80,12 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     /* make a unique output directory name if we need to */
     if (output_dir == NULL) {
         tmp = get_nevra(h);
-        assert(tmp != NULL);
+
+        if (tmp == NULL) {
+            errx(EXIT_FAILURE, _("unable to read NEVRA from RPM header"));
+        }
 
         xasprintf(&candidate_path, "%s/%s", cwd, tmp);
-        assert(candidate_path != NULL);
-
         dest_dir = abspath(candidate_path);
 
         free(candidate_path);
@@ -89,7 +94,9 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         dest_dir = strdup(output_dir);
     }
 
-    assert(dest_dir != NULL);
+    if (dest_dir == NULL) {
+        errx(EXIT_FAILURE, _("*** unable to set dest_dir"));
+    }
 
     /* create the output directory */
     if (mkdirp(dest_dir, mode) == -1) {
@@ -126,7 +133,6 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
 
     /* unpack the RPM payload */
     xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
-    assert(tmp != NULL);
 
     if (mkdirp(tmp, mode) == -1) {
         err(EXIT_FAILURE, "mkdir");

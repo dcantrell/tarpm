@@ -12,7 +12,6 @@
 #include <locale.h>
 #include <libintl.h>
 #include <err.h>
-#include <assert.h>
 
 #include "tarpm.h"
 
@@ -53,7 +52,7 @@ main(int argc, char **argv)
     char *output_dir = NULL;
     int flags = R_OK;
     char *opt = NULL;
-    char *short_opts = "txcvf:O:V\?";
+    char *short_opts = "txcvf:O:V?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -132,7 +131,10 @@ main(int argc, char **argv)
                     }
                 }
 
-                assert(filename != NULL);
+                if (filename == NULL) {
+                    errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), optarg);
+                }
+
                 break;
             case 'O':
                 if (output_dir) {
@@ -190,16 +192,31 @@ main(int argc, char **argv)
             if ((t_flag || x_flag) && !access(argv[optind + 1], flags)) {
                 /* for -t and -x, the filename specified needs to exist */
                 filename = realpath(argv[optind + 1], NULL);
+
+                if (filename == NULL) {
+                    err(EXIT_FAILURE, "realpath");
+                }
             } else if (optind + 1 < argc) {
                 /* the other mode is -c which will create the named file */
                 if (argv[optind + 1][0] == '/') {
                     filename = strdup(argv[optind + 1]);
+
+                    if (filename == NULL) {
+                        err(EXIT_FAILURE, "strdup");
+                    }
                 } else {
                     filename = joinpath(cwd, argv[optind + 1], NULL);
+
+                    if (filename == NULL) {
+                        err(EXIT_FAILURE, "joinpath");
+                    }
                 }
             }
 
-            assert(filename != NULL);
+            if (filename == NULL) {
+                errx(EXIT_FAILURE, _("*** missing filename for '-f' option"));
+            }
+
             optind += 2;
         }
     }
@@ -207,7 +224,10 @@ main(int argc, char **argv)
     /* Pick up the input directory for -c */
     if (c_flag && optind < argc && !access(argv[optind], R_OK|X_OK)) {
         input_dir = realpath(argv[optind], NULL);
-        assert(input_dir != NULL);
+
+        if (input_dir == NULL) {
+            err(EXIT_FAILURE, "realpath");
+        }
     }
 
     /* Ensure we only have one of -t, -x, or -c */

@@ -10,7 +10,6 @@
 #include <string.h>
 #include <fcntl.h>
 #include <ftw.h>
-#include <assert.h>
 #include <err.h>
 #include <arpa/inet.h>
 #include <json_object.h>
@@ -165,9 +164,9 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     int r = 0;
     bool has_trailer = false;
 
-    assert(rpm != NULL);
-    assert(hdr != NULL);
-    assert(hdrinfo != NULL);
+    if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
+        return;
+    }
 
     if (fwrite(hdr, sizeof(*hdr), 1, rpm) != 1) {
         warn("fwrite");
@@ -252,8 +251,9 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
     char *opts = NULL;
     struct json_object *tags = NULL;
 
-    assert(rpm != NULL);
-    assert(header != NULL);
+    if (rpm == NULL || header == NULL) {
+        return;
+    }
 
     /* initialize inode list for hardlink handling */
     if (add_inodes(payload_subdir) != 0) {
@@ -274,19 +274,24 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
     /* get the compression algorithm type */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
 
-    if (!strcmp(tag, "gzip")) {
-        archive_write_add_filter_gzip(payload);
-    } else if (!strcmp(tag, "bzip2")) {
-        archive_write_add_filter_bzip2(payload);
-    } else if (!strcmp(tag, "xz")) {
-        archive_write_add_filter_xz(payload);
-    } else if (!strcmp(tag, "lzma")) {
-        archive_write_add_filter_lzma(payload);
-    } else if (!strcmp(tag, "zstd")) {
-        archive_write_add_filter_zstd(payload);
-    } else {
+    if (tag == NULL) {
         /* default to no compression */
         archive_write_add_filter_none(payload);
+    } else {
+        if (!strcmp(tag, "gzip")) {
+            archive_write_add_filter_gzip(payload);
+        } else if (!strcmp(tag, "bzip2")) {
+            archive_write_add_filter_bzip2(payload);
+        } else if (!strcmp(tag, "xz")) {
+            archive_write_add_filter_xz(payload);
+        } else if (!strcmp(tag, "lzma")) {
+            archive_write_add_filter_lzma(payload);
+        } else if (!strcmp(tag, "zstd")) {
+            archive_write_add_filter_zstd(payload);
+        } else {
+            /* default to no compression */
+            archive_write_add_filter_none(payload);
+        }
     }
 
     /* set the compression level */
@@ -303,8 +308,10 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
         errx(EXIT_FAILURE, "archive_write_open_FILE: %s", archive_error_string(payload));
     }
 
+    /* reset the path trimlen */
+    trimlen = -1;
+
     /* write the entries to the payload */
-printf("payload_subdir=|%s|\n", payload_subdir);
     if (nftw(payload_subdir, add_payload_entry, 25, FTW_MOUNT | FTW_PHYS) == -1) {
         warn("nftw");
     }
@@ -336,9 +343,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     struct rpmhdr *hdr = NULL;
     struct rpmhdrinfo *hdrinfo = NULL;
 
-    assert(filename != NULL);
-    assert(cwd != NULL);
-    assert(input_dir != NULL);
+    if (filename == NULL || cwd == NULL || input_dir == NULL) {
+        return;
+    }
 
     /* make sure the input directory exists */
     if (access(input_dir, R_OK|X_OK)) {

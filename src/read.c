@@ -24,7 +24,6 @@ compute_hdrinfo(const struct rpmhdr *hdr, const bool signature)
     }
 
     hdrinfo = xalloc(sizeof(*hdrinfo));
-    assert(hdrinfo != NULL);
 
     /* computed from header values */
     /* NOTE: these values are already in host byte order */
@@ -58,7 +57,6 @@ read_header_signature(const int fd)
 
     /* zero out the structures */
     hdr = xcalloc(1, sizeof(*hdr));
-    assert(hdr != NULL);
 
     /* read in the signature */
     if (!xread(fd, hdr, RPMHDRINTROSZ)) {
@@ -97,7 +95,6 @@ read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen)
     /* read in entries */
     /* (largely from rpmdump.c) */
     buffer = xalloc(hlen + 2 * sizeof(uint32_t));
-    assert(buffer != NULL);
 
     buffer[0] = htonl(hdr->nentries);
     buffer[1] = htonl(hdr->nbytes);
@@ -128,7 +125,6 @@ read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart)
 
     if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
         trailer = xalloc(sizeof(*trailer));
-        assert(trailer != NULL);
         memcpy(trailer, datastart + ntohl(entry->offset), sizeof(*trailer));
     }
 
