@@ -1,0 +1,46 @@
+Core functionality that still needs to happen:
+
+[ ] Create mode
+    [ ] Regenerate digests for payload members.  Each file needs to
+        have a freshly computed message digest in the header data.
+        This can be done with an nftw() callback that updates the
+        header data in JSON format before it writes to the file.
+
+    [ ] Compute digests for the signature header.
+
+[ ] List mode
+    [ ] Need a strmode() function
+    [ ] Output needs to look like 'tar -tvf' on example.tar
+
+[ ] Restructure how metadata is written to the JSON files
+    [ ] All of the file lists should combine together so it's easier
+        to read for users.  But these then need to be broken out for
+        writing to the header.  Need a conversion function that can
+        yeet between them.
+
+    [ ] The changelog should be combined back together in a similar
+        style.
+
+    [ ] Scriptlets should go to individual files for easier editing.
+
+    [ ] Data in the JSON files that is read-only should be marked
+        as such so the reader knows.
+
+[ ] Command line
+    [ ] Add option to specify output files for each JSON file
+
+    [ ] Add option to specify payload output subdirectory path
+
+    [ ] Add option to specify input JSON file paths
+
+    [ ] Add option to specify input payload subdirectory path
+
+    [ ] Add option to dump header data to stdout or a file
+
+[ ] Man page needs to document all options and explain how the fuck
+    the program works.
+
+[ ] More test cases.
+    [ ] Unit tests
+    [ ] Integration tests for create mode
+    [ ] Integration tests for list mode
