@@ -70,6 +70,45 @@ flake8:
 black:
 	$(PYTHON) -m black --check --diff $(topdir)/test/
 
+srpm:
+	$(topdir)/utils/srpm.sh
+
+copr-srpm:
+	$(topdir)/utils/srpm.sh -c
+
+# This target will increment the version number, commit, tag, and
+# push.  Generally this is not the desired release behavior as the
+# development tree is already using the upcoming release number.
+new-release:
+	$(topdir)/utils/release.sh -A
+
+# This target tags and pushes the current development tree.
+release:
+	$(topdir)/utils/release.sh -t -p
+
+# Generates content for CHANGES.md from previous tag to HEAD
+announce:
+	@$(topdir)/utils/mkannounce.sh
+
+# Generates changes between the two most recent stable releases,
+# excluding HEAD.
+stable-announce:
+	@$(topdir)/utils/mkannounce.sh --stable
+
+koji: srpm
+	@if [ ! -f $(RELEASED_TARBALL) ]; then \
+		echo "*** Missing $(RELEASED_TARBALL), be sure to have run 'make srpm'" >&2 ; \
+		exit 1 ; \
+	fi
+	@if [ ! -f $(RELEASED_TARBALL_ASC) ]; then \
+		echo "*** Missing $(RELEASED_TARBALL_ASC), be sure to have run 'make srpm'" >&2 ; \
+		exit 1 ; \
+	fi
+	$(topdir)/utils/submit-koji-builds.sh $(RELEASED_TARBALL) $(RELEASED_TARBALL_ASC) $$(basename $(topdir))
+
+instreqs:
+	dnf install $$(grep Requires: tarpm.spec.in | awk '{ print $$2; }' | awk 'NF' ORS=' ')
+
 clean:
 	-rm -rf $(MESON_BUILD_DIR)
 
@@ -100,7 +139,13 @@ help:
 	@echo "    setup-debug       The counterpart to 'setup'; called by 'debug'"
 	@echo "    check             Run '$(MESON) test -C $(MESON_BUILD_DIR) -v'"
 	@echo "    update-pot        Update po/POTFILES and po/$(PROJECT_NAME).pot"
+	@echo "    srpm              Generate an SRPM package of the latest release"
+	@echo "    copr-srpm         Generate an SRPM package of the latest HEAD revision"
+	@echo "    release           Tag and push current tree as a release"
+	@echo "    new-release       Bump version, tag, and push current tree as a release"
+	@echo "    koji              Run 'make srpm' then 'utils/submit-koji-builds.sh'"
 	@echo "    clean             Run 'rm -rf $(MESON_BUILD_DIR)'"
+	@echo "    instreqs          Intsall required build and runtime packages"
 	@echo "    authors           Generate a new AUTHORS.md file"
 	@echo
 	@echo "To build:"

@@ -91,3 +91,4 @@ inc = include_directories('include')
 # Include all relevant subdirectories
 subdir('src')
 subdir('test')
+subdir('doc')
