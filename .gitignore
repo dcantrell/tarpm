@@ -1,7 +1,11 @@
 build
+gpgkey-*.gpg
 log
 *.pyc
 __pycache__
 RPMS
 SRPMS
 tarpm.spec
+tarpm-*.src.rpm
+tarpm-*.tar.gz
+tarpm-*.tar.gz.asc
