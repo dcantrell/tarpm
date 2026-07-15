@@ -25,7 +25,6 @@ PKG_CMD = dnf
 endif
 
 # Install packages before anything else
-_install := $(shell $(PKG_CMD) install -y git)
 _safedir := $(shell git config --global --add safe.directory $(topdir))
 
 # Pass BUILDTYPE=release to generate a release SRPM
@@ -44,12 +43,17 @@ PKG = $(shell grep ^Name: "$(SPEC_TEMPLATE)" | awk '{ print $$2; }')
 VER = $(shell grep 'version :' $(topdir)/meson.build | grep -E "'[0-9]+\.[0-9]+'" | cut -d "'" -f 2)
 
 ifeq ($(BUILDTYPE),copr)
-GITDATE          = $(shell date +'%Y%m%d%H%M')
-GITHASH          = $(shell git rev-parse --short HEAD)
-TARBALL_BASENAME = $(PKG)-$(VER)-$(GITDATE)git$(GITHASH)
-TAG              = HEAD
+GITDATE          := $(shell date +'%Y%m%d%H%M')
+GITHASH          := $(shell git rev-parse --short HEAD)
+TARBALL_BASENAME := $(PKG)-$(VER)-$(GITDATE)git$(GITHASH)
+TAG              := HEAD
 else
-TAG              = $(shell git tag -l | sort -V | tail -n 1)
+TAG              := $(shell git tag -l | sort -V | tail -n 1)
+endif
+
+# Backup case if there are no tags defined
+ifeq ($(TAG),)
+TAG              := HEAD
 endif
 
 ifeq ($(BUILDTYPE),release)
