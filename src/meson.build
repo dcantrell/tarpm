@@ -58,5 +58,6 @@ tarpm_prog = executable(
     'tarpm',
     sources,
     include_directories : inc,
-    dependencies : deps
+    dependencies : deps,
+    install : true
 )
