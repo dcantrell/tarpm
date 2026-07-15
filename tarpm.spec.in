@@ -5,7 +5,7 @@ Summary:        RPM metadata and payload utility
 Group:          Development/Tools
 License:        GPL-3.0-or-later AND LGPL-3.0-or-later AND Apache-2.0
 URL:            https://codeberg.org/dcantrell/tarpm
-Source0:        https://codeberg.org/dcantrell/tarpm/archive/v%{version}.tar.gz
+Source0:        https://codeberg.org/dcantrell/tarpm/archive/%{name}-%{version}.tar.gz
 
 BuildRequires:  meson
 BuildRequires:  ninja-build
@@ -16,6 +16,7 @@ BuildRequires:  json-c-devel
 BuildRequires:  CUnit-devel
 BuildRequires:  python3-devel
 BuildRequires:  pandoc
+BuildRequires:  gettext
 
 
 %description
@@ -35,19 +36,19 @@ package is usable by rpm(8).
 
 
 %build
+%meson
 %meson_build
 
 
 %install
 %meson_install
-%find_lang %{name}
 
 
-%files -f %{name}.lang
+%files
 %doc AUTHORS.md CODE_OF_CONDUCT.md CONTRIBUTING.md README.md TODO.org
-%license COPYING COPYING.LIB LICENSE
+%license COPYING COPYING.LIB LICENSE-2.0.txt
 %{_bindir}/tarpm
-%{_mandir}/man1/tarpm.1
+%{_mandir}/man1/tarpm.1*
 
 
 %changelog
