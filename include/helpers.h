@@ -32,4 +32,10 @@
 #define archive_write_add_filter_none archive_write_set_compression_none
 #endif
 
+/* json-c compatibility */
+#if JSON_C_VERSION_NUM < 3584
+/* the uint functions appeared in release 0.14.0 */
+#define json_object_get_uint64 json_object_get_int64
+#endif
+
 #endif /* _TARPM_HELPERS_H */
