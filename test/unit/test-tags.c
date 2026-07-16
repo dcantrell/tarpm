@@ -61,10 +61,18 @@ test_sig_tag_name(void)
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_LONGSIZE), "Longsize") == 0);
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_LONGARCHIVESIZE), "Longarchivesize") == 0);
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_SHA256), "Sha256") == 0);
+#ifdef RPMSIGTAG_FILESIGNATURES
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURES), "Filesignatures") == 0);
+#endif
+#ifdef RPMSIGTAG_FILESIGNATURELENGTH
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURELENGTH), "Filesignaturelength") == 0);
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATURES
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATURES), "Veritysignatures") == 0);
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO), "Veritysignaturealgo") == 0);
+#endif
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(0), "(unknown)") == 0);
 
     return;

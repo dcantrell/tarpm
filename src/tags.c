@@ -134,14 +134,22 @@ sig_tag_name(uint32_t tag)
             return "Longarchivesize";
         case RPMSIGTAG_SHA256:
             return "Sha256";
+#ifdef RPMSIGTAG_FILESIGNATURES
         case RPMSIGTAG_FILESIGNATURES:
             return "Filesignatures";
+#endif
+#ifdef RPMSIGTAG_FILESIGNATURELENGTH
         case RPMSIGTAG_FILESIGNATURELENGTH:
             return "Filesignaturelength";
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATURES
         case RPMSIGTAG_VERITYSIGNATURES:
             return "Veritysignatures";
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
         case RPMSIGTAG_VERITYSIGNATUREALGO:
             return "Veritysignaturealgo";
+#endif
         default:
             return "(unknown)";
     }
