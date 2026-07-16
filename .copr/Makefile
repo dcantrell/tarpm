@@ -24,6 +24,9 @@ else
 PKG_CMD = dnf
 endif
 
+# Determine if git needs to be installed
+_HAVE_GIT := $(shell ls -1 /usr/bin/git 2>/dev/null)
+
 # Install packages before anything else
 _safedir := $(shell git config --global --add safe.directory $(topdir))
 
@@ -74,6 +77,9 @@ ifeq ($(BUILDTYPE),copr)
 	echo "- Build $(PKG)-$(VER)-$(GITDATE)git$(GITHASH) snapshot" >> "$(SPEC)"
 endif
 	rm -f "$(TARBALL_BASENAME)".tar.gz.asc
+ifeq ($(_HAVE_GIT),)
+	$(PKG_CMD) install -y git
+endif
 	git archive \
 		--format=tar \
 		--output='$(topdir)/$(TARBALL_BASENAME).tar' \
