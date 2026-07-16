@@ -6,11 +6,15 @@ include/queue.h
 include/tarpm.h
 include/types.h
 src/abspath.c
+src/create.c
 src/entry.c
+src/extract.c
 src/header.c
+src/inodes.c
 src/joinpath.c
 src/json.c
 src/lead.c
+src/list.c
 src/listfuncs.c
 src/main.c
 src/mkdirp.c

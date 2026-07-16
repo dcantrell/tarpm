@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-25 14:34-0400\n"
+"POT-Creation-Date: 2026-07-16 15:44-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,41 +17,94 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/header.c:211
+#: src/create.c:271 src/header.c:509
+msgid "*** missing tags in header data"
+msgstr ""
+
+#: src/create.c:352
+#, c-format
+msgid "*** %s does not exist"
+msgstr ""
+
+#: src/create.c:366
+#, c-format
+msgid "*** %s is not a directory"
+msgstr ""
+
+#: src/create.c:373
+msgid "*** missing signature data"
+msgstr ""
+
+#: src/create.c:379
+msgid "*** missing header data"
+msgstr ""
+
+#: src/create.c:386
+msgid "*** unable to construct RPM lead"
+msgstr ""
+
+#: src/create.c:391
+msgid "*** unable to construct RPM signature"
+msgstr ""
+
+#: src/create.c:396
+msgid "*** unable to construct RPM header"
+msgstr ""
+
+#: src/extract.c:33
+#, c-format
+msgid "missing cwd in %s call"
+msgstr ""
+
+#: src/extract.c:37
+#, c-format
+msgid "missing filename in %s call"
+msgstr ""
+
+#: src/extract.c:44
+#, c-format
+msgid "*** %s is not a valid RPM"
+msgstr ""
+
+#: src/extract.c:85
+msgid "unable to read NEVRA from RPM header"
+msgstr ""
+
+#: src/extract.c:98
+msgid "*** unable to set dest_dir"
+msgstr ""
+
+#: src/header.c:206
 msgid "*** invalid header tag entry, missing 'number'"
 msgstr ""
 
-#: src/header.c:218
+#: src/header.c:213
 msgid "*** invalid header tag entry, missing 'type'"
 msgstr ""
 
-#: src/header.c:225
+#: src/header.c:220
 msgid "*** invalid header tag entry, missing 'count'"
 msgstr ""
 
-#: src/header.c:262
+#: src/header.c:257
 msgid "*** invalid header tag entry, missing 'value'"
 msgstr ""
 
-#: src/header.c:276
+#: src/header.c:271
 #, c-format
 msgid "*** rpmBase64Decode failed with code %d"
 msgstr ""
 
 #: src/header.c:516
-msgid "*** missing tags in header data"
-msgstr ""
-
-#: src/header.c:523
 msgid "*** create_header: tags must be an array"
 msgstr ""
 
-#: src/json.c:216
+#: src/json.c:213
 #, c-format
 msgid "*** missing or unreadable %s"
 msgstr ""
 
-#: src/json.c:223
+#: src/json.c:220
 #, c-format
 msgid "*** json_object_from_file: %s"
 msgstr ""
@@ -60,150 +113,123 @@ msgstr ""
 msgid "*** missing tags in header.json"
 msgstr ""
 
-#: src/main.c:31
+#: src/main.c:27
 #, c-format
 msgid "RPM extraction and creation utility\n"
 msgstr ""
 
-#: src/main.c:32
+#: src/main.c:28
 #, c-format
 msgid "Usage: %s [OPTIONS] [.rpm file] [directory]\n"
 msgstr ""
 
-#: src/main.c:33
+#: src/main.c:29
 #, c-format
 msgid "Options:\n"
 msgstr ""
 
-#: src/main.c:34
+#: src/main.c:30
 #, c-format
 msgid "    -t, --list                        List RPM payload contents\n"
 msgstr ""
 
-#: src/main.c:35
+#: src/main.c:31
 #, c-format
 msgid "    -c, --create                      Create an RPM file\n"
 msgstr ""
 
-#: src/main.c:36
+#: src/main.c:32
 #, c-format
 msgid "    -x, --extract                     Extract RPM file\n"
 msgstr ""
 
-#: src/main.c:37
+#: src/main.c:33
 #, c-format
 msgid "    -v, --verbose                     Verbose progress output\n"
 msgstr ""
 
-#: src/main.c:38
+#: src/main.c:34
 #, c-format
 msgid "    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"
 msgstr ""
 
-#: src/main.c:39
+#: src/main.c:35
 #, c-format
 msgid "    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"
 msgstr ""
 
-#: src/main.c:40
+#: src/main.c:36
 #, c-format
 msgid "    -V, --version                     Display version information\n"
 msgstr ""
 
-#: src/main.c:41
+#: src/main.c:37
 #, c-format
 msgid "    -?, --help                        Display this screen\n"
 msgstr ""
 
-#: src/main.c:42
+#: src/main.c:38
 #, c-format
 msgid "See the %s(1) man page for more information.\n"
 msgstr ""
 
-#: src/main.c:69
-#, c-format
-msgid "*** %s is not a valid RPM"
-msgstr ""
-
-#: src/main.c:303
-#, c-format
-msgid "*** %s does not exist"
-msgstr ""
-
-#: src/main.c:317
-#, c-format
-msgid "*** %s is not a directory"
-msgstr ""
-
-#: src/main.c:324
-msgid "*** missing signature data"
-msgstr ""
-
-#: src/main.c:330
-msgid "*** missing header data"
-msgstr ""
-
-#: src/main.c:337
-msgid "*** unable to construct RPM lead"
-msgstr ""
-
-#: src/main.c:342
-msgid "*** unable to construct RPM signature"
-msgstr ""
-
-#: src/main.c:347
-msgid "*** unable to construct RPM header"
-msgstr ""
-
-#: src/main.c:472 src/main.c:480 src/main.c:488 src/main.c:593
+#: src/main.c:94 src/main.c:102 src/main.c:110 src/main.c:235
 msgid "*** only one of -t, -x, or -c may be specified"
 msgstr ""
 
-#: src/main.c:499 src/main.c:554
+#: src/main.c:121 src/main.c:180
 msgid "*** -f already specified; only allowed once"
 msgstr ""
 
-#: src/main.c:516
+#: src/main.c:135
+#, c-format
+msgid "*** unable to canonicalize %s"
+msgstr ""
+
+#: src/main.c:141
 msgid "*** -O already specified; only allowed once"
 msgstr ""
 
-#: src/main.c:522
+#: src/main.c:147
 #, c-format
 msgid "%s version %s\n"
 msgstr ""
 
-#: src/main.c:528
+#: src/main.c:153
 #, c-format
 msgid "*** ?? getopt returned character code 0%o ??"
 msgstr ""
 
-#: src/main.c:598
+#: src/main.c:217
+msgid "*** missing filename for '-f' option"
+msgstr ""
+
+#: src/main.c:240
 msgid "*** must specify at least -t, -x, or -c"
 msgstr ""
 
-#: src/main.c:602
+#: src/main.c:244
 msgid "*** missing filename (-f) argument"
 msgstr ""
 
-#: src/main.c:611
-#, c-format
-msgid "XXX: unable to list RPMs right now\n"
+#: src/main.c:257
+msgid "*** missing input directory, unable to create RPM"
 msgstr ""
 
-#: src/mkdirp.c:80 src/mkdirp.c:93
+#: src/mkdirp.c:79 src/mkdirp.c:92
 #, c-format
 msgid "*** unable to mkdir %s"
 msgstr ""
 
-#: src/rpm.c:172
+#: src/rpm.c:170
 msgid "*** error reading file from RPM payload"
 msgstr ""
 
-#: src/rpm.c:226
+#: src/rpm.c:224
 #, c-format
 msgid "Fopen failed for %s: %s"
 msgstr ""
 
-#: src/tags.c:168
+#: src/tags.c:177
 msgid "*** get_tag_value: tags must be an array"
 msgstr ""
