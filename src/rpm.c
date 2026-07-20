@@ -122,7 +122,7 @@ convert_payload(const char *rpm)
         archive_entry_clear(entry);
         dn = rpmfiDN(fi);
 
-        if (!strcmp(dn, "")) {
+        if (dn == NULL || !strcmp(dn, "")) {
             dn = "/";
         }
 
