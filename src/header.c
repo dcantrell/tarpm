@@ -213,17 +213,11 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             v->entry->type = tag_type(key);
         }
 
-        /* get the offset from JSON if present, otherwise calculate it */
-        if (json_object_object_get_ex(entry, "offset", &key) == 1) {
-            /* use offset from JSON for exact recreation */
-            v->entry->offset = json_object_get_uint64(key);
-            offset = v->entry->offset;
-            datapos = v->datastart + offset;
-        } else if (trailer_index >= 0 && i == ((size_t) trailer_index)) {
+        /* calculate offset */
+        if (trailer_index >= 0 && i == ((size_t) trailer_index)) {
             /* trailer offset points to end of data (past actual data) */
-            v->entry->offset = totalsize;
-            offset = totalsize;
             /* trailer is not written to data buffer when creating */
+            v->entry->offset = totalsize;
         } else {
             /* compute offset and write data sequentially */
             /* add alignment padding for integer types (4-byte alignment) */

@@ -48,7 +48,6 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                     self.assertTrue("name" in tag.keys())
                     self.assertTrue("number" in tag.keys())
                     self.assertTrue("type" in tag.keys())
-                    self.assertTrue("offset" in tag.keys())
 
                     t = tag["name"]
 
@@ -137,7 +136,6 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                     self.assertTrue("name" in tag.keys())
                     self.assertTrue("number" in tag.keys())
                     self.assertTrue("type" in tag.keys())
-                    self.assertTrue("offset" in tag.keys())
 
                     t = tag["name"]
 

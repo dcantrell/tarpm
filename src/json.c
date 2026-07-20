@@ -54,7 +54,6 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 {
     struct json_object *entry = NULL;
     rpmSigTag tag = 0;
-    uint32_t offset = 0;
     rpmTagType datatype = 0;
     char *tagname = NULL;
     char *tagtype = NULL;
@@ -68,7 +67,6 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     /* individual values for this object */
     tag = ntohl(hdrentry->tag);
-    offset = ntohl(hdrentry->offset);
     datatype = ntohl(hdrentry->type);
 
     /* add all of the entry values to the object */
@@ -84,8 +82,6 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
-
-    json_object_object_add(entry, RPM_ENTRY_OFFSET_DESC, json_object_new_int64(offset));
 
     /* clean up */
     free(tagname);

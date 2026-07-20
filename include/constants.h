@@ -51,7 +51,6 @@
 #define RPM_ENTRY_NAME_DESC          "name"
 #define RPM_ENTRY_TAG_DESC           "number"
 #define RPM_ENTRY_TYPE_DESC          "type"
-#define RPM_ENTRY_OFFSET_DESC        "offset"
 #define RPM_ENTRY_TAGS_DESC          "tags"
 #define RPM_ENTRY_VALUE_DESC         "value"
 #define RPM_ENTRY_VALUES_DESC        "values"
