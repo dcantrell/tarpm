@@ -165,7 +165,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
 /* Add the header tags and their values to the data buffer */
 static int
-add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index)
+add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size)
 {
     int r = 0;
     int b = 0;
@@ -181,12 +181,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     const char *value = NULL;
     int len = 0;
     uint8_t *blob = NULL;
-    size_t blobsize = 0;
     int32_t padding = 0;
     size_t j = 0;
-    size_t arr_len = 0;
-    struct json_object *int_obj = NULL;
-    struct json_object *str_obj = NULL;
+    struct json_object *obj = NULL;
 
     if (tags == NULL || v == NULL) {
         return -1;
@@ -216,20 +213,13 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             v->entry->type = tag_type(key);
         }
 
-        if (json_object_object_get_ex(entry, "count", &key) == 0) {
-            warnx(_("*** invalid header tag entry, missing 'count'"));
-            r = -1;
-        } else {
-            v->entry->count = json_object_get_uint64(key);
-        }
-
         /* get the offset from JSON if present, otherwise calculate it */
         if (json_object_object_get_ex(entry, "offset", &key) == 1) {
             /* use offset from JSON for exact recreation */
             v->entry->offset = json_object_get_uint64(key);
             offset = v->entry->offset;
             datapos = v->datastart + offset;
-        } else if (trailer_index >= 0 && i == (size_t)trailer_index) {
+        } else if (trailer_index >= 0 && i == ((size_t) trailer_index)) {
             /* trailer offset points to end of data (past actual data) */
             v->entry->offset = totalsize;
             offset = totalsize;
@@ -251,7 +241,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
         }
 
         /* write data for all entries except trailer */
-        if (!(trailer_index >= 0 && i == (size_t)trailer_index)) {
+        if (!(trailer_index >= 0 && i == ((size_t) trailer_index))) {
             /* now get the data and put it in the buffer and update the offset */
             if (json_object_object_get_ex(entry, "value", &key) == 0) {
                 warnx(_("*** invalid header tag entry, missing 'value'"));
@@ -260,12 +250,12 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 /* handle each data type */
                 if (v->entry->type == RPM_BIN_TYPE) {
                     value = json_object_get_string(key);
-                    b = rpmBase64Decode(value, (void **) &blob, &blobsize);
+                    b = rpmBase64Decode(value, (void **) &blob, (size_t *) &(v->entry->count));
 
                     if (b == 0) {
-                        memcpy(datapos, blob, blobsize);
-                        datapos += blobsize;
-                        offset += blobsize;
+                        memcpy(datapos, blob, v->entry->count);
+                        datapos += v->entry->count;
+                        offset += v->entry->count;
                         free(blob);
                     } else {
                         warnx(_("*** rpmBase64Decode failed with code %d"), b);
@@ -274,17 +264,18 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else if (v->entry->type == RPM_INT8_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
                         j = 0;
-                        arr_len = json_object_array_length(key);
-                        int_obj = NULL;
+                        v->entry->count = json_object_array_length(key);
+                        obj = NULL;
 
-                        for (j = 0; j < arr_len; j++) {
-                            int_obj = json_object_array_get_idx(key, j);
-                            i8 = json_object_get_int(int_obj);
+                        for (j = 0; j < v->entry->count; j++) {
+                            obj = json_object_array_get_idx(key, j);
+                            i8 = json_object_get_int(obj);
                             memcpy(datapos, &i8, sizeof(i8));
                             datapos += sizeof(i8);
                             offset += sizeof(i8);
                         }
                     } else {
+                        v->entry->count = 1;
                         i8 = json_object_get_int(key);
                         memcpy(datapos, &i8, sizeof(i8));
                         datapos += sizeof(i8);
@@ -293,17 +284,18 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else if (v->entry->type == RPM_INT16_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
                         j = 0;
-                        arr_len = json_object_array_length(key);
-                        int_obj = NULL;
+                        v->entry->count = json_object_array_length(key);
+                        obj = NULL;
 
-                        for (j = 0; j < arr_len; j++) {
-                            int_obj = json_object_array_get_idx(key, j);
-                            i16 = htons(json_object_get_uint64(int_obj));
+                        for (j = 0; j < v->entry->count; j++) {
+                            obj = json_object_array_get_idx(key, j);
+                            i16 = htons(json_object_get_uint64(obj));
                             memcpy(datapos, &i16, sizeof(i16));
                             datapos += sizeof(i16);
                             offset += sizeof(i16);
                         }
                     } else {
+                        v->entry->count = 1;
                         i16 = htons(json_object_get_uint64(key));
                         memcpy(datapos, &i16, sizeof(i16));
                         datapos += sizeof(i16);
@@ -312,17 +304,18 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else if (v->entry->type == RPM_INT32_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
                         j = 0;
-                        arr_len = json_object_array_length(key);
-                        int_obj = NULL;
+                        v->entry->count = json_object_array_length(key);
+                        obj = NULL;
 
-                        for (j = 0; j < arr_len; j++) {
-                            int_obj = json_object_array_get_idx(key, j);
-                            i32 = htonl((uint32_t) json_object_get_int64(int_obj));
+                        for (j = 0; j < v->entry->count; j++) {
+                            obj = json_object_array_get_idx(key, j);
+                            i32 = htonl((uint32_t) json_object_get_int64(obj));
                             memcpy(datapos, &i32, sizeof(i32));
                             datapos += sizeof(i32);
                             offset += sizeof(i32);
                         }
                     } else {
+                        v->entry->count = 1;
                         i32 = htonl((uint32_t) json_object_get_int64(key));
                         memcpy(datapos, &i32, sizeof(i32));
                         datapos += sizeof(i32);
@@ -331,17 +324,18 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else if (v->entry->type == RPM_INT64_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
                         j = 0;
-                        arr_len = json_object_array_length(key);
-                        int_obj = NULL;
+                        v->entry->count = json_object_array_length(key);
+                        obj = NULL;
 
-                        for (j = 0; j < arr_len; j++) {
-                            int_obj = json_object_array_get_idx(key, j);
-                            i64 = htobe64((uint64_t) json_object_get_int64(int_obj));
+                        for (j = 0; j < v->entry->count; j++) {
+                            obj = json_object_array_get_idx(key, j);
+                            i64 = htobe64((uint64_t) json_object_get_int64(obj));
                             memcpy(datapos, &i64, sizeof(i64));
                             datapos += sizeof(i64);
                             offset += sizeof(i64);
                         }
                     } else {
+                        v->entry->count = 1;
                         i64 = htobe64((uint64_t) json_object_get_int64(key));
                         memcpy(datapos, &i64, sizeof(i64));
                         datapos += sizeof(i64);
@@ -350,14 +344,12 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else if (v->entry->type == RPM_STRING_ARRAY_TYPE) {
                     /* string array: write each string with NUL terminator */
                     j = 0;
-                    arr_len = 0;
-                    str_obj = NULL;
+                    obj = NULL;
+                    v->entry->count = json_object_array_length(key);
 
-                    arr_len = json_object_array_length(key);
-
-                    for (j = 0; j < arr_len; j++) {
-                        str_obj = json_object_array_get_idx(key, j);
-                        value = json_object_get_string(str_obj);
+                    for (j = 0; j < v->entry->count; j++) {
+                        obj = json_object_array_get_idx(key, j);
+                        value = json_object_get_string(obj);
                         len = strlen(value);
                         memcpy(datapos, value, len + 1);
                         datapos += len + 1;
@@ -365,6 +357,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     }
                 } else {
                     /* string data */
+                    v->entry->count = 1;
                     value = json_object_get_string(key);
                     len = json_object_get_string_len(key);
                     memcpy(datapos, value, len + 1);
@@ -372,6 +365,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     offset += len + 1;
                 }
             }
+        } else {
+            /* get the trailer count value */
+            v->entry->count = trailer_size;
         }
 
         /* convert entry fields to network byte order */
@@ -548,7 +544,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     /* walk the header tags and add them to the values structure */
-    r = add_header_tags(tags, v, totalsize, trailer_index);
+    r = add_header_tags(tags, v, totalsize, trailer_index, trailer_size);
 
     /* ensure caller gets the header and data */
     *hdr = s;
