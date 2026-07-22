@@ -12,6 +12,7 @@
 #include <ftw.h>
 #include <err.h>
 #include <arpa/inet.h>
+#include <sys/mman.h>
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
@@ -23,7 +24,7 @@
 static int trimlen = -1;
 static struct archive *payload = NULL;
 
-/* Helper for nftw() from write_payload() */
+/* Helper for nftw() from create_payload() */
 static int
 add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unused)) int tflag, __attribute__((unused)) struct FTW *ftwbuf)
 {
@@ -243,16 +244,24 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     return;
 }
 
-/* Helper for create_rpm() that writes the payload data to the RPM */
-static void
-write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
+/*
+ * Helper for create_rpm() that writes the payload data to a temporary
+ * file.  Returns an open file descriptor that can then be used later when putting together the final RPM.
+ * Caller must close the file descriptor when done which will remove the temporary file associated with it.
+ *
+ * Returns NULL on failure.
+ */
+static int
+create_payload(struct json_object *header, const char *payload_subdir)
 {
+    int payloadfd = -1;
+    char *template = NULL;
     const char *tag = NULL;
     char *opts = NULL;
     struct json_object *tags = NULL;
 
-    if (rpm == NULL || header == NULL) {
-        return;
+    if (header == NULL || payload_subdir == NULL) {
+        return -1;
     }
 
     /* initialize inode list for hardlink handling */
@@ -260,16 +269,34 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
         warnx("add_inodes");
     }
 
+    /* get the header tags array */
+    if (json_object_object_get_ex(header, "tags", &tags) == 0) {
+        warnx(_("*** missing tags in header data"));
+    }
+
+    /* get the package name and create a temporary payload file */
+    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
+
+    if (tag == NULL) {
+        warnx("*** unable to get RPMTAG_NAME");
+        tag = "rpm";
+    }
+
+    xasprintf(&template, "%s-payload.%d", tag, getpid());
+    payloadfd = memfd_create(template, MFD_CLOEXEC);
+
+    if (payloadfd == -1) {
+        warn("memfd_create");
+        return payloadfd;
+    }
+
+    free(template);
+
     /* create a new payload writer */
     payload = archive_write_new();
 
     /* set the payload format, which is always the same */
     archive_write_set_format_cpio_newc(payload);
-
-    /* get the header tags array */
-    if (json_object_object_get_ex(header, "tags", &tags) == 0) {
-        warnx(_("*** missing tags in header data"));
-    }
 
     /* get the compression algorithm type */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
@@ -304,7 +331,7 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
     }
 
     /* open the payload for writing */
-    if (archive_write_open_FILE(payload, rpm) != ARCHIVE_OK) {
+    if (archive_write_open_fd(payload, payloadfd) != ARCHIVE_OK) {
         errx(EXIT_FAILURE, "archive_write_open_FILE: %s", archive_error_string(payload));
     }
 
@@ -326,6 +353,54 @@ write_payload(FILE *rpm, struct json_object *header, const char *payload_subdir)
 
     free_inodes();
 
+    return payloadfd;
+}
+
+/*
+ * Called by create_rpm() to copy the payload to the final RPM.
+ *
+ * NOTE:
+ * This does close the file descriptor for the temporary payload which
+ * does remove that temporary file.
+ */
+static void
+write_payload(FILE *rpm, int payloadfd)
+{
+    FILE *pload = NULL;
+    char buf[BUFSIZ];
+    size_t s = 0;
+
+    if (rpm == NULL) {
+        return;
+    }
+
+    /* bring the payload back to the beginning */
+    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
+        warn("lseek");
+        return;
+    }
+
+    /* open the payload for reading */
+    pload = fdopen(payloadfd, "r");
+
+    if (pload == NULL) {
+        warn("pload");
+        return;
+    }
+
+    /* copy payload over to the RPM */
+    while ((s = fread(buf, sizeof(char), BUFSIZ, pload)) > 0) {
+        if (fwrite(buf, sizeof(char), s, rpm) != s) {
+            warn("fwrite");
+            break;
+        }
+    }
+
+    /* close the payload -- deletes the temporary file */
+    if (fclose(pload) != 0) {
+        warn("fclose");
+    }
+
     return;
 }
 
@@ -334,6 +409,7 @@ void
 create_rpm(const char *filename, const char *cwd, const char *input_dir)
 {
     FILE *rpm = NULL;
+    int payloadfd = -1;
     struct stat sb;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
@@ -396,6 +472,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, _("*** unable to construct RPM header"));
     }
 
+    /* create the payload */
+    payloadfd = create_payload(header, PAYLOAD_SUBDIR);
+
+    if (payloadfd == -1) {
+        errx(EXIT_FAILURE, "create_payload");
+    }
+
     /* create an RPM for writing */
     rpm = fopen(filename, "wb");
 
@@ -415,7 +498,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     write_header(rpm, hdr, hdrinfo, false, header);
 
     /* write the payload to the RPM */
-    write_payload(rpm, header, PAYLOAD_SUBDIR);
+    write_payload(rpm, payloadfd);
 
     /* close the RPM */
     if (fclose(rpm) != 0) {
