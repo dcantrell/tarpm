@@ -546,3 +546,68 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     return r;
 }
+
+/* Returns true if there is a trailer in the specified header */
+bool
+has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart)
+{
+    uint32_t i = 0;
+
+    if (nentries == 0 || estart == NULL) {
+        return false;
+    }
+
+    for (i = 0; i < nentries; i++) {
+        if (ntohl(estart[i].tag) == HEADER_SIGNATURES || ntohl(estart[i].tag) == HEADER_IMMUTABLE) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * Looks for the trailer data in the header tags and if found, does a
+ * base64 decode and stores that in the trailer_data parameter and the
+ * size in the trailer_size parameter.  Returns 0 on success, non-zero
+ * on error.  Caller must free trailer_data.
+ */
+int
+get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size)
+{
+    size_t i = 0;
+    int r = 0;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *tobj = NULL;
+    struct json_object *vobj = NULL;
+    const char *trailer_value = NULL;
+
+    if (data == NULL || trailer_data == NULL || trailer_size == NULL) {
+        return -1;
+    }
+
+    if (json_object_object_get_ex(data, "tags", &tags) == 1) {
+        for (i = 0; i < json_object_array_length(tags); i++) {
+            entry = json_object_array_get_idx(tags, i);
+
+            if (json_object_object_get_ex(entry, "trailer", &tobj) == 1) {
+                if (json_object_object_get_ex(entry, "value", &vobj) == 1) {
+                    trailer_value = json_object_get_string(vobj);
+                    r = rpmBase64Decode(trailer_value, (void **) trailer_data, trailer_size);
+
+                    if (r == 0 && *trailer_size == 16) {
+                        return 0;
+                    }
+
+                    free(trailer_data);
+                    trailer_data = NULL;
+                }
+
+                break;
+            }
+        }
+    }
+
+    return -1;
+}

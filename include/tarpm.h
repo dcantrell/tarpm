@@ -63,6 +63,8 @@ struct json_object *read_signature(const int fd);
 bool valid_header_signature(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo);
+bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
+int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);

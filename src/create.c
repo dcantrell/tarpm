@@ -15,7 +15,6 @@
 #include <sys/mman.h>
 #include <json_object.h>
 #include <rpm/header.h>
-#include <rpm/rpmbase64.h>
 #include <archive.h>
 #include <archive_entry.h>
 
@@ -148,22 +147,15 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
 static void
 write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_signature, struct json_object *data)
 {
-    uint32_t i = 0;
     uint32_t n = 0;
     uint32_t nentries = 0;
     uint32_t nbytes = 0;
     uint32_t hlen = 0;
     uint32_t padlen = 0;
     uint8_t padding[8] = {0};
-    struct json_object *tags = NULL;
-    struct json_object *entry = NULL;
-    struct json_object *trailer_obj = NULL;
-    struct json_object *value_obj = NULL;
-    const char *trailer_value = NULL;
     uint8_t *trailer_data = NULL;
     size_t trailer_size = 0;
     int r = 0;
-    bool has_trailer = false;
 
     if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
         return;
@@ -189,13 +181,9 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
      * bytes less, because the trailer is counted in nbytes but
      * not written in the main data section
      */
-    for (i = 0; i < nentries; i++) {
-        if (ntohl(hdrinfo->estart[i].tag) == HEADER_SIGNATURES || ntohl(hdrinfo->estart[i].tag) == HEADER_IMMUTABLE) {
-            /* trailer size */
-            n -= 16;
-            has_trailer = true;
-            break;
-        }
+    if (has_trailer(nentries, hdrinfo->estart)) {
+        n -= 16;
+        r = get_trailer_data(data, &trailer_data, &trailer_size);
     }
 
     if (fwrite(hdrinfo->datastart, 1, n, rpm) != n) {
@@ -203,29 +191,12 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     }
 
     /* write the trailer if present (for both signature and header sections) */
-    if (has_trailer && data != NULL) {
-        if (json_object_object_get_ex(data, "tags", &tags) == 1) {
-            for (i = 0; i < json_object_array_length(tags); i++) {
-                entry = json_object_array_get_idx(tags, i);
-
-                if (json_object_object_get_ex(entry, "trailer", &trailer_obj) == 1) {
-                    if (json_object_object_get_ex(entry, "value", &value_obj) == 1) {
-                        trailer_value = json_object_get_string(value_obj);
-                        r = rpmBase64Decode(trailer_value, (void **) &trailer_data, &trailer_size);
-
-                        if (r == 0 && trailer_size == 16) {
-                            if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
-                                warn("fwrite");
-                            }
-                        }
-
-                        free(trailer_data);
-                    }
-
-                    break;
-                }
-            }
+    if (r == 0 && trailer_size == 16) {
+        if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
+            warn("fwrite");
         }
+
+        free(trailer_data);
     }
 
     /* write padding after signature data to align to 8-byte boundary */
@@ -357,14 +328,15 @@ create_payload(struct json_object *header, const char *payload_subdir)
 }
 
 /*
- * Called by create_rpm() to copy the payload to the final RPM.
+ * Called by create_rpm() to copy the payload from the specified file
+ * descriptor to the current position in the RPM file.
  *
  * NOTE:
  * This does close the file descriptor for the temporary payload which
  * does remove that temporary file.
  */
 static void
-write_payload(FILE *rpm, int payloadfd)
+write_payload(FILE *rpm, int fd)
 {
     FILE *pload = NULL;
     char buf[BUFSIZ];
@@ -375,16 +347,16 @@ write_payload(FILE *rpm, int payloadfd)
     }
 
     /* bring the payload back to the beginning */
-    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
+    if (lseek(fd, 0, SEEK_SET) == -1) {
         warn("lseek");
         return;
     }
 
     /* open the payload for reading */
-    pload = fdopen(payloadfd, "r");
+    pload = fdopen(fd, "r");
 
     if (pload == NULL) {
-        warn("pload");
+        warn("fdopen");
         return;
     }
 
@@ -402,6 +374,34 @@ write_payload(FILE *rpm, int payloadfd)
     }
 
     return;
+}
+
+/*
+ * Update the digests and sizes in the signature using the header and
+ * payload data.  Returns non-zero on failure.
+ */
+static int
+update_signature(struct json_object *signature, const struct rpmhdr *sig, const struct rpmhdrinfo *siginfo, const int payloadfd)
+{
+    unsigned char *digest = NULL;
+
+    if (signature == NULL || sig == NULL || siginfo == NULL || payloadfd == -1) {
+        return -1;
+    }
+
+    /* compute MD5 digest */
+    digest = compute_signature_digest(TARPM_DIGEST_MD5, sig, siginfo, signature, payloadfd);
+    free(digest);
+
+    /* compute SHA-1 digest */
+    digest = compute_signature_digest(TARPM_DIGEST_SHA1, sig, siginfo, signature, payloadfd);
+    free(digest);
+
+    /* compute SHA-256 digest */
+    digest = compute_signature_digest(TARPM_DIGEST_SHA256, sig, siginfo, signature, payloadfd);
+    free(digest);
+
+    return 0;
 }
 
 /* Handler for -c mode (create) */
@@ -462,11 +462,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, _("*** unable to construct RPM lead"));
     }
 
-    /* create the signature */
-    if (create_header(signature, &sig, &siginfo) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
-    }
-
     /* create the header (the main header) */
     if (create_header(header, &hdr, &hdrinfo) == -1) {
         errx(EXIT_FAILURE, _("*** unable to construct RPM header"));
@@ -477,6 +472,16 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     if (payloadfd == -1) {
         errx(EXIT_FAILURE, "create_payload");
+    }
+
+    /* create the signature */
+    if (create_header(signature, &sig, &siginfo) == -1) {
+        errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
+    }
+
+    /* recalculate the digests and update the signature data */
+    if (update_signature(signature, sig, siginfo, payloadfd) != 0) {
+        errx(EXIT_FAILURE, "update_signature");
     }
 
     /* create an RPM for writing */
