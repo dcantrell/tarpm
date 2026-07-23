@@ -15,7 +15,7 @@
  * caller must free.
  */
 struct rpmhdrinfo *
-compute_hdrinfo(const struct rpmhdr *hdr, const bool signature)
+mkhdrinfo(const struct rpmhdr *hdr, const bool signature)
 {
     struct rpmhdrinfo *hdrinfo = NULL;
 

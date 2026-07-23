@@ -83,7 +83,7 @@ const char *sig_tag_name(uint32_t tag);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 
 /* read.c */
-struct rpmhdrinfo *compute_hdrinfo(const struct rpmhdr *hdr, const bool signature);
+struct rpmhdrinfo *mkhdrinfo(const struct rpmhdr *hdr, const bool signature);
 struct rpmhdr *read_header_signature(const int fd);
 uint32_t *read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen);
 struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
@@ -112,6 +112,6 @@ void free_inodes(void);
 void list_rpm(const char *rpm);
 
 /* digest.c */
-unsigned char *compute_signature_digest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
+unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
 
 #endif /* _TARPM_TARPM_H */

@@ -35,7 +35,7 @@ read_signature(const int fd)
     }
 
     /* computed from header values */
-    hdrinfo = compute_hdrinfo(rawhdr, true);
+    hdrinfo = mkhdrinfo(rawhdr, true);
 
     /* read in the entries */
     buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);

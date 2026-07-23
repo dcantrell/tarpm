@@ -426,7 +426,7 @@ read_header(const int fd)
     }
 
     /* computed from header values */
-    hdrinfo = compute_hdrinfo(rawhdr, false);
+    hdrinfo = mkhdrinfo(rawhdr, false);
 
     /* read in the entries */
     buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);

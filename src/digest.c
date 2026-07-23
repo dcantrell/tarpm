@@ -25,7 +25,7 @@
  * must free the returned buffer.
  */
 unsigned char *
-compute_signature_digest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd)
+mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd)
 {
     unsigned char *r = NULL;
     int i = -1;

@@ -390,15 +390,15 @@ update_signature(struct json_object *signature, const struct rpmhdr *sig, const 
     }
 
     /* compute MD5 digest */
-    digest = compute_signature_digest(TARPM_DIGEST_MD5, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_MD5, sig, siginfo, signature, payloadfd);
     free(digest);
 
     /* compute SHA-1 digest */
-    digest = compute_signature_digest(TARPM_DIGEST_SHA1, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_SHA1, sig, siginfo, signature, payloadfd);
     free(digest);
 
     /* compute SHA-256 digest */
-    digest = compute_signature_digest(TARPM_DIGEST_SHA256, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_SHA256, sig, siginfo, signature, payloadfd);
     free(digest);
 
     return 0;
