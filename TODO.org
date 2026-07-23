@@ -8,6 +8,18 @@ Core functionality that still needs to happen:
 
     [ ] Compute digests for the signature header.
 
+    [ ] Files added to the payload subdirectory should have header
+        entries created if they do not exist in the JSON metadata.
+
+    [ ] Files removed from the payload subdirectory should header
+        entries removed if they do not exist in the JSON metadata.
+
+    [ ] File metadata in the payload subdirectory should be updated
+        based on what actually exists (but not everything).
+        [ ] Size
+        [ ] Type (regular file, devnode, link)
+        [ ] Digests
+
 [ ] List mode
     [ ] Need a strmode() function
     [ ] Output needs to look like 'tar -tvf' on example.tar
@@ -19,9 +31,14 @@ Core functionality that still needs to happen:
         yeet between them.
 
     [ ] The changelog should be combined back together in a similar
-        style.
+        style, but in JSON format.
+
+    [ ] Package dependencies should be written in a JSON array in a
+        style similar to what you see in spec files.
 
     [ ] Scriptlets should go to individual files for easier editing.
+
+    [ ] Source RPMs should have the spec header value go to a file.
 
     [ ] Data in the JSON files that is read-only should be marked
         as such so the reader knows.
