@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-16 15:44-0400\n"
+"POT-Creation-Date: 2026-07-22 13:33-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,38 +17,38 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/create.c:271 src/header.c:509
+#: src/create.c:274 src/header.c:499
 msgid "*** missing tags in header data"
 msgstr ""
 
-#: src/create.c:352
+#: src/create.c:465
 #, c-format
 msgid "*** %s does not exist"
 msgstr ""
 
-#: src/create.c:366
+#: src/create.c:479
 #, c-format
 msgid "*** %s is not a directory"
 msgstr ""
 
-#: src/create.c:373
+#: src/create.c:486
 msgid "*** missing signature data"
 msgstr ""
 
-#: src/create.c:379
+#: src/create.c:492
 msgid "*** missing header data"
 msgstr ""
 
-#: src/create.c:386
+#: src/create.c:499
 msgid "*** unable to construct RPM lead"
 msgstr ""
 
-#: src/create.c:391
-msgid "*** unable to construct RPM signature"
+#: src/create.c:504
+msgid "*** unable to construct RPM header"
 msgstr ""
 
-#: src/create.c:396
-msgid "*** unable to construct RPM header"
+#: src/create.c:521
+msgid "*** unable to construct RPM signature"
 msgstr ""
 
 #: src/extract.c:33
@@ -74,37 +74,33 @@ msgstr ""
 msgid "*** unable to set dest_dir"
 msgstr ""
 
-#: src/header.c:206
+#: src/header.c:203
 msgid "*** invalid header tag entry, missing 'number'"
 msgstr ""
 
-#: src/header.c:213
+#: src/header.c:210
 msgid "*** invalid header tag entry, missing 'type'"
 msgstr ""
 
-#: src/header.c:220
-msgid "*** invalid header tag entry, missing 'count'"
-msgstr ""
-
-#: src/header.c:257
+#: src/header.c:241
 msgid "*** invalid header tag entry, missing 'value'"
 msgstr ""
 
-#: src/header.c:271
+#: src/header.c:255
 #, c-format
 msgid "*** rpmBase64Decode failed with code %d"
 msgstr ""
 
-#: src/header.c:516
+#: src/header.c:506
 msgid "*** create_header: tags must be an array"
 msgstr ""
 
-#: src/json.c:213
+#: src/json.c:205
 #, c-format
 msgid "*** missing or unreadable %s"
 msgstr ""
 
-#: src/json.c:220
+#: src/json.c:212
 #, c-format
 msgid "*** json_object_from_file: %s"
 msgstr ""
