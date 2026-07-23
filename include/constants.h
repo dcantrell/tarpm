@@ -56,4 +56,9 @@
 #define RPM_ENTRY_VALUES_DESC        "values"
 #define RPM_ENTRY_TRAILER_DESC       "trailer"
 
+/* Digest types used in the headers */
+#define TARPM_DIGEST_MD5             1
+#define TARPM_DIGEST_SHA1            2
+#define TARPM_DIGEST_SHA256          3
+
 #endif /* _TARPM_CONSTANTS_H */

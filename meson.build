@@ -75,6 +75,8 @@ if rpm.version().version_compare('<4.15.0')
     add_project_arguments('-D_HAVE_OLD_RPM_API', language : ['c', 'cpp'])
 endif
 
+openssl = dependency('openssl', required : true)
+
 # Test suite dependencies
 run_tests = get_option('tests')
 if run_tests

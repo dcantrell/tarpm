@@ -2,6 +2,7 @@
 # tests.
 abspath_src = files('abspath.c')
 create_src = files('create.c')
+digest_src = files('digest.c')
 entry_src = files('entry.c')
 extract_src = files('extract.c')
 header_src = files('header.c')
@@ -26,6 +27,7 @@ xread_src = files('xread.c')
 sources = [
     abspath_src,
     create_src,
+    digest_src,
     entry_src,
     extract_src,
     header_src,
@@ -52,6 +54,7 @@ deps = [
     rpm,
     libarchive,
     jsonc,
+    openssl
 ]
 
 tarpm_prog = executable(
