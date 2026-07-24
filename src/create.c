@@ -15,8 +15,10 @@
 #include <sys/mman.h>
 #include <json_object.h>
 #include <rpm/header.h>
+#include <rpm/rpmbase64.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <openssl/md5.h>
 #include <openssl/sha.h>
 
 #include "tarpm.h"
@@ -386,6 +388,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 {
     int i = 0;
     unsigned char *digest = NULL;
+    void *blob = NULL;
     char *buf = NULL;
     struct json_object *tags = NULL;
 
@@ -401,7 +404,26 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
     /* compute MD5 digest */
     digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
+    blob = xalloc(MD5_DIGEST_LENGTH);
+    memcpy(blob, digest, MD5_DIGEST_LENGTH);
+    buf = rpmBase64Encode(blob, MD5_DIGEST_LENGTH, -1);
+    free(blob);
+
+    if (buf == NULL) {
+        warnx("rpmBase64Encode");
+        free(digest);
+        return -1;
+    }
+
+    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_MD5), buf) != 0) {
+        warnx(_("*** failed to update MD5 digest in signature"));
+        free(digest);
+        free(buf);
+        return -1;
+    }
+
     free(digest);
+    free(buf);
 
     /* compute SHA-1 digest */
     digest = mksigdigest(TARPM_DIGEST_SHA1, hdr, hdrinfo, header, payloadfd);
