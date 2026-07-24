@@ -13,6 +13,7 @@
 #include <err.h>
 #include <arpa/inet.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
@@ -391,6 +392,12 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     void *blob = NULL;
     char *buf = NULL;
     struct json_object *tags = NULL;
+    struct stat sb;
+    uint32_t payloadsize = 0;
+    uint32_t hdrsize = 0;
+    uint32_t totalsize = 0;
+    uint32_t nentries = 0;
+    uint32_t nbytes = 0;
 
     if (signature == NULL || header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
         return -1;
@@ -401,6 +408,42 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         warnx(_("*** missing tags in signature data"));
         return -1;
     }
+
+    /* get the compressed payload size */
+    if (fstat(payloadfd, &sb) == -1) {
+        warn("fstat");
+        return -1;
+    }
+
+    payloadsize = sb.st_size;
+
+    /* calculate the header size */
+    nentries = ntohl(hdr->nentries);
+    nbytes = ntohl(hdr->nbytes);
+    hdrsize = sizeof(*hdr) + (nentries * sizeof(struct rpmhdrentry)) + nbytes;
+    totalsize = hdrsize + payloadsize;
+
+    /* update Size tag (header + payload) */
+    xasprintf(&buf, "%u", totalsize);
+
+    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SIZE), buf) != 0) {
+        warnx(_("*** failed to update Size in signature"));
+        free(buf);
+        return -1;
+    }
+
+    free(buf);
+
+    /* update Payloadsize tag (compressed payload size) */
+    xasprintf(&buf, "%u", payloadsize);
+
+    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), buf) != 0) {
+        warnx(_("*** failed to update Payloadsize in signature"));
+        free(buf);
+        return -1;
+    }
+
+    free(buf);
 
     /* compute MD5 digest */
     digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
