@@ -82,16 +82,29 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         return NULL;
     }
 
-    /* add the header data */
-    nentries = ntohl(hdr->nentries);
+    /* add the header magic (same as rpm's rpm_header_magic) */
+    if (EVP_DigestUpdate(ctx, hdr, 8) == 0) {
+        warn("EVP_DigestUpdate");
+        EVP_MD_CTX_free(ctx);
+        return NULL;
+    }
 
+    if (EVP_DigestUpdate(ctx, &(hdr->nentries), sizeof(hdr->nentries)) == 0 || EVP_DigestUpdate(ctx, &(hdr->nbytes), sizeof(hdr->nbytes)) == 0) {
+        warn("EVP_DigestUpdate");
+        EVP_MD_CTX_free(ctx);
+        return NULL;
+    }
+
+    nentries = ntohl(hdr->nentries);
+    nbytes = ntohl(hdr->nbytes);
+
+    /* add the header entries */
     if (EVP_DigestUpdate(ctx, hdrinfo->estart, sizeof(struct rpmhdrentry) * nentries) == 0) {
         warn("EVP_DigestUpdate");
         EVP_MD_CTX_free(ctx);
         return NULL;
     }
 
-    nbytes = ntohl(hdr->nbytes);
     n = nbytes;
     i = -1;
 
@@ -116,24 +129,10 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         free(trailer_data);
     }
 
-    /* add the payload data */
-    if (lseek(fd, 0, SEEK_SET) == -1) {
-        warn("lseek");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    len = read(fd, buf, sizeof(buf));
-
-    if (len == -1) {
-        warn("read");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    while (len > 0) {
-        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
-            warn("EVP_DigestUpdate");
+    /* add the payload data (only for MD5, not for SHA-1 or SHA-256) */
+    if (type == TARPM_DIGEST_MD5) {
+        if (lseek(fd, 0, SEEK_SET) == -1) {
+            warn("lseek");
             EVP_MD_CTX_free(ctx);
             return NULL;
         }
@@ -144,6 +143,22 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
             warn("read");
             EVP_MD_CTX_free(ctx);
             return NULL;
+        }
+
+        while (len > 0) {
+            if (EVP_DigestUpdate(ctx, buf, len) == 0) {
+                warn("EVP_DigestUpdate");
+                EVP_MD_CTX_free(ctx);
+                return NULL;
+            }
+
+            len = read(fd, buf, sizeof(buf));
+
+            if (len == -1) {
+                warn("read");
+                EVP_MD_CTX_free(ctx);
+                return NULL;
+            }
         }
     }
 

@@ -17,6 +17,7 @@
 #include <rpm/header.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <openssl/sha.h>
 
 #include "tarpm.h"
 
@@ -381,25 +382,62 @@ write_payload(FILE *rpm, int fd)
  * payload data.  Returns non-zero on failure.
  */
 static int
-update_signature(struct json_object *signature, const struct rpmhdr *sig, const struct rpmhdrinfo *siginfo, const int payloadfd)
+update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
 {
+    int i = 0;
     unsigned char *digest = NULL;
+    char *buf = NULL;
+    struct json_object *tags = NULL;
 
-    if (signature == NULL || sig == NULL || siginfo == NULL || payloadfd == -1) {
+    if (signature == NULL || header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
+        return -1;
+    }
+
+    /* get the tags array from the signature */
+    if (json_object_object_get_ex(signature, "tags", &tags) == 0) {
+        warnx(_("*** missing tags in signature data"));
         return -1;
     }
 
     /* compute MD5 digest */
-    digest = mksigdigest(TARPM_DIGEST_MD5, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
     free(digest);
 
     /* compute SHA-1 digest */
-    digest = mksigdigest(TARPM_DIGEST_SHA1, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_SHA1, hdr, hdrinfo, header, payloadfd);
+    buf = xcalloc(SHA_DIGEST_LENGTH * 2 + 1, sizeof(char));
+
+    for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
+    }
+
+    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA1), buf) != 0) {
+        warnx(_("*** failed to update SHA-1 digest in signature"));
+        free(digest);
+        free(buf);
+        return -1;
+    }
+
     free(digest);
+    free(buf);
 
     /* compute SHA-256 digest */
-    digest = mksigdigest(TARPM_DIGEST_SHA256, sig, siginfo, signature, payloadfd);
+    digest = mksigdigest(TARPM_DIGEST_SHA256, hdr, hdrinfo, header, payloadfd);
+    buf = xcalloc(SHA256_DIGEST_LENGTH * 2 + 1, sizeof(char));
+
+    for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
+    }
+
+    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA256), buf) != 0) {
+        warnx(_("*** failed to update SHA-256 digest in signature"));
+        free(digest);
+        free(buf);
+        return -1;
+    }
+
     free(digest);
+    free(buf);
 
     return 0;
 }
@@ -480,8 +518,19 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
     /* recalculate the digests and update the signature data */
-    if (update_signature(signature, sig, siginfo, payloadfd) != 0) {
+    if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
         errx(EXIT_FAILURE, "update_signature");
+    }
+
+    /* free the old signature structures */
+    free(sig);
+    free(siginfo->estart);
+    free(siginfo->datastart);
+    free(siginfo);
+
+    /* regenerate the signature with updated digests */
+    if (create_header(signature, &sig, &siginfo) == -1) {
+        errx(EXIT_FAILURE, _("*** unable to reconstruct RPM signature"));
     }
 
     /* create an RPM for writing */

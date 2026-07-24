@@ -205,3 +205,44 @@ get_tag_value(const struct json_object *tags, const char *name)
 
     return v;
 }
+
+/*
+ * Given a json_object representing a "tags" array from a header JSON
+ * file, search for the array entry where the "name" field matches the
+ * name parameter on this function, and update its value with the
+ * new_value parameter.  Returns 0 on success, -1 on failure.
+ */
+int
+set_tag_value(struct json_object *tags, const char *name, const char *new_value)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    if (tags == NULL || name == NULL || new_value == NULL) {
+        return -1;
+    }
+
+    if (json_object_get_type(tags) != json_type_array) {
+        warnx(_("*** set_tag_value: tags must be an array"));
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        value = NULL;
+        entry = json_object_array_get_idx(tags, i);
+
+        if (entry == NULL) {
+            break;
+        }
+
+        if (json_object_object_get_ex(entry, "name", &value) == 1) {
+            if (!strcmp(name, json_object_get_string(value))) {
+                json_object_object_add(entry, "value", json_object_new_string(new_value));
+                return 0;
+            }
+        }
+    }
+
+    return -1;
+}

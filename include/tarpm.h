@@ -81,6 +81,7 @@ const char *strtagtype(rpmTagType type);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 const char *get_tag_value(const struct json_object *tags, const char *name);
+int set_tag_value(struct json_object *tags, const char *name, const char *new_value);
 
 /* read.c */
 struct rpmhdrinfo *mkhdrinfo(const struct rpmhdr *hdr, const bool signature);
