@@ -60,6 +60,63 @@ test_strappend(void)
     return;
 }
 
+void
+test_strsplit(void)
+{
+    str_list_t *list = NULL;
+    str_entry_t *entry = NULL;
+    char *s = NULL;
+    int len = 0;
+
+    /* NULL input returns NULL */
+    list = strsplit(NULL, ",");
+    TARPM_ASSERT_TRUE(list == NULL);
+
+    /* NULL delimiter returns single entry list */
+    list = strsplit("foo", NULL);
+    TARPM_ASSERT_TRUE(list != NULL);
+    len = list_len(list);
+    TARPM_ASSERT_TRUE(len == 1);
+
+    TAILQ_FOREACH(entry, list, items) {
+        TARPM_ASSERT_TRUE(strcmp(entry->str, "foo") == 0);
+    }
+
+    list_free(list, free);
+
+    /* delimiter same as string returns single entry list */
+    list = strsplit(",", ",");
+    TARPM_ASSERT_TRUE(list != NULL);
+    len = list_len(list);
+    TARPM_ASSERT_TRUE(len == 1);
+    list_free(list, free);
+
+    /* basic split on comma */
+    list = strsplit("foo,bar,baz", ",");
+    TARPM_ASSERT_TRUE(list != NULL);
+    s = list_to_string(list, "|");
+    TARPM_ASSERT_TRUE(strcmp(s, "foo|bar|baz") == 0);
+    free(s);
+    list_free(list, free);
+
+    /* split on multiple character delimiter */
+    list = strsplit("foo::bar::baz", "::");
+    TARPM_ASSERT_TRUE(list != NULL);
+    s = list_to_string(list, ",");
+    TARPM_ASSERT_TRUE(strcmp(s, "foo,,bar,,baz") == 0);
+    free(s);
+    list_free(list, free);
+
+    /* split with empty tokens */
+    list = strsplit("foo,,bar", ",");
+    TARPM_ASSERT_TRUE(list != NULL);
+    len = list_len(list);
+    TARPM_ASSERT_TRUE(len == 3);
+    list_free(list, free);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -75,7 +132,8 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strprefix()", test_strprefix) == NULL ||
         CU_add_test(pSuite, "test strsuffix()", test_strsuffix) == NULL ||
-        CU_add_test(pSuite, "test strappend()", test_strappend) == NULL) {
+        CU_add_test(pSuite, "test strappend()", test_strappend) == NULL ||
+        CU_add_test(pSuite, "test strsplit()", test_strsplit) == NULL) {
         return NULL;
     }
 
