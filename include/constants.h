@@ -42,8 +42,6 @@
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC     "magic"
 #define RPM_SIGNATURE_RESERVED_DESC  "reserved"
-#define RPM_SIGNATURE_NENTRIES_DESC  "index entries"
-#define RPM_SIGNATURE_NBYTES_DESC    "data size (bytes)"
 #define RPM_SIGNATURE_MAGIC          0x8EADE801
 #define RPM_SIGNATURE_RESERVED       0
 #define RPM_ENTRY_NAME_DESC          "name"

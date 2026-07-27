@@ -118,14 +118,6 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     json_object_object_add(out, RPM_SIGNATURE_RESERVED_DESC, json_object_new_string(s));
     free(s);
 
-    xasprintf(&s, "%u", hdr->nentries);
-    json_object_object_add(out, RPM_SIGNATURE_NENTRIES_DESC, json_object_new_string(s));
-    free(s);
-
-    xasprintf(&s, "%" PRIu32, hdr->nbytes);
-    json_object_object_add(out, RPM_SIGNATURE_NBYTES_DESC, json_object_new_string(s));
-    free(s);
-
     return out;
 }
 
