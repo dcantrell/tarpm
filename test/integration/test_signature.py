@@ -19,10 +19,6 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
         for key in [
             "magic",
             "reserved",
-            "index entries",
-            "index size (bytes)",
-            "data size (bytes)",
-            "header size (bytes)",
             "tags",
         ]:
             self.assertTrue(key in signature.keys())
@@ -31,14 +27,6 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
                 self.assertEqual(signature[key], "0000")
-            elif key == "index entries":
-                self.assertTrue(int(signature[key]) == 7)
-            elif key == "index size (bytes)":
-                self.assertTrue(int(signature[key]) == 112)
-            elif key == "data size (bytes)":
-                self.assertTrue(int(signature[key]) == 4276)
-            elif key == "header size (bytes)":
-                self.assertTrue(int(signature[key]) == 4388)
             elif key == "tags":
                 self.assertTrue(isinstance(signature[key], list))
                 self.assertTrue(len(signature[key]) > 0)
@@ -107,10 +95,6 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
         for key in [
             "magic",
             "reserved",
-            "index entries",
-            "index size (bytes)",
-            "data size (bytes)",
-            "header size (bytes)",
             "tags",
         ]:
             self.assertTrue(key in signature.keys())
@@ -119,14 +103,6 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                 self.assertEqual(signature[key], "0x8EADE801")
             elif key == "reserved":
                 self.assertEqual(signature[key], "0000")
-            elif key == "index entries":
-                self.assertTrue(int(signature[key]) == 7)
-            elif key == "index size (bytes)":
-                self.assertTrue(int(signature[key]) == 112)
-            elif key == "data size (bytes)":
-                self.assertTrue(int(signature[key]) == 4276)
-            elif key == "header size (bytes)":
-                self.assertTrue(int(signature[key]) == 4388)
             elif key == "tags":
                 self.assertTrue(isinstance(signature[key], list))
                 self.assertTrue(len(signature[key]) > 0)

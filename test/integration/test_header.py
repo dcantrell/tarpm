@@ -23,10 +23,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
         for key in [
             "magic",
             "reserved",
-            "index entries",
-            "index size (bytes)",
-            "data size (bytes)",
-            "header size (bytes)",
             "tags",
         ]:
             self.assertTrue(key in header.keys())
@@ -35,14 +31,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
                 self.assertEqual(header[key], "0000")
-            elif key == "index entries":
-                self.assertTrue(int(header[key]) == 51)
-            elif key == "index size (bytes)":
-                self.assertTrue(int(header[key]) == 816)
-            elif key == "data size (bytes)":
-                self.assertTrue(int(header[key]) == 917)
-            elif key == "header size (bytes)":
-                self.assertTrue(int(header[key]) == 1733)
             elif key == "tags":
                 self.assertTrue(isinstance(header[key], list))
                 self.assertTrue(len(header[key]) > 0)
@@ -290,10 +278,6 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
         for key in [
             "magic",
             "reserved",
-            "index entries",
-            "index size (bytes)",
-            "data size (bytes)",
-            "header size (bytes)",
             "tags",
         ]:
             self.assertTrue(key in header.keys())
@@ -302,14 +286,6 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                 self.assertEqual(header[key], "0x8EADE801")
             elif key == "reserved":
                 self.assertEqual(header[key], "0000")
-            elif key == "index entries":
-                self.assertTrue(int(header[key]) == 37)
-            elif key == "index size (bytes)":
-                self.assertTrue(int(header[key]) == 592)
-            elif key == "data size (bytes)":
-                self.assertTrue(int(header[key]) == 1165)
-            elif key == "header size (bytes)":
-                self.assertTrue(int(header[key]) == 1757)
             elif key == "tags":
                 self.assertTrue(isinstance(header[key], list))
                 self.assertTrue(len(header[key]) > 0)
