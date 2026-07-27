@@ -43,9 +43,7 @@
 #define RPM_SIGNATURE_MAGIC_DESC     "magic"
 #define RPM_SIGNATURE_RESERVED_DESC  "reserved"
 #define RPM_SIGNATURE_NENTRIES_DESC  "index entries"
-#define RPM_SIGNATURE_ILEN_DESC      "index size (bytes)"
 #define RPM_SIGNATURE_NBYTES_DESC    "data size (bytes)"
-#define RPM_SIGNATURE_HLEN_DESC      "header size (bytes)"
 #define RPM_SIGNATURE_MAGIC          0x8EADE801
 #define RPM_SIGNATURE_RESERVED       0
 #define RPM_ENTRY_NAME_DESC          "name"
@@ -53,8 +51,10 @@
 #define RPM_ENTRY_TYPE_DESC          "type"
 #define RPM_ENTRY_TAGS_DESC          "tags"
 #define RPM_ENTRY_VALUE_DESC         "value"
-#define RPM_ENTRY_VALUES_DESC        "values"
 #define RPM_ENTRY_TRAILER_DESC       "trailer"
+
+/* general purpose string constants */
+#define RPM_METADATA_READ_ONLY       "read-only"
 
 /* Digest types used in the headers */
 #define TARPM_DIGEST_MD5             1

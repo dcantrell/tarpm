@@ -69,6 +69,12 @@ read_lead(const int fd)
     json_object_object_add(lead, RPM_LEAD_OS, json_object_new_int(rawlead.osnum));
     json_object_object_add(lead, RPM_LEAD_SIGTYPE, json_object_new_int(rawlead.signature_type));
 
+    /*
+     * the RPM lead is read-only for the purposes of tarpm; it is
+     * always created from scratch
+     */
+    json_object_object_add(lead, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
+
     return lead;
 }
 

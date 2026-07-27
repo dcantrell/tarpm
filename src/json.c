@@ -83,6 +83,11 @@ create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 
+    /* all of the tags in the signature header are really read-only */
+    if (signature) {
+        json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
+    }
+
     /* clean up */
     free(tagname);
     free(tagtype);
