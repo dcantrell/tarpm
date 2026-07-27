@@ -34,6 +34,7 @@ char *strappend(char *dest, ...);
 str_list_t *strsplit(const char *s, const char *delim);
 
 /* listfuncs.c */
+size_t list_len(const str_list_t *list);
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
 str_list_t *list_add(str_list_t *list, const char *s);
 char *list_to_string(const str_list_t *list, const char *delimiter);

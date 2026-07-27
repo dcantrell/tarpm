@@ -10,6 +10,24 @@
 #include <string.h>
 #include "tarpm.h"
 
+/* Returns the number of entries in the list */
+size_t
+list_len(const str_list_t *list)
+{
+    str_entry_t *iter = NULL;
+    size_t len = 0;
+
+    if (list == NULL || TAILQ_EMPTY(list)) {
+        return 0;
+    }
+
+    TAILQ_FOREACH(iter, list, items) {
+        len++;
+    }
+
+    return len;
+}
+
 /**
  * @brief Join all members of a str_list_t in to a single string.
  *
@@ -25,7 +43,8 @@
  * @return Newly allocated string of concatenated list members; caller
  *         must free.
  */
-char *list_to_string(const str_list_t *list, const char *delimiter)
+char *
+list_to_string(const str_list_t *list, const char *delimiter)
 {
     size_t pos = 0;
     char *s = NULL;
@@ -57,7 +76,8 @@ char *list_to_string(const str_list_t *list, const char *delimiter)
  * Helper function to free a str_list_t and each entry->str.  If
  * the free_func is NULL, nothing is done to the entry->str values.
  */
-void list_free(str_list_t *list, list_entry_data_free_func free_func)
+void
+list_free(str_list_t *list, list_entry_data_free_func free_func)
 {
     str_entry_t *entry = NULL;
 
@@ -87,7 +107,8 @@ void list_free(str_list_t *list, list_entry_data_free_func free_func)
  * specified, in which case the function will start a new list and add
  * the string to it.  Caller responsible for all memory management.
  */
-str_list_t *list_add(str_list_t *list, const char *s)
+str_list_t *
+list_add(str_list_t *list, const char *s)
 {
     str_entry_t *entry = NULL;
 
