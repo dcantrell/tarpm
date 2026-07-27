@@ -78,6 +78,63 @@ test_sig_tag_name(void)
     return;
 }
 
+void
+test_tag_type(void)
+{
+    struct json_object *tag = NULL;
+
+    /* NULL input returns RPM_NULL_TYPE */
+    TARPM_ASSERT_TRUE(tag_type(NULL) == RPM_NULL_TYPE);
+
+    /* test all valid type strings */
+    tag = json_object_new_string("(null)");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_NULL_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("char");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_CHAR_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("int8");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_INT8_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("int16");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_INT16_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("int32");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_INT32_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("int64");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_INT64_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("string");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_STRING_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("binary blob");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_BIN_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("string array");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_STRING_ARRAY_TYPE);
+    json_object_put(tag);
+
+    tag = json_object_new_string("i18n string");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_I18NSTRING_TYPE);
+    json_object_put(tag);
+
+    /* unknown type string returns RPM_NULL_TYPE */
+    tag = json_object_new_string("unknown");
+    TARPM_ASSERT_TRUE(tag_type(tag) == RPM_NULL_TYPE);
+    json_object_put(tag);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -92,7 +149,8 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
-        CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL) {
+        CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL ||
+        CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL) {
         return NULL;
     }
 
