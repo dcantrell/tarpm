@@ -116,4 +116,7 @@ void list_rpm(const char *rpm);
 /* digest.c */
 unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
 
+/* strmode.c */
+void strmode(mode_t mode, char *p);
+
 #endif /* _TARPM_TARPM_H */

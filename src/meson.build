@@ -19,6 +19,7 @@ reset_src = files('reset.c')
 rpm_src = files('rpm.c')
 signature_src = files('signature.c')
 strfuncs_src = files('strfuncs.c')
+strmode_src = files('strmode.c')
 tags_src = files('tags.c')
 unpack_src = files('unpack.c')
 xalloc_src = files('xalloc.c')
@@ -44,6 +45,7 @@ sources = [
     rpm_src,
     signature_src,
     strfuncs_src,
+    strmode_src,
     tags_src,
     unpack_src,
     xalloc_src,

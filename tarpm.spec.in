@@ -3,7 +3,7 @@ Version:        %%VERSION%%
 Release:        %autorelease
 Summary:        RPM metadata and payload utility
 Group:          Development/Tools
-License:        GPL-3.0-or-later AND LGPL-3.0-or-later AND Apache-2.0
+License:        GPL-3.0-or-later AND LGPL-3.0-or-later AND Apache-2.0 AND BSD-3-Clause
 URL:            https://codeberg.org/dcantrell/tarpm
 Source0:        https://codeberg.org/dcantrell/tarpm/archive/%{name}-%{version}.tar.gz
 
@@ -46,7 +46,7 @@ package is usable by rpm(8).
 
 %files
 %doc AUTHORS.md CODE_OF_CONDUCT.md CONTRIBUTING.md README.md TODO.org
-%license COPYING COPYING.LIB LICENSE-2.0.txt
+%license COPYING COPYING.LIB LICENSE-2.0.txt LICENSE-BSD.txt
 %{_bindir}/tarpm
 %{_mandir}/man1/tarpm.1*
 
