@@ -71,7 +71,7 @@ int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, siz
 char *joinpath(const char *path, ...);
 
 /* json.c */
-struct json_object *create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature);
+struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature);
 struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 struct json_object *read_json_file(const char *input_file);

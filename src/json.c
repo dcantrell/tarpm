@@ -50,7 +50,7 @@ sort_by_tag_number(const void *a, const void *b)
  * Turn a struct rpmhdrentry in to a json_object.
  */
 struct json_object *
-create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature)
+create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 {
     struct json_object *entry = NULL;
     rpmSigTag tag = 0;
@@ -153,7 +153,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         datatype = ntohl(hdrentry[i].type);
         count = ntohl(hdrentry[i].count);
 
-        entry = create_json_hdr_entry(&hdrentry[i], signature);
+        entry = create_json_entry(&hdrentry[i], signature);
 
         /*
          * header tags of these types will have a trailer that we need
@@ -161,7 +161,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
          */
         if (trailer != NULL && (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE)) {
             /* create a new array just for the trailer */
-            jtrailer = create_json_hdr_entry(trailer, signature);
+            jtrailer = create_json_entry(trailer, signature);
 
             /* add the trailer to this entry because of the tag type */
             json_object_object_add(entry, RPM_ENTRY_TRAILER_DESC, jtrailer);
