@@ -47,6 +47,38 @@ test_abspath(void)
     TARPM_ASSERT_TRUE(strcmp(a, "/bin") == 0);
     free(a);
 
+    /* more complex path traversals */
+    a = abspath("/usr/./local/./bin");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    free(a);
+
+    a = abspath("/usr/local/../share");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/share") == 0);
+    free(a);
+
+    a = abspath("/usr/./local/../share/./man");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/share/man") == 0);
+    free(a);
+
+    /* multiple consecutive slashes */
+    a = abspath("/usr//local///bin");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    free(a);
+
+    /* trailing slashes are removed */
+    a = abspath("/usr/local/bin/");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    free(a);
+
+    a = abspath("/usr/local/bin///");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    free(a);
+
+    /* relative path without leading slash */
+    a = abspath("usr/local/bin");
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    free(a);
+
     return;
 }
 

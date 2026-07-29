@@ -222,6 +222,53 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_strmode = executable(
+        'test-strmode',
+        [ 'test-strmode.c',
+          'test-main.c',
+          strmode_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_entry = executable(
+        'test-entry',
+        [ 'test-entry.c',
+          'test-main.c',
+          entry_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc, rpm ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_inodes = executable(
+        'test-inodes',
+        [ 'test-inodes.c',
+          'test-main.c',
+          inodes_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_readfile = executable(
+        'test-readfile',
+        [ 'test-readfile.c',
+          'test-main.c',
+          readfile_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     # Unit tests
     test('test-strfuncs', test_strfuncs)
     test('test-header', test_header)
@@ -239,6 +286,10 @@ if cunit.found()
     test('test-abspath', test_abspath)
     test('test-listfuncs', test_listfuncs)
     test('test-xread', test_xread)
+    test('test-strmode', test_strmode)
+    test('test-entry', test_entry)
+    test('test-inodes', test_inodes)
+    test('test-readfile', test_readfile)
 else
     warning('CUnit not found, skipping unit test suite')
 endif

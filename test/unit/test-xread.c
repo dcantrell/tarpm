@@ -37,6 +37,24 @@ test_xread(void)
     /* a NULL destination buffer should fail */
     TARPM_ASSERT_FALSE(xread(STDIN_FILENO, NULL, 47));
 
+    /* invalid file descriptor should fail */
+    TARPM_ASSERT_FALSE(xread(-1, &buf, 10));
+
+    /* reading zero bytes should succeed */
+    fd = open("/proc/uptime", O_RDONLY);
+    TARPM_ASSERT_FALSE(fd == -1);
+    TARPM_ASSERT_TRUE(xread(fd, &buf, 0));
+    fd = close(fd);
+    TARPM_ASSERT_FALSE(fd == -1);
+
+    /* read larger buffer (only read what's available) */
+    fd = open("/proc/uptime", O_RDONLY);
+    TARPM_ASSERT_FALSE(fd == -1);
+    memset(buf, 0, sizeof(buf));
+    TARPM_ASSERT_TRUE(xread(fd, &buf, 20));
+    fd = close(fd);
+    TARPM_ASSERT_FALSE(fd == -1);
+
     return;
 }
 

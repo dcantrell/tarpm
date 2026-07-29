@@ -64,6 +64,31 @@ test_joinpath(void)
     TARPM_ASSERT_TRUE(strcmp(a, "/usr/bin") == 0);
     free(a);
 
+    /* single path component */
+    a = joinpath("usr", NULL);
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr") == 0);
+    free(a);
+
+    /* joining with empty string components */
+    a = joinpath("/usr", "", "bin", NULL);
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/bin") == 0);
+    free(a);
+
+    /* multiple path components */
+    a = joinpath("/usr", "local", "share", "doc", NULL);
+    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/share/doc") == 0);
+    free(a);
+
+    /* joining absolute path with relative */
+    a = joinpath("/home", "user", "documents", NULL);
+    TARPM_ASSERT_TRUE(strcmp(a, "/home/user/documents") == 0);
+    free(a);
+
+    /* all slashes */
+    a = joinpath("/", "/", "/", NULL);
+    TARPM_ASSERT_TRUE(strcmp(a, "/") == 0);
+    free(a);
+
     return;
 }
 
