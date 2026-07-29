@@ -61,7 +61,7 @@ struct rpmlead *create_lead(struct json_object *header);
 struct json_object *read_signature(const int fd);
 
 /* header.c */
-bool valid_header_signature(struct rpmhdr *hdr);
+bool valid_header(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd, const char *dest_dir);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);

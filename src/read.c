@@ -69,7 +69,7 @@ read_header_signature(const int fd)
     hdr->nbytes = ntohl(hdr->nbytes);
 
     /* verify the magic and reserved values are correct */
-    if (!valid_header_signature(hdr)) {
+    if (!valid_header(hdr)) {
         free(hdr);
         return NULL;
     }

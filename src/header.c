@@ -425,7 +425,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
  * Validates an RPM header signature.  True if valid, false if sig is NULL or sig is invalid.
  */
 bool
-valid_header_signature(struct rpmhdr *hdr)
+valid_header(struct rpmhdr *hdr)
 {
     if (hdr == NULL) {
         return false;

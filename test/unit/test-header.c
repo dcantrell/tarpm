@@ -32,27 +32,27 @@ test_read_header(void)
 }
 
 void
-test_valid_header_signature(void)
+test_valid_header(void)
 {
     struct rpmhdr hdr;
 
     /* NULL input returns false */
-    TARPM_ASSERT_FALSE(valid_header_signature(NULL));
+    TARPM_ASSERT_FALSE(valid_header(NULL));
 
     /* invalid magic returns false */
     hdr.magic = 0x12345678;
     hdr.reserved = RPM_SIGNATURE_RESERVED;
-    TARPM_ASSERT_FALSE(valid_header_signature(&hdr));
+    TARPM_ASSERT_FALSE(valid_header(&hdr));
 
     /* invalid reserved returns false */
     hdr.magic = RPM_SIGNATURE_MAGIC;
     hdr.reserved = 0x12345678;
-    TARPM_ASSERT_FALSE(valid_header_signature(&hdr));
+    TARPM_ASSERT_FALSE(valid_header(&hdr));
 
     /* valid magic and reserved returns true */
     hdr.magic = RPM_SIGNATURE_MAGIC;
     hdr.reserved = RPM_SIGNATURE_RESERVED;
-    TARPM_ASSERT_TRUE(valid_header_signature(&hdr));
+    TARPM_ASSERT_TRUE(valid_header(&hdr));
 
     return;
 }
@@ -102,7 +102,7 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test read_header()", test_read_header) == NULL ||
-        CU_add_test(pSuite, "test valid_header_signature()", test_valid_header_signature) == NULL ||
+        CU_add_test(pSuite, "test valid_header()", test_valid_header) == NULL ||
         CU_add_test(pSuite, "test has_trailer()", test_has_trailer) == NULL) {
         return NULL;
     }
