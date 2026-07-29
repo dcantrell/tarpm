@@ -1,4 +1,5 @@
 build
+.gdb_history
 gpgkey-*.gpg
 log
 *.pyc
