@@ -58,7 +58,7 @@ read_signature(const int fd)
     signature = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the signature */
-    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, true);
+    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, NULL, true);
 
     /* write the signature to a file */
     json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));

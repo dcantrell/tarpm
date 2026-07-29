@@ -31,8 +31,8 @@ test_generate_json(void)
 void
 test_generate_json_entries(void)
 {
-    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, true) == NULL);
-    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, false) == NULL);
+    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, NULL, true) == NULL);
+    TARPM_ASSERT_TRUE(generate_json_entries(NULL, NULL, NULL, NULL, false) == NULL);
 
     return;
 }

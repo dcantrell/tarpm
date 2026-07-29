@@ -15,6 +15,7 @@ listfuncs_src = files('listfuncs.c')
 main_src = files('main.c')
 mkdirp_src = files('mkdirp.c')
 read_src = files('read.c')
+readfile_src = files('readfile.c')
 reset_src = files('reset.c')
 rpm_src = files('rpm.c')
 signature_src = files('signature.c')
@@ -41,6 +42,7 @@ sources = [
     main_src,
     mkdirp_src,
     read_src,
+    readfile_src,
     reset_src,
     rpm_src,
     signature_src,

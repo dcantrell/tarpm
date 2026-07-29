@@ -20,6 +20,9 @@
 #define OUTPUT_SIGNATURE             "signature.json"
 #define OUTPUT_HEADER                "header.json"
 
+/* output file endings (extensions) */
+#define OUTPUT_TXT_ENDING            "txt"
+
 /* RPM lead -- all from rpm headers and source */
 #define RPMLEAD_MAGIC0               0xED
 #define RPMLEAD_MAGIC1               0xAB
@@ -49,6 +52,7 @@
 #define RPM_ENTRY_TYPE_DESC          "type"
 #define RPM_ENTRY_TAGS_DESC          "tags"
 #define RPM_ENTRY_VALUE_DESC         "value"
+#define RPM_ENTRY_FILE_DESC          "file"
 #define RPM_ENTRY_TRAILER_DESC       "trailer"
 
 /* general purpose string constants */

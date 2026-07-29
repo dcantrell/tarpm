@@ -21,6 +21,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     size_t i = 0;
     int r = 0;
     const char *value = NULL;
+    const char *field = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     uint32_t tag_number = 0;
@@ -35,6 +36,9 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     size_t j = 0;
     size_t arr_len = 0;
     struct json_object *str_obj = NULL;
+    const char *filepath = NULL;
+    off_t filelen = 0;
+    char *filedata = NULL;
 
     if (tags == NULL) {
         return 0;
@@ -68,8 +72,15 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
             entry_type = tag_type(key);
         }
 
+        /* get the field name based on the tag number */
+        if (is_file_tag(tag_number)) {
+            field = RPM_ENTRY_FILE_DESC;
+        } else {
+            field = RPM_ENTRY_VALUE_DESC;
+        }
+
         /* get the value and calculate size */
-        if (json_object_object_get_ex(entry, "value", &key)) {
+        if (json_object_object_get_ex(entry, field, &key)) {
             item_size = 0;
 
             if (entry_type == RPM_BIN_TYPE) {
@@ -127,7 +138,21 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
                 }
             } else {
                 /* string data: length + NUL */
-                item_size = json_object_get_string_len(key) + 1;
+                if (is_file_tag(tag_number)) {
+                    /* for file tags, we need to get the actual file size */
+                    filepath = json_object_get_string(key);
+                    filelen = 0;
+                    filedata = read_file_bytes(filepath, &filelen);
+
+                    if (filedata != NULL) {
+                        item_size = filelen + 1;
+                        free(filedata);
+                    } else {
+                        item_size = json_object_get_string_len(key) + 1;
+                    }
+                } else {
+                    item_size = json_object_get_string_len(key) + 1;
+                }
             }
 
             if (has_offsets) {
@@ -178,7 +203,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     uint16_t i16 = 0;
     uint32_t i32 = 0;
     uint64_t i64 = 0;
+    char *tmp = NULL;
     const char *value = NULL;
+    const char *field = NULL;
     int len = 0;
     uint8_t *blob = NULL;
     int32_t padding = 0;
@@ -236,9 +263,16 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
         /* write data for all entries except trailer */
         if (!(trailer_index >= 0 && i == ((size_t) trailer_index))) {
+            /* get the field name based on the tag type */
+            if (is_file_tag(v->entry->tag)) {
+                field = RPM_ENTRY_FILE_DESC;
+            } else {
+                field = RPM_ENTRY_VALUE_DESC;
+            }
+
             /* now get the data and put it in the buffer and update the offset */
-            if (json_object_object_get_ex(entry, "value", &key) == 0) {
-                warnx(_("*** invalid header tag entry, missing 'value'"));
+            if (json_object_object_get_ex(entry, field, &key) == 0) {
+                warnx(_("*** invalid header tag entry, missing '%s'"), field);
                 r = -1;
             } else {
                 /* handle each data type */
@@ -353,8 +387,18 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     /* string data */
                     v->entry->count = 1;
                     value = json_object_get_string(key);
-                    len = json_object_get_string_len(key);
-                    memcpy(datapos, value, len + 1);
+
+                    if (is_file_tag(v->entry->tag)) {
+                        /* read in this tag's value from the named file */
+                        tmp = read_file(value);
+                        len = strlen(tmp);
+                        memcpy(datapos, tmp, len + 1);
+                        free(tmp);
+                    } else {
+                        len = strlen(value);
+                        memcpy(datapos, value, len + 1);
+                    }
+
                     datapos += len + 1;
                     offset += len + 1;
                 }
@@ -405,7 +449,7 @@ valid_header_signature(struct rpmhdr *hdr)
  * Returns an allocated json_object (caller must free), NULL on error.
  */
 struct json_object *
-read_header(const int fd)
+read_header(const int fd, const char *dest_dir)
 {
     uint32_t *buffer = NULL;
     struct rpmhdr *rawhdr = NULL;
@@ -441,7 +485,7 @@ read_header(const int fd)
     header = generate_json(rawhdr, hdrinfo);
 
     /* dump all of the tags in the header block */
-    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, false);
+    jvals = generate_json_entries(rawhdr, hdrinfo, trailer, dest_dir, false);
 
     /* write the header to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
@@ -487,7 +531,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     /* allocate the two structures for the header */
     s = xalloc(sizeof(*s));
-
     v = xalloc(sizeof(*v));
 
     /* fill out the beginning with the magic and reserved values */

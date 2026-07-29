@@ -44,39 +44,6 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         errx(EXIT_FAILURE, _("*** %s is not a valid RPM"), filename);
     }
 
-    /* open the RPM file (this handle will be passed around) */
-    rpmfd = open(filename, O_RDONLY);
-
-    if (rpmfd == -1) {
-        err(EXIT_FAILURE, "open");
-    }
-
-    /* extract the RPM lead -- the first header (unused) */
-    lead = read_lead(rpmfd);
-
-    if (lead == NULL) {
-        err(EXIT_FAILURE, "read_lead");
-    }
-
-    /* extract the RPM signature -- the second header (sort of used) */
-    signature = read_signature(rpmfd);
-
-    if (signature == NULL) {
-        err(EXIT_FAILURE, "read_signature");
-    }
-
-    /* extract the RPM header -- the third header (used) */
-    header = read_header(rpmfd);
-
-    if (header == NULL) {
-        err(EXIT_FAILURE, "read_header");
-    }
-
-    /* close the RPM after reading headers */
-    if (close(rpmfd) == -1) {
-        warn("close");
-    }
-
     /* make a unique output directory name if we need to */
     if (output_dir == NULL) {
         tmp = get_nevra(h);
@@ -101,6 +68,39 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     /* create the output directory */
     if (mkdirp(dest_dir, mode) == -1) {
         err(EXIT_FAILURE, "mkdirp");
+    }
+
+    /* open the RPM file (this handle will be passed around) */
+    rpmfd = open(filename, O_RDONLY);
+
+    if (rpmfd == -1) {
+        err(EXIT_FAILURE, "open");
+    }
+
+    /* extract the RPM lead -- the first header (unused) */
+    lead = read_lead(rpmfd);
+
+    if (lead == NULL) {
+        err(EXIT_FAILURE, "read_lead");
+    }
+
+    /* extract the RPM signature -- the second header (sort of used) */
+    signature = read_signature(rpmfd);
+
+    if (signature == NULL) {
+        err(EXIT_FAILURE, "read_signature");
+    }
+
+    /* extract the RPM header -- the third header (used) */
+    header = read_header(rpmfd, dest_dir);
+
+    if (header == NULL) {
+        err(EXIT_FAILURE, "read_header");
+    }
+
+    /* close the RPM after reading headers */
+    if (close(rpmfd) == -1) {
+        warn("close");
     }
 
     /* write out the header metadata */

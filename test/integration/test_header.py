@@ -257,8 +257,16 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Spec":
                         self.assertTrue(int(tag["number"]) == 5099)
                         self.assertTrue(tag["type"] == "string")
+                        self.assertTrue("file" in tag.keys())
+                        self.assertTrue(tag["file"] == "spec.txt")
+
+                        spec_file = os.path.join(os.path.dirname(self.header), tag["file"])
+                        self.assertTrue(os.path.exists(spec_file))
+                        f = open(spec_file, "r")
+                        spec_content = f.read()
+                        f.close()
                         self.assertTrue(
-                            tag["value"]
+                            spec_content
                             == "\n\n\nSummary: Dummy summary\nName: vaporware\nVersion: 0.1\nRelease: 1\nLicense: GPL\nGroup: Applications/Productivity\n\n\n%description\nThis is a dummy description.\n\n\n%prep\n\n%build\n\n%install\n\n%files\n\n%changelog\n* Sun Jul 22 2018 John Doe <jdoe@example.com> - 0.1-1\n- Initial version\n\n"
                         )
                     else:

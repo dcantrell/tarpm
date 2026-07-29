@@ -4,6 +4,7 @@
  */
 
 #include <string.h>
+#include <ctype.h>
 #include <err.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
@@ -12,8 +13,105 @@
 
 #include "tarpm.h"
 
+/* Returns true if this is a tag whose value should go to a text file. */
+bool
+is_file_tag(rpmTagVal tag)
+{
+    if (tag == RPMTAG_SPEC) {
+        return true;
+    }
+
+    return false;
+}
+
+/* Get the name of the file to write the tag value to.  Caller must free. */
+char *
+get_tag_filename(rpmTagVal tag, const char *ending)
+{
+    int i = 0;
+    char *r = NULL;
+
+    if (!is_file_tag(tag)) {
+        return NULL;
+    }
+
+    /* build an output filename */
+    if (ending) {
+        xasprintf(&r, "%s.%s", rpmTagGetName(tag), ending);
+    } else {
+        r = strdup(rpmTagGetName(tag));
+    }
+
+    assert(r != NULL);
+
+    for (i = 0; r[i] != '\0'; i++) {
+        r[i] = tolower(r[i]);
+    }
+
+    return r;
+}
+
+/*
+ * Handle entries that write their data to a file rather than
+ * adding it directly to the JSON object.
+ *
+ * Returns the basename of the output file created.  Caller must free
+ * this string when done.
+ */
+static char *
+write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
+{
+    char *tagname = NULL;
+    size_t len = 0;
+    FILE *fp = NULL;
+    char *path = NULL;
+
+    if (data == NULL) {
+        return NULL;
+    }
+
+    len = strlen((char *) data);
+
+    /* build an output filename */
+    tagname = get_tag_filename(tag, OUTPUT_TXT_ENDING);
+
+    if (dest_dir) {
+        xasprintf(&path, "%s/%s", dest_dir, tagname);
+    } else {
+        path = strdup(tagname);
+    }
+
+    /* open the output file */
+    fp = fopen(path, "w");
+
+    if (fp == NULL) {
+        warn("fopen");
+        free(path);
+        free(tagname);
+        return NULL;
+    }
+
+    if (fwrite(data, len, 1, fp) == 0) {
+        warn("fwrite");
+        fclose(fp);
+        free(path);
+        free(tagname);
+        return NULL;
+    }
+
+    if (fclose(fp) != 0) {
+        warn("fclose");
+        free(path);
+        free(tagname);
+        return NULL;
+    }
+
+    free(path);
+    return tagname;
+}
+
 void
-add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count)
+add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir)
 {
     uint32_t i = 0;
     uint8_t *data = NULL;
@@ -23,6 +121,7 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
     uint8_t *p = NULL;
     int c = -1;
     struct json_object *sa = NULL;
+    char *tagname = NULL;
 
     if (arrayentry == NULL || buffer == NULL) {
         return;
@@ -121,7 +220,19 @@ add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset
 
             break;
         case RPM_STRING_TYPE:
-            json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string((char *) data));
+            if (is_file_tag(tag)) {
+                /* write this tag value to a metadata file rather than a string in the JSON data */
+                tagname = write_entry_value_file(tag, data, dest_dir);
+
+                /* add the JSON entry noting it's a file and not a direct value */
+                if (tagname != NULL) {
+                    json_object_object_add(arrayentry, RPM_ENTRY_FILE_DESC, json_object_new_string(tagname));
+                    free(tagname);
+                }
+            } else {
+                json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string((char *) data));
+            }
+
             break;
         case RPM_BIN_TYPE:
             blob = xalloc(count);

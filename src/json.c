@@ -126,7 +126,7 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
  * tags for output.
  */
 struct json_object *
-generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature)
+generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature)
 {
     uint32_t i = 0;
     rpmSigTag tag = 0;
@@ -168,7 +168,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         }
 
         /* add the entry to the array */
-        add_entry_value(entry, hdrinfo->datastart, offset, datatype, count);
+        add_entry_value(entry, tag, hdrinfo->datastart, offset, datatype, count, dest_dir);
         json_object_array_add(kvals, entry);
     }
 

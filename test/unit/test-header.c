@@ -26,7 +26,7 @@ void
 test_read_header(void)
 {
     /* check that invalid input returns an error */
-    TARPM_ASSERT_TRUE(read_header(-47) == NULL);
+    TARPM_ASSERT_TRUE(read_header(-47, NULL) == NULL);
 
     return;
 }

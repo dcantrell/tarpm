@@ -62,7 +62,7 @@ struct json_object *read_signature(const int fd);
 
 /* header.c */
 bool valid_header_signature(struct rpmhdr *hdr);
-struct json_object *read_header(const int fd);
+struct json_object *read_header(const int fd, const char *dest_dir);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
@@ -73,7 +73,7 @@ char *joinpath(const char *path, ...);
 /* json.c */
 struct json_object *create_json_hdr_entry(const struct rpmhdrentry *hdrentry, const bool signature);
 struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
-struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const bool signature);
+struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
 
@@ -94,7 +94,9 @@ struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const u
 void reset_librpm(void);
 
 /* entry.c */
-void add_entry_value(struct json_object *arrayentry, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count);
+bool is_file_tag(rpmTagVal tag);
+char *get_tag_filename(rpmTagVal tag, const char *ending);
+void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir);
 
 /* xread.c */
 bool xread(int fd, void *buf, size_t count);
@@ -118,5 +120,9 @@ unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struc
 
 /* strmode.c */
 void strmode(mode_t mode, char *p);
+
+/* readfile.c */
+void *read_file_bytes(const char *path, off_t *len);
+char *read_file(const char *path);
 
 #endif /* _TARPM_TARPM_H */
