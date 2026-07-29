@@ -6,12 +6,12 @@ Core functionality that still needs to happen:
         This can be done with an nftw() callback that updates the
         header data in JSON format before it writes to the file.
 
-    [ ] Compute digests for the signature header.
+    [*] Compute digests for the signature header.
 
     [ ] Files added to the payload subdirectory should have header
         entries created if they do not exist in the JSON metadata.
 
-    [ ] Files removed from the payload subdirectory should header
+    [ ] Files removed from the payload subdirectory should have header
         entries removed if they do not exist in the JSON metadata.
 
     [ ] File metadata in the payload subdirectory should be updated
@@ -20,9 +20,9 @@ Core functionality that still needs to happen:
         [ ] Type (regular file, devnode, link)
         [ ] Digests
 
-[ ] List mode
-    [ ] Need a strmode() function
-    [ ] Output needs to look like 'tar -tvf' on example.tar
+[*] List mode
+    [*] Need a strmode() function
+    [*] Output needs to look like 'tar -tvf' on example.tar
 
 [ ] Restructure how metadata is written to the JSON files
     [ ] All of the file lists should combine together so it's easier
@@ -36,11 +36,15 @@ Core functionality that still needs to happen:
     [ ] Package dependencies should be written in a JSON array in a
         style similar to what you see in spec files.
 
-    [ ] Scriptlets should go to individual files for easier editing.
+    [*] Scriptlets should go to individual files for easier editing.
+        [*] Reading in the metadata should read in values from files
+            if necessary.
 
-    [ ] Source RPMs should have the spec header value go to a file.
+    [*] Source RPMs should have the spec header value go to a file.
+        [*] Reading in the metadata should read in values from files
+            if necessary.
 
-    [ ] Data in the JSON files that is read-only should be marked
+    [*] Data in the JSON files that is read-only should be marked
         as such so the reader knows.
 
 [ ] Command line
@@ -54,8 +58,11 @@ Core functionality that still needs to happen:
 
     [ ] Add option to dump header data to stdout or a file
 
-[ ] Man page needs to document all options and explain how the fuck
-    the program works.
+    [ ] Add option to suppress writing some tag values to text
+        files.
+
+[ ] Man page needs to document all options and explain how the the
+    program works.
 
 [ ] More test cases.
     [ ] Unit tests
