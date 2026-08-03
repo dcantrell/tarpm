@@ -13,32 +13,154 @@
 
 #include "tarpm.h"
 
+static rpmTagType
+get_entry_type(struct json_object *entry)
+{
+    struct json_object *key = NULL;
+
+    if (entry == NULL) {
+        return RPM_NULL_TYPE;
+    }
+
+    if (json_object_object_get_ex(entry,"type", &key)) {
+        return tag_type(key);
+    }
+
+    return RPM_NULL_TYPE;
+}
+
+static uint32_t
+get_tag_number(struct json_object *entry)
+{
+    uint32_t tag_number = 0;
+    struct json_object *key = NULL;
+
+    if (entry == NULL) {
+        return 0;
+    }
+
+    if (json_object_object_get_ex(entry, "number", &key)) {
+        tag_number = json_object_get_uint64(key);
+    }
+
+    return tag_number;
+}
+
+static size_t
+get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer_size)
+{
+    size_t item_size = 0;
+    rpmTagType entry_type = RPM_NULL_TYPE;
+    uint32_t tag_number = 0;
+    int r = 0;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    size_t i = 0;
+    const char *value = NULL;
+    struct json_object *key = NULL;
+    size_t j = 0;
+    size_t len = 0;
+    struct json_object *s = NULL;
+    const char *filepath = NULL;
+    off_t filelen = 0;
+    char *filedata = NULL;
+
+    if (entry == NULL) {
+        return 0;
+    }
+
+    entry_type = get_entry_type(entry);
+    tag_number = get_tag_number(entry);
+
+    if (entry_type == RPM_BIN_TYPE) {
+        /* binary data: base64 decode to get actual size */
+        value = json_object_get_string(key);
+        r = rpmBase64Decode(value, (void **) &blob, &blobsize);
+
+        if (r == 0) {
+            /* in the trailer - track it separately */
+            if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
+                *trailer_index = i;
+                *trailer_size = blobsize;
+            } else {
+                item_size = blobsize;
+            }
+
+            free(blob);
+            blob = NULL;
+        }
+    } else if (entry_type == RPM_INT8_TYPE) {
+        if (json_object_get_type(key) == json_type_array) {
+            item_size = sizeof(uint8_t) * json_object_array_length(key);
+        } else {
+            item_size = sizeof(uint8_t);
+        }
+    } else if (entry_type == RPM_INT16_TYPE) {
+        if (json_object_get_type(key) == json_type_array) {
+            item_size = sizeof(uint16_t) * json_object_array_length(key);
+        } else {
+            item_size = sizeof(uint16_t);
+        }
+    } else if (entry_type == RPM_INT32_TYPE) {
+        if (json_object_get_type(key) == json_type_array) {
+            item_size = sizeof(uint32_t) * json_object_array_length(key);
+        } else {
+            item_size = sizeof(uint32_t);
+        }
+    } else if (entry_type == RPM_INT64_TYPE) {
+        if (json_object_get_type(key) == json_type_array) {
+            item_size = sizeof(uint64_t) * json_object_array_length(key);
+        } else {
+            item_size = sizeof(uint64_t);
+        }
+    } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
+        /* string array: sum of all string lengths + NULs */
+        j = 0;
+        len = json_object_array_length(key);
+        s = NULL;
+
+        for (j = 0; j < len; j++) {
+            s = json_object_array_get_idx(key, j);
+            item_size += strlen(json_object_get_string(s)) + 1;
+        }
+    } else {
+        /* string data: length + NUL */
+        if (is_file_tag(tag_number)) {
+            /* for file tags, we need to get the actual file size */
+            filepath = json_object_get_string(key);
+            filelen = 0;
+            filedata = read_file_bytes(filepath, &filelen);
+
+            if (filedata != NULL) {
+                item_size = filelen + 1;
+                free(filedata);
+            } else {
+                item_size = json_object_get_string_len(key) + 1;
+            }
+        } else {
+            item_size = json_object_get_string_len(key) + 1;
+        }
+    }
+
+    return item_size;
+}
+
 /* Calculate the size of the data buffer for this header. */
 static size_t
 get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size)
 {
     size_t datasize = 0;
     size_t i = 0;
-    int r = 0;
-    const char *value = NULL;
     const char *field = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     uint32_t tag_number = 0;
     uint32_t tag_offset = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
-    uint8_t *blob = NULL;
-    size_t blobsize = 0;
     int32_t padding = 0;
     size_t item_size = 0;
     size_t max_end = 0;
     bool has_offsets = false;
-    size_t j = 0;
-    size_t arr_len = 0;
-    struct json_object *str_obj = NULL;
-    const char *filepath = NULL;
-    off_t filelen = 0;
-    char *filedata = NULL;
 
     if (tags == NULL) {
         return 0;
@@ -55,23 +177,6 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
 
-        /*
-         * get the tag number to detect HEADER_SIGNATURES or
-         * HEADER_IMMUTABLE
-         */
-        tag_number = 0;
-
-        if (json_object_object_get_ex(entry, "number", &key)) {
-            tag_number = json_object_get_uint64(key);
-        }
-
-        /* get the tag type */
-        entry_type = RPM_NULL_TYPE;
-
-        if (json_object_object_get_ex(entry, "type", &key)) {
-            entry_type = tag_type(key);
-        }
-
         /* get the field name based on the tag number */
         if (is_file_tag(tag_number)) {
             field = RPM_ENTRY_FILE_DESC;
@@ -81,79 +186,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, field, &key)) {
-            item_size = 0;
-
-            if (entry_type == RPM_BIN_TYPE) {
-                /* binary data: base64 decode to get actual size */
-                value = json_object_get_string(key);
-                r = rpmBase64Decode(value, (void **) &blob, &blobsize);
-
-                if (r == 0) {
-                    /* in the trailer - track it separately */
-                    if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
-                        *trailer_index = i;
-                        *trailer_size = blobsize;
-                    } else {
-                        item_size = blobsize;
-                    }
-
-                    free(blob);
-                    blob = NULL;
-                }
-            } else if (entry_type == RPM_INT8_TYPE) {
-                if (json_object_get_type(key) == json_type_array) {
-                    item_size = sizeof(uint8_t) * json_object_array_length(key);
-                } else {
-                    item_size = sizeof(uint8_t);
-                }
-            } else if (entry_type == RPM_INT16_TYPE) {
-                if (json_object_get_type(key) == json_type_array) {
-                    item_size = sizeof(uint16_t) * json_object_array_length(key);
-                } else {
-                    item_size = sizeof(uint16_t);
-                }
-            } else if (entry_type == RPM_INT32_TYPE) {
-                if (json_object_get_type(key) == json_type_array) {
-                    item_size = sizeof(uint32_t) * json_object_array_length(key);
-                } else {
-                    item_size = sizeof(uint32_t);
-                }
-            } else if (entry_type == RPM_INT64_TYPE) {
-                if (json_object_get_type(key) == json_type_array) {
-                    item_size = sizeof(uint64_t) * json_object_array_length(key);
-                } else {
-                    item_size = sizeof(uint64_t);
-                }
-            } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
-                /* string array: sum of all string lengths + NULs */
-                j = 0;
-                arr_len = 0;
-                str_obj = NULL;
-
-                arr_len = json_object_array_length(key);
-
-                for (j = 0; j < arr_len; j++) {
-                    str_obj = json_object_array_get_idx(key, j);
-                    item_size += strlen(json_object_get_string(str_obj)) + 1;
-                }
-            } else {
-                /* string data: length + NUL */
-                if (is_file_tag(tag_number)) {
-                    /* for file tags, we need to get the actual file size */
-                    filepath = json_object_get_string(key);
-                    filelen = 0;
-                    filedata = read_file_bytes(filepath, &filelen);
-
-                    if (filedata != NULL) {
-                        item_size = filelen + 1;
-                        free(filedata);
-                    } else {
-                        item_size = json_object_get_string_len(key) + 1;
-                    }
-                } else {
-                    item_size = json_object_get_string_len(key) + 1;
-                }
-            }
+            item_size = get_item_size(key, trailer_index, trailer_size);
 
             if (has_offsets) {
                 /* calculate buffer size based on max(offset + size) */
