@@ -52,7 +52,7 @@ read_signature(const int fd)
 
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(hdrinfo->estart, hdrinfo->datastart);
+    trailer = read_header_trailer(rawhdr, hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
     signature = generate_json(rawhdr, hdrinfo);

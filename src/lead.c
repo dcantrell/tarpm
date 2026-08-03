@@ -161,6 +161,7 @@ create_lead(struct json_object *header)
 
     e = get_tag_value(obj, "Epoch");
 
+    /* only write the epoch value to the nevr string if it is >0 */
     if (e && strcmp(e, "0")) {
         xasprintf(&nevr, "%s-%s:%s-%s", n, e, v, r);
     } else {

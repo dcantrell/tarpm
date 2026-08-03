@@ -75,18 +75,15 @@ get_tag_filename(rpmTagVal tag, const char *ending)
  * this string when done.
  */
 static char *
-write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
+write_entry_value_file(rpmTagVal tag, uint8_t *data, uint32_t count, const char *dest_dir)
 {
     char *tagname = NULL;
-    size_t len = 0;
     FILE *fp = NULL;
     char *path = NULL;
 
     if (data == NULL) {
         return NULL;
     }
-
-    len = strlen((char *) data);
 
     /* build an output filename */
     tagname = get_tag_filename(tag, OUTPUT_TXT_ENDING);
@@ -98,7 +95,7 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
     }
 
     /* open the output file */
-    fp = fopen(path, "w");
+    fp = fopen(path, "wb");
 
     if (fp == NULL) {
         warn("fopen");
@@ -107,7 +104,7 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
         return NULL;
     }
 
-    if (fwrite(data, len, 1, fp) == 0) {
+    if (fwrite(data, count, 1, fp) == 0) {
         warn("fwrite");
         fclose(fp);
         free(path);
@@ -135,7 +132,6 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     void *blob = NULL;
     char *s = NULL;
     uint8_t *p = NULL;
-    int c = -1;
     struct json_object *sa = NULL;
     char *tagname = NULL;
 
@@ -227,7 +223,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_STRING_TYPE || datatype == RPM_I18NSTRING_TYPE) {
         if (is_file_tag(tag)) {
             /* write this tag value to a metadata file rather than a string in the JSON data */
-            tagname = write_entry_value_file(tag, data, dest_dir);
+            tagname = write_entry_value_file(tag, data, count, dest_dir);
 
             /* add the JSON entry noting it's a file and not a direct value */
             if (tagname != NULL) {
@@ -254,17 +250,8 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
         p = data;
 
         for (i = 0; i < count; i++) {
-            c = asprintf(&s, "%s", (char *) p);
-
-            if (c == -1) {
-                err(EXIT_FAILURE, "asprintf");
-            }
-
             json_object_array_add(sa, json_object_new_string((char *) p));
-            p += c + 1;
-
-            free(s);
-            s = NULL;
+            p += strlen((char *) p) + 1;
         }
 
         json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);

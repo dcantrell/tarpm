@@ -25,6 +25,15 @@ void
 test_is_file_tag(void)
 {
     /* RPMTAG_SPEC should be a file tag */
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_DESCRIPTION));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PREIN));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTIN));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PREUN));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTUN));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PRETRANS));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTTRANS));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PREUNTRANS));
+    TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTUNTRANS));
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_SPEC));
 
     /* other common tags should not be file tags */
@@ -32,7 +41,6 @@ test_is_file_tag(void)
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_VERSION));
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_RELEASE));
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_SUMMARY));
-    TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_DESCRIPTION));
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_BUILDTIME));
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_BUILDHOST));
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_SIZE));

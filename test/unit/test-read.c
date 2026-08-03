@@ -51,7 +51,7 @@ test_read_header_entries(void)
 void
 test_read_header_trailer(void)
 {
-    TARPM_ASSERT_TRUE(read_header_trailer(NULL, NULL) == NULL);
+    TARPM_ASSERT_TRUE(read_header_trailer(NULL, NULL, NULL) == NULL);
 
     return;
 }

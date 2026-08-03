@@ -246,7 +246,12 @@ write_json_file(struct json_object *data, const char *output_dir, const char *ou
         errx(EXIT_FAILURE, "unable to turn JSON object in to string");
     }
 
-    fprintf(fp, "%s\n", js);
+    if (fprintf(fp, "%s\n", js) < 0) {
+        warn("fprintf");
+        fclose(fp);
+        return -1;
+    }
+
     r = fflush(fp);
 
     if (r != 0) {

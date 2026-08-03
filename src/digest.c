@@ -79,6 +79,7 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
 
     if (i == 0) {
         warn("EVP_DigestInit");
+        EVP_MD_CTX_free(ctx);
         return NULL;
     }
 

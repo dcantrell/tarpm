@@ -112,21 +112,33 @@ read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen)
  * for freeing the allocated trailer.
  */
 struct rpmhdrentry *
-read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart)
+read_header_trailer(const struct rpmhdr *hdr, const struct rpmhdrentry *estart, const uint8_t *datastart)
 {
+    uint32_t i = 0;
     struct rpmhdrentry *trailer = NULL;
     rpmSigTag tag = 0;
+    int32_t offset = 0;
 
-    if (entry == NULL || datastart == NULL) {
+    if (hdr == NULL || estart == NULL || datastart == NULL) {
         return NULL;
     }
 
-    tag = ntohl(entry->tag);
+    for (i = 0; i < hdr->nentries; i++) {
+        tag = ntohl(estart[i].tag);
+        offset = ntohl(estart[i].offset);
 
-    if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
-        trailer = xalloc(sizeof(*trailer));
-        memcpy(trailer, datastart + ntohl(entry->offset), sizeof(*trailer));
+        if (tag == HEADER_SIGNATURES || tag == HEADER_IMMUTABLE) {
+            /* validate offset against buffer size */
+            if ((size_t)offset + sizeof(struct rpmhdrentry) > hdr->nbytes) {
+                warnx(_("trailer offset out of bounds"));
+                return NULL;
+            }
+
+            trailer = xalloc(sizeof(*trailer));
+            memcpy(trailer, datastart + offset, sizeof(*trailer));
+            return trailer;
+        }
     }
 
-    return trailer;
+    return NULL;
 }

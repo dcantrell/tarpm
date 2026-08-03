@@ -391,9 +391,14 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     if (is_file_tag(v->entry->tag)) {
                         /* read in this tag's value from the named file */
                         tmp = read_file(value);
-                        len = strlen(tmp);
-                        memcpy(datapos, tmp, len + 1);
-                        free(tmp);
+
+                        if (tmp == NULL) {
+                            warnx(_("*** empty or non-existent file: %s"), value);
+                        } else {
+                            len = strlen(tmp);
+                            memcpy(datapos, tmp, len + 1);
+                            free(tmp);
+                        }
                     } else {
                         len = strlen(value);
                         memcpy(datapos, value, len + 1);
@@ -479,7 +484,7 @@ read_header(const int fd, const char *dest_dir)
 
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
-    trailer = read_header_trailer(hdrinfo->estart, hdrinfo->datastart);
+    trailer = read_header_trailer(rawhdr, hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
     header = generate_json(rawhdr, hdrinfo);
@@ -643,8 +648,8 @@ get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t 
                         return 0;
                     }
 
-                    free(trailer_data);
-                    trailer_data = NULL;
+                    free(*trailer_data);
+                    *trailer_data = NULL;
                 }
 
                 break;

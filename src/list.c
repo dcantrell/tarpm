@@ -79,9 +79,7 @@ max_column_strlen(const char *rpm, const int standard, const int column)
     }
 
     /* find the maximum column width we need */
-    while (rc >= 0) {
-        rc = rpmfiNext(fi);
-
+    while ((rc = rpmfiNext(fi)) >= 0) {
         if (column == COLUMN_OWNERSHIP) {
             l = strlen(rpmfiFUser(fi)) + strlen(rpmfiFGroup(fi)) + 1;
         } else if (column == COLUMN_SIZE) {
@@ -175,6 +173,7 @@ list_rpm(const char *rpm)
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
+    free(rpmio_flags);
 
     if (gzdi == NULL) {
         warnx("*** Fdopen: %s", Fstrerror(fdi));
@@ -197,13 +196,7 @@ list_rpm(const char *rpm)
     }
 
     /* iterate over every entry in the payload */
-    while (rc >= 0) {
-        rc = rpmfiNext(fi);
-
-        if (rc == RPMERR_ITER_END) {
-            break;
-        }
-
+    while ((rc = rpmfiNext(fi)) >= 0) {
         dn = rpmfiDN(fi);
 
         if (!strcmp(dn, "")) {
@@ -242,6 +235,7 @@ list_rpm(const char *rpm)
     rpmfilesFree(files);
     rpmfiFree(fi);
     headerFree(hdr);
+    rpmtsFree(ts);
 
     return;
 }

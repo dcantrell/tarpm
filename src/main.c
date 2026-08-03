@@ -70,7 +70,6 @@ main(int argc, char **argv)
 
     /* Set up the i18n environment */
     setlocale(LC_ALL, "");
-    bindtextdomain("tarpm", "/usr/share/locale/");
     textdomain("tarpm");
 
     /* figure out where we actually are */
@@ -121,7 +120,7 @@ main(int argc, char **argv)
                     errx(EXIT_FAILURE, _("*** -f already specified; only allowed once"));
                 }
 
-                if ((t_flag || x_flag) && !access(optarg, R_OK)) {
+                if ((t_flag || x_flag) && access(optarg, R_OK) == 0) {
                     filename = realpath(optarg, NULL);
                 } else {
                     if (optarg[0] == '/') {

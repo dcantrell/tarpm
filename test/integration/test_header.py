@@ -72,7 +72,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Description":
                         self.assertTrue(int(tag["number"]) == 1005)
                         self.assertTrue(tag["type"] == "i18n string")
-                        self.assertTrue(tag["value"] == "This is a dummy description.")
+                        self.assertTrue(tag["file"] == "description.txt")
                     elif t == "Buildtime":
                         self.assertTrue(int(tag["number"]) == 1006)
                         self.assertTrue(tag["type"] == "int32")
@@ -335,7 +335,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Description":
                         self.assertTrue(int(tag["number"]) == 1005)
                         self.assertTrue(tag["type"] == "i18n string")
-                        self.assertTrue(tag["value"] == "This is a dummy description.")
+                        self.assertTrue(tag["file"] == "description.txt")
                     elif t == "Buildtime":
                         self.assertTrue(int(tag["number"]) == 1006)
                         self.assertTrue(tag["type"] == "int32")

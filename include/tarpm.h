@@ -88,7 +88,7 @@ int set_tag_value(struct json_object *tags, const char *name, const char *new_va
 struct rpmhdrinfo *mkhdrinfo(const struct rpmhdr *hdr, const bool signature);
 struct rpmhdr *read_header_signature(const int fd);
 uint32_t *read_header_entries(const int fd, const struct rpmhdr *hdr, const uint32_t hlen);
-struct rpmhdrentry *read_header_trailer(const struct rpmhdrentry *entry, const uint8_t *datastart);
+struct rpmhdrentry *read_header_trailer(const struct rpmhdr *hdr, const struct rpmhdrentry *estart, const uint8_t *datastart);
 
 /* reset.c */
 void reset_librpm(void);

@@ -98,7 +98,6 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
     archive_entry_set_atime(entry, sb->st_atime, 0);
     archive_entry_set_mtime(entry, sb->st_mtime, 0);
     archive_entry_set_ctime(entry, sb->st_ctime, 0);
-    archive_entry_set_perm(entry, sb->st_mode);
 
     /* XXX - get this from %files ? */
     archive_entry_set_gid(entry, 0);
@@ -123,18 +122,13 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
             memset(buf, 0, sizeof(buf));
         }
 
-        if ((len = read(fd, buf, sizeof(buf))) == -1) {
-            warn("read");
-            return -1;
+        while ((len = read(fd, buf, sizeof(buf))) > 0) {
+            archive_write_data(payload, buf, len);
         }
 
-        while (len > 0) {
-            archive_write_data(payload, buf, len);
-
-            if ((len = read(fd, buf, sizeof(buf))) == -1) {
-                warn("read");
-                return -1;
-            }
+        if (len -1) {
+            warn("read");
+            return -1;
         }
 
         if (close(fd) == -1) {
@@ -148,7 +142,7 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
 }
 
 /* Helper for create_rpm() that writes header data to the RPM */
-static void
+static int
 write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_signature, struct json_object *data)
 {
     uint32_t n = 0;
@@ -162,11 +156,12 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     int r = 0;
 
     if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
-        return;
+        return 0;
     }
 
     if (fwrite(hdr, sizeof(*hdr), 1, rpm) != 1) {
         warn("fwrite");
+        r = -1;
     }
 
     /* write the signature index entries */
@@ -174,6 +169,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 
     if (fwrite(hdrinfo->estart, sizeof(struct rpmhdrentry), nentries, rpm) != nentries) {
         warn("fwrite");
+        r = -1;
     }
 
     /* write the signature data */
@@ -192,12 +188,14 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 
     if (fwrite(hdrinfo->datastart, 1, n, rpm) != n) {
         warn("fwrite");
+        r = -1;
     }
 
     /* write the trailer if present (for both signature and header sections) */
     if (r == 0 && trailer_size == 16) {
         if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
             warn("fwrite");
+            r = -1;
         }
 
         free(trailer_data);
@@ -212,11 +210,12 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
         if (padlen > 0) {
             if (fwrite(padding, 1, padlen, rpm) != padlen) {
                 warn("fwrite");
+                r = -1;
             }
         }
     }
 
-    return;
+    return r;
 }
 
 /*
@@ -224,7 +223,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
  * file.  Returns an open file descriptor that can then be used later when putting together the final RPM.
  * Caller must close the file descriptor when done which will remove the temporary file associated with it.
  *
- * Returns NULL on failure.
+ * Returns -1 on failure.
  */
 static int
 create_payload(struct json_object *header, const char *payload_subdir)
@@ -242,6 +241,7 @@ create_payload(struct json_object *header, const char *payload_subdir)
     /* initialize inode list for hardlink handling */
     if (add_inodes(payload_subdir) != 0) {
         warnx("add_inodes");
+        return -1;
     }
 
     /* get the header tags array */
@@ -339,35 +339,37 @@ create_payload(struct json_object *header, const char *payload_subdir)
  * This does close the file descriptor for the temporary payload which
  * does remove that temporary file.
  */
-static void
+static int
 write_payload(FILE *rpm, int fd)
 {
+    int r = 0;
     FILE *pload = NULL;
     char buf[BUFSIZ];
     size_t s = 0;
 
     if (rpm == NULL) {
-        return;
+        return 0;
     }
 
     /* bring the payload back to the beginning */
     if (lseek(fd, 0, SEEK_SET) == -1) {
         warn("lseek");
-        return;
+        r = -1;
     }
 
     /* open the payload for reading */
-    pload = fdopen(fd, "r");
+    pload = fdopen(fd, "rb");
 
     if (pload == NULL) {
         warn("fdopen");
-        return;
+        r = -1;
     }
 
     /* copy payload over to the RPM */
     while ((s = fread(buf, sizeof(char), BUFSIZ, pload)) > 0) {
         if (fwrite(buf, sizeof(char), s, rpm) != s) {
             warn("fwrite");
+            r = -1;
             break;
         }
     }
@@ -375,9 +377,10 @@ write_payload(FILE *rpm, int fd)
     /* close the payload -- deletes the temporary file */
     if (fclose(pload) != 0) {
         warn("fclose");
+        r = -1;
     }
 
-    return;
+    return r;
 }
 
 /*
@@ -393,11 +396,11 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     char *buf = NULL;
     struct json_object *tags = NULL;
     struct stat sb;
-    uint32_t payloadsize = 0;
-    uint32_t hdrsize = 0;
-    uint32_t totalsize = 0;
-    uint32_t nentries = 0;
-    uint32_t nbytes = 0;
+    uint64_t payloadsize = 0;
+    uint64_t totalsize = 0;
+    uint64_t hdrsize = 0;
+    uint64_t nentries = 0;
+    uint64_t nbytes = 0;
 
     if (signature == NULL || header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
         return -1;
@@ -424,18 +427,26 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     totalsize = hdrsize + payloadsize;
 
     /* update Size tag (header + payload) */
-    xasprintf(&buf, "%u", totalsize);
+    xasprintf(&buf, "%lu", totalsize);
 
-    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SIZE), buf) != 0) {
-        warnx(_("*** failed to update Size in signature"));
-        free(buf);
-        return -1;
+    if (payloadsize > 4294967296) {
+        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_LONGSIZE), buf) != 0) {
+            warnx(_("*** failed to update Longsize in signature"));
+            free(buf);
+            return -1;
+        }
+    } else {
+        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SIZE), buf) != 0) {
+            warnx(_("*** failed to update Size in signature"));
+            free(buf);
+            return -1;
+        }
     }
 
     free(buf);
 
     /* update Payloadsize tag (compressed payload size) */
-    xasprintf(&buf, "%u", payloadsize);
+    xasprintf(&buf, "%lu", payloadsize);
 
     if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), buf) != 0) {
         warnx(_("*** failed to update Payloadsize in signature"));
@@ -584,6 +595,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     /* recalculate the digests and update the signature data */
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
+        close(payloadfd);
         errx(EXIT_FAILURE, "update_signature");
     }
 
@@ -611,14 +623,21 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
     /* write the signature to the RPM */
-    write_header(rpm, sig, siginfo, true, signature);
+    if (write_header(rpm, sig, siginfo, true, signature) == -1) {
+        goto create_cleanup;
+    }
 
     /* write the header to the RPM */
-    write_header(rpm, hdr, hdrinfo, false, header);
+    if (write_header(rpm, hdr, hdrinfo, false, header) == -1) {
+        goto create_cleanup;
+    }
 
     /* write the payload to the RPM */
-    write_payload(rpm, payloadfd);
+    if (write_payload(rpm, payloadfd) == -1) {
+        goto create_cleanup;
+    }
 
+create_cleanup:
     /* close the RPM */
     if (fclose(rpm) != 0) {
         warn("fclose");

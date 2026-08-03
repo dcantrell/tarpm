@@ -86,13 +86,40 @@ convert_payload(const char *rpm)
     /* create a new archive with the payload data */
     archive = archive_write_new();
 
-    if (archive_write_add_filter_gzip(archive) != ARCHIVE_OK) {
-        warnx("*** archive_write_add_filter_gzip: %s", archive_error_string(archive));
-        goto cleanup;
+    /*
+     * add the compression filter based on the type indicated in
+     * the header
+     */
+    if (!strcmp(compr, "gzip")) {
+        if (archive_write_add_filter_gzip(archive) != ARCHIVE_OK) {
+            warnx("*** archive_write_add_filter_gzip: %s", archive_error_string(archive));
+            goto cleanup;
+        }
+    } else if (!strcmp(compr, "bzip2")) {
+        if (archive_write_add_filter_bzip2(archive) != ARCHIVE_OK) {
+            warnx("*** archive_write_add_filter_bzip2: %s", archive_error_string(archive));
+            goto cleanup;
+        }
+    } else if (!strcmp(compr, "xz")) {
+        if (archive_write_add_filter_xz(archive) != ARCHIVE_OK) {
+            warnx("*** archive_write_add_filter_xz: %s", archive_error_string(archive));
+            goto cleanup;
+        }
+    } else if (!strcmp(compr, "lzma")) {
+        if (archive_write_add_filter_lzma(archive) != ARCHIVE_OK) {
+            warnx("*** archive_write_add_filter_lzma: %s", archive_error_string(archive));
+            goto cleanup;
+        }
+    } else if (!strcmp(compr, "zstd")) {
+        if (archive_write_add_filter_zstd(archive) != ARCHIVE_OK) {
+            warnx("*** archive_write_add_filter_zstd: %s", archive_error_string(archive));
+            goto cleanup;
+        }
     }
 
-    if (archive_write_set_format_pax_restricted(archive) != ARCHIVE_OK) {
-        warnx("*** archive_write_set_format_pax_restricted: %s", archive_error_string(archive));
+    /* the RPM payload is sort of cpio */
+    if (archive_write_set_format_cpio_newc(archive) != ARCHIVE_OK) {
+        warnx("*** archive_write_set_format_cpio_newc: %s", archive_error_string(archive));
         goto cleanup;
     }
 
@@ -150,8 +177,10 @@ convert_payload(const char *rpm)
                 if (hardlink == NULL) {
                     err(EXIT_FAILURE, "strdup");
                 }
-            } else {
+            } else if (hardlink != NULL) {
                 archive_entry_set_hardlink(entry, hardlink);
+            } else {
+                warnx(_("*** hardlink target missing for %s"), archive_entry_pathname(entry));
             }
         }
 
