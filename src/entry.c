@@ -75,11 +75,12 @@ get_tag_filename(rpmTagVal tag, const char *ending)
  * this string when done.
  */
 static char *
-write_entry_value_file(rpmTagVal tag, uint8_t *data, uint32_t count, const char *dest_dir)
+write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
 {
     char *tagname = NULL;
     FILE *fp = NULL;
     char *path = NULL;
+    size_t len = 0;
 
     if (data == NULL) {
         return NULL;
@@ -104,7 +105,9 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, uint32_t count, const char 
         return NULL;
     }
 
-    if (fwrite(data, count, 1, fp) == 0) {
+    len = strlen((char *) data);
+
+    if (fwrite(data, len, 1, fp) == 0) {
         warn("fwrite");
         fclose(fp);
         free(path);
@@ -223,7 +226,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_STRING_TYPE || datatype == RPM_I18NSTRING_TYPE) {
         if (is_file_tag(tag)) {
             /* write this tag value to a metadata file rather than a string in the JSON data */
-            tagname = write_entry_value_file(tag, data, count, dest_dir);
+            tagname = write_entry_value_file(tag, data, dest_dir);
 
             /* add the JSON entry noting it's a file and not a direct value */
             if (tagname != NULL) {
