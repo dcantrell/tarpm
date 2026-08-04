@@ -126,7 +126,7 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
             archive_write_data(payload, buf, len);
         }
 
-        if (len -1) {
+        if (len == -1) {
             warn("read");
             return -1;
         }

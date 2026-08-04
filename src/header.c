@@ -72,6 +72,17 @@ get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer
     entry_type = get_entry_type(entry);
     tag_number = get_tag_number(entry);
 
+    /* get the value field from the entry */
+    if (is_file_tag(tag_number)) {
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, &key)) {
+            return 0;
+        }
+    } else {
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &key)) {
+            return 0;
+        }
+    }
+
     if (entry_type == RPM_BIN_TYPE) {
         /* binary data: base64 decode to get actual size */
         value = json_object_get_string(key);
@@ -177,6 +188,10 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
 
+        /* get the tag number and type from this entry */
+        tag_number = get_tag_number(entry);
+        entry_type = get_entry_type(entry);
+
         /* get the field name based on the tag number */
         if (is_file_tag(tag_number)) {
             field = RPM_ENTRY_FILE_DESC;
@@ -186,7 +201,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, field, &key)) {
-            item_size = get_item_size(key, trailer_index, trailer_size);
+            item_size = get_item_size(entry, trailer_index, trailer_size);
 
             if (has_offsets) {
                 /* calculate buffer size based on max(offset + size) */
