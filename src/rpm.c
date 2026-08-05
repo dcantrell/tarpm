@@ -69,6 +69,18 @@ convert_payload(const char *rpm)
 
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
+
+    /*
+     * For at least zstd compression, Fdopen doesn't work correctly
+     * with "r.zstd" in certain RPM versions.  Catch it and return
+     * NULL here so the caller can handle a fallback approach.
+     */
+    if (compr && strcmp(compr, "zstd") == 0) {
+        Fclose(fdi);
+        fdi = NULL;
+        goto cleanup;
+    }
+
     xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
 
     /* open the payload */
@@ -81,7 +93,18 @@ convert_payload(const char *rpm)
     }
 
     files = rpmfilesNew(NULL, hdr, 0, RPMFI_KEEPHEADER);
-    fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
+
+    if (files == NULL) {
+        warnx("*** rpmfilesNew returned NULL");
+        goto cleanup;
+    }
+
+    fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE);
+
+    if (fi == NULL) {
+        warnx("*** rpmfiNewArchiveReader returned NULL");
+        goto cleanup;
+    }
 
     /* create a new archive with the payload data */
     archive = archive_write_new();

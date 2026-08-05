@@ -18,6 +18,7 @@
 void
 extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose)
 {
+    int r = 0;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     int rpmfd = -1;
     char *candidate_path = NULL;
@@ -116,21 +117,6 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         warn("write_json_file");
     }
 
-    /* extract the RPM payload as an archive we can read in libarchive */
-    if (chdir(dest_dir) == -1) {
-        err(EXIT_FAILURE, "chdir");
-    }
-
-    payload_file = convert_payload(filename);
-
-    if (payload_file == NULL) {
-        errx(EXIT_FAILURE, "convert_payload");
-    }
-
-    if (chdir(cwd) == -1) {
-        err(EXIT_FAILURE, "chdir");
-    }
-
     /* unpack the RPM payload */
     xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
 
@@ -138,18 +124,50 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         err(EXIT_FAILURE, "mkdir");
     }
 
-    if (unpack_archive(payload_file, tmp, false, verbose) != 0) {
-        err(EXIT_FAILURE, "unpack_archive");
+    /*
+     * Try direct extraction from the RPM using our extract function
+     * that uses libarchive.  However, we do make use of librpm's
+     * Fdopen() call which can fail on some compression types
+     * depending on the version of librpm in use.
+     */
+    r = unpack_archive(filename, tmp, false, verbose);
+
+    if (r != 0) {
+        /*
+         * Direct extraction failed, so fall back to convert_payload
+         * approach.  The failure here would be from unpack_archive()
+         * failing to use libarchive on a file handle from Fdopen() from
+         * librpm.
+         */
+        if (chdir(dest_dir) == -1) {
+            err(EXIT_FAILURE, "chdir");
+        }
+
+        payload_file = convert_payload(filename);
+
+        if (payload_file == NULL) {
+            errx(EXIT_FAILURE, "convert_payload");
+        }
+
+        if (chdir(cwd) == -1) {
+            err(EXIT_FAILURE, "chdir");
+        }
+
+        if (unpack_archive(payload_file, tmp, false, verbose) != 0) {
+            err(EXIT_FAILURE, "unpack_archive");
+        }
+
+        if (unlink(payload_file) == -1) {
+            err(EXIT_FAILURE, "unlink");
+        }
+
+        free(payload_file);
     }
 
-    if (unlink(payload_file) == -1) {
-        err(EXIT_FAILURE, "unlink");
-    }
-
+    /* clean up */
     json_object_put(header);
     json_object_put(signature);
     json_object_put(lead);
-    free(payload_file);
     free(tmp);
     free(dest_dir);
     headerFree(h);
