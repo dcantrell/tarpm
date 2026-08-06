@@ -37,6 +37,7 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
     char *hardlink = NULL;
     bool is_hardlink = false;
     const char *vpath = NULL;
+    char *full_path = NULL;
     struct archive_entry *entry = NULL;
 
     /*
@@ -94,12 +95,23 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
         return -1;
     }
 
-    archive_entry_set_pathname(entry, vpath);
+    /* prepend ./ to pathname (cpio does this) */
+    xasprintf(&full_path, "./%s", vpath);
+    archive_entry_set_pathname(entry, full_path);
+    free(full_path);
+
+    /* XXX - get these from actual files on disk? */
+    /* set timestamps */
     archive_entry_set_atime(entry, sb->st_atime, 0);
     archive_entry_set_mtime(entry, sb->st_mtime, 0);
     archive_entry_set_ctime(entry, sb->st_ctime, 0);
 
-    /* XXX - get this from %files ? */
+    /* inode number, device ID, hard link count */
+    archive_entry_set_ino(entry, sb->st_ino);
+    archive_entry_set_dev(entry, sb->st_dev);
+    archive_entry_set_nlink(entry, sb->st_nlink);
+
+    /* XXX - get this from %files/fallback on actual files/fallback on 0:0 ? */
     archive_entry_set_gid(entry, 0);
     archive_entry_set_uid(entry, 0);
 
@@ -108,7 +120,8 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
     }
 
     /* XXX - get this from %files ? */
-    archive_entry_set_perm(entry, sb->st_mode);
+    /* only set permission bits, not file type bits */
+    archive_entry_set_perm(entry, sb->st_mode & ACCESSPERMS);
 
     /* write the entry header */
     archive_write_header(payload, entry);
@@ -395,7 +408,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     void *blob = NULL;
     char *buf = NULL;
     struct json_object *tags = NULL;
-    struct stat sb;
+    off_t payload_off = 0;
     uint64_t payloadsize = 0;
     uint64_t totalsize = 0;
     uint64_t hdrsize = 0;
@@ -413,12 +426,20 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     }
 
     /* get the compressed payload size */
-    if (fstat(payloadfd, &sb) == -1) {
-        warn("fstat");
+    payload_off = lseek(payloadfd, 0, SEEK_END);
+
+    if (payload_off == -1) {
+        warn("lseek");
         return -1;
     }
 
-    payloadsize = sb.st_size;
+    payloadsize = payload_off;
+
+    /* reset file position back to beginning */
+    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
+        warn("lseek");
+        return -1;
+    }
 
     /* calculate the header size */
     nentries = ntohl(hdr->nentries);
