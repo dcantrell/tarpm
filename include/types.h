@@ -85,6 +85,42 @@ typedef struct _str_entry_t {
 
 typedef TAILQ_HEAD(str_entry_s, _str_entry_t) str_list_t;
 
+/*
+ * Header lists in the RPM metadata that contain per-entry values for
+ * the RPM payload.  This is just a convenience grouping to hold all
+ * of the metadata lists that will be used to construct libarchive
+ * entries.
+ */
+struct hdr_file_lists {
+    struct json_object *basenames;
+    struct json_object *dirnames;
+    struct json_object *dirindexes;
+    struct json_object *filesizes;
+    struct json_object *filemodes;
+    struct json_object *fileuids;
+    struct json_object *filegids;
+    struct json_object *filerdevs;
+    struct json_object *filemtimes;
+    struct json_object *filelinktos;
+};
+
+/*
+ * Payload entries need all of these values from the RPM header
+ * metadata.  This struct is to help get that info over to libarchive.
+ */
+struct file_params {
+    const char *dirname;
+    const char *basename;
+    const char *payload_subdir;
+    uint64_t size;
+    uint16_t mode;
+    uint32_t uid;
+    uint32_t gid;
+    uint16_t rdev;
+    uint32_t mtime;
+    const char *linkto;
+};
+
 /* Function pointers */
 typedef void (*list_entry_data_free_func)(void *);
 

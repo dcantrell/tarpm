@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
@@ -24,142 +25,7 @@
 
 #include "tarpm.h"
 
-static int trimlen = -1;
 static struct archive *payload = NULL;
-
-/* Helper for nftw() from create_payload() */
-static int
-add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unused)) int tflag, __attribute__((unused)) struct FTW *ftwbuf)
-{
-    int fd = -1;
-    ssize_t len = 0;
-    char buf[BUFSIZ];
-    char *hardlink = NULL;
-    bool is_hardlink = false;
-    const char *vpath = NULL;
-    char *full_path = NULL;
-    struct archive_entry *entry = NULL;
-
-    /*
-     * skip the payload staging dir, but count its length as the path
-     * trim length
-     */
-    if (trimlen == -1) {
-        trimlen = strlen(fpath);
-        return 0;
-    } else {
-        vpath = fpath + trimlen;
-
-        while (*vpath == '/') {
-            vpath++;
-        }
-    }
-
-    entry = archive_entry_new();
-
-    /* is this file a hardlink? */
-    hardlink = lookup_inode(sb->st_ino);
-
-    if (hardlink != NULL && strcmp(vpath, hardlink)) {
-        is_hardlink = true;
-    }
-
-    if (S_ISREG(sb->st_mode)) {
-        if (is_hardlink) {
-            archive_entry_set_hardlink(entry, hardlink);
-        } else {
-            archive_entry_set_filetype(entry, AE_IFREG);
-        }
-    } else if (S_ISLNK(sb->st_mode) && (tflag == FTW_SL || tflag == FTW_SLN)) {
-        archive_entry_set_filetype(entry, AE_IFLNK);
-        memset(buf, '\0', sizeof(buf));
-
-        if (readlink(fpath, buf, sizeof(buf) - 1) == -1) {
-            warn("readlink");
-            return -1;
-        }
-
-        archive_entry_set_symlink(entry, buf);
-    } else if (S_ISSOCK(sb->st_mode)) {
-        archive_entry_set_filetype(entry, AE_IFSOCK);
-    } else if (S_ISCHR(sb->st_mode)) {
-        archive_entry_set_filetype(entry, AE_IFCHR);
-    } else if (S_ISBLK(sb->st_mode)) {
-        archive_entry_set_filetype(entry, AE_IFBLK);
-    } else if (S_ISDIR(sb->st_mode)) {
-        archive_entry_set_filetype(entry, AE_IFDIR);
-    } else if (S_ISFIFO(sb->st_mode)) {
-        archive_entry_set_filetype(entry, AE_IFIFO);
-    } else {
-        warn("stat");
-        return -1;
-    }
-
-    /* prepend ./ to pathname (cpio does this) */
-    xasprintf(&full_path, "./%s", vpath);
-    archive_entry_set_pathname(entry, full_path);
-    free(full_path);
-
-    /* XXX - get these from actual files on disk? */
-    /* set timestamps */
-    archive_entry_set_atime(entry, sb->st_atime, 0);
-    archive_entry_set_mtime(entry, sb->st_mtime, 0);
-    archive_entry_set_ctime(entry, sb->st_ctime, 0);
-
-    /* inode number, device ID, hard link count */
-    archive_entry_set_ino(entry, sb->st_ino);
-    archive_entry_set_dev(entry, sb->st_dev);
-    archive_entry_set_nlink(entry, sb->st_nlink);
-
-    /* XXX - get this from %files/fallback on actual files/fallback on 0:0 ? */
-    archive_entry_set_gid(entry, 0);
-    archive_entry_set_uid(entry, 0);
-
-    if (!is_hardlink) {
-        archive_entry_set_size(entry, sb->st_size);
-    }
-
-    /* XXX - get this from %files ? */
-    /* only set permission bits, not file type bits */
-    archive_entry_set_perm(entry, sb->st_mode & ACCESSPERMS);
-
-    /* write the entry header */
-    archive_write_header(payload, entry);
-
-    /* write the data to the payload for regular files only */
-    if (S_ISREG(sb->st_mode) && !is_hardlink) {
-        if ((fd = open(fpath, O_RDONLY)) == -1) {
-            warn("open");
-            return -1;
-        } else {
-            memset(buf, 0, sizeof(buf));
-        }
-
-        while ((len = read(fd, buf, sizeof(buf))) > 0) {
-            archive_write_data(payload, buf, len);
-        }
-
-        if (len == -1) {
-            warn("read");
-            return -1;
-        }
-
-        if (close(fd) == -1) {
-            warn("close");
-            return -1;
-        }
-    }
-
-    /* finalize the entry */
-    if (archive_write_finish_entry(payload) != ARCHIVE_OK) {
-        warnx("archive_write_finish_entry: %s", archive_error_string(payload));
-        archive_entry_free(entry);
-        return -1;
-    }
-
-    archive_entry_free(entry);
-    return 0;
-}
 
 /* Helper for create_rpm() that writes header data to the RPM */
 static int
@@ -239,6 +105,113 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 }
 
 /*
+ * Helper function used to build the RPM payload.  We use libarchive,
+ * but the payload has to follow the metadata in the header rather
+ * than walking the filesystem tree.
+ */
+static int
+add_file_to_payload(const struct file_params *params)
+{
+    char *full_path = NULL;
+    char *file_path = NULL;
+    struct archive_entry *entry = NULL;
+    int fd = -1;
+    ssize_t len = 0;
+    char buf[BUFSIZ];
+
+    /* the path in the cpio payload needs to begin with "./" */
+    if (params->dirname[0] == '/') {
+        xasprintf(&full_path, ".%s%s", params->dirname, params->basename);
+    } else {
+        xasprintf(&full_path, "./%s%s", params->dirname, params->basename);
+    }
+
+    /* start a new entry */
+    entry = archive_entry_new();
+
+    /* build the filesystem path using the header metadata */
+    xasprintf(&file_path, "%s%s%s", params->payload_subdir, params->dirname, params->basename);
+    archive_entry_set_pathname(entry, full_path);
+
+    /* set file type and related metadata */
+    if (S_ISREG(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFREG);
+        archive_entry_set_size(entry, params->size);
+    } else if (S_ISDIR(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFDIR);
+        archive_entry_set_size(entry, 0);
+    } else if (S_ISLNK(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFLNK);
+        archive_entry_set_size(entry, 0);
+
+        if (params->linkto != NULL && params->linkto[0] != '\0') {
+            archive_entry_set_symlink(entry, params->linkto);
+        }
+    } else if (S_ISCHR(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFCHR);
+        archive_entry_set_size(entry, 0);
+        archive_entry_set_rdev(entry, params->rdev);
+    } else if (S_ISBLK(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFBLK);
+        archive_entry_set_size(entry, 0);
+        archive_entry_set_rdev(entry, params->rdev);
+    } else if (S_ISFIFO(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFIFO);
+        archive_entry_set_size(entry, 0);
+    } else if (S_ISSOCK(params->mode)) {
+        archive_entry_set_filetype(entry, AE_IFSOCK);
+        archive_entry_set_size(entry, 0);
+    }
+
+    /* set access permissions, mtime, uid, and gid */
+    archive_entry_set_perm(entry, params->mode & ACCESSPERMS);
+    archive_entry_set_mtime(entry, params->mtime, 0);
+    archive_entry_set_uid(entry, params->uid);
+    archive_entry_set_gid(entry, params->gid);
+
+    /* write the entry header */
+    if (archive_write_header(payload, entry) != ARCHIVE_OK) {
+        warnx("archive_write_header: %s", archive_error_string(payload));
+        archive_entry_free(entry);
+        free(full_path);
+        free(file_path);
+        return -1;
+    }
+
+    /* write the data to the payload for regular files */
+    if (S_ISREG(params->mode) && params->size > 0) {
+        if ((fd = open(file_path, O_RDONLY)) == -1) {
+            warn("open: %s", file_path);
+            archive_entry_free(entry);
+            free(full_path);
+            free(file_path);
+            return -1;
+        }
+
+        while ((len = read(fd, buf, sizeof(buf))) > 0) {
+            archive_write_data(payload, buf, len);
+        }
+
+        if (len == -1) {
+            warn("read: %s", file_path);
+        }
+
+        close(fd);
+    }
+
+    /* finalize the entry */
+    if (archive_write_finish_entry(payload) != ARCHIVE_OK) {
+        warnx("archive_write_finish_entry: %s", archive_error_string(payload));
+    }
+
+    /* clean up */
+    archive_entry_free(entry);
+    free(full_path);
+    free(file_path);
+    return 0;
+}
+
+/*
  * Helper for create_rpm() that writes the payload data to a temporary
  * file.  Returns an open file descriptor that can then be used later when putting together the final RPM.
  * Caller must close the file descriptor when done which will remove the temporary file associated with it.
@@ -252,22 +225,74 @@ create_payload(struct json_object *header, const char *payload_subdir)
     char *template = NULL;
     const char *tag = NULL;
     char *opts = NULL;
+    struct hdr_file_lists hfl;
     struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *number = NULL;
+    struct json_object *value = NULL;
+    int dirindex = 0;
+    size_t i = 0;
+    size_t numfiles = 0;
+    int tagnum = 0;
+    struct file_params params;
 
     if (header == NULL || payload_subdir == NULL) {
-        return -1;
-    }
-
-    /* initialize inode list for hardlink handling */
-    if (add_inodes(payload_subdir) != 0) {
-        warnx("add_inodes");
         return -1;
     }
 
     /* get the header tags array */
     if (json_object_object_get_ex(header, "tags", &tags) == 0) {
         warnx(_("*** missing tags in header data"));
+        return -1;
     }
+
+    /* initialize */
+    memset(&hfl, '\0', sizeof(hfl));
+
+    /* Get file lists from header */
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (json_object_object_get_ex(entry, "number", &number)) {
+            tagnum = json_object_get_int(number);
+
+            if (json_object_object_get_ex(entry, "value", &value)) {
+                if (tagnum == RPMTAG_BASENAMES) {
+                    hfl.basenames = value;
+                } else if (tagnum == RPMTAG_DIRNAMES) {
+                    hfl.dirnames = value;
+                } else if (tagnum == RPMTAG_DIRINDEXES) {
+                    hfl.dirindexes = value;
+                } else if (tagnum == RPMTAG_FILESIZES) {
+                    hfl.filesizes = value;
+                } else if (tagnum == RPMTAG_FILEMODES) {
+                    hfl.filemodes = value;
+                } else if (tagnum == RPMTAG_FILEUIDS) {
+                    hfl.fileuids = value;
+                } else if (tagnum == RPMTAG_FILEGIDS) {
+                    hfl.filegids = value;
+                } else if (tagnum == RPMTAG_FILERDEVS) {
+                    hfl.filerdevs = value;
+                } else if (tagnum == RPMTAG_FILEMTIMES) {
+                    hfl.filemtimes = value;
+                } else if (tagnum == RPMTAG_FILELINKTOS) {
+                    hfl.filelinktos = value;
+                }
+            }
+        }
+    }
+
+    if (!hfl.basenames || !hfl.dirnames || !hfl.dirindexes) {
+        warnx(_("*** missing file list tags in header"));
+        return -1;
+    }
+
+    if (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos) {
+        warnx(_("*** missing file metadata tags in header"));
+        return -1;
+    }
+
+    numfiles = json_object_array_length(hfl.basenames);
 
     /* get the package name and create a temporary payload file */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
@@ -291,28 +316,46 @@ create_payload(struct json_object *header, const char *payload_subdir)
     payload = archive_write_new();
 
     /* set the payload format, which is always the same */
-    archive_write_set_format_cpio_newc(payload);
+    if (archive_write_set_format_cpio_newc(payload) != ARCHIVE_OK) {
+        errx(EXIT_FAILURE, "archive_write_set_format_cpio_newc: %s", archive_error_string(payload));
+    }
 
     /* get the compression algorithm type */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
 
-    if (tag == NULL) {
-        /* default to no compression */
+    if (tag == NULL || !strcmp(tag, "none")) {
+        /* no compression, but RPM still needs 512-byte blocks for the cpio payload */
         archive_write_add_filter_none(payload);
+
+        if (archive_write_set_bytes_per_block(payload, 512) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_bytes_per_block: %s", archive_error_string(payload));
+        }
+
+        if (archive_write_set_bytes_in_last_block(payload, 512) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+        }
+    } else if (!strcmp(tag, "gzip")) {
+        archive_write_add_filter_gzip(payload);
+    } else if (!strcmp(tag, "bzip2")) {
+        archive_write_add_filter_bzip2(payload);
+    } else if (!strcmp(tag, "xz")) {
+        archive_write_add_filter_xz(payload);
+    } else if (!strcmp(tag, "lzma")) {
+        archive_write_add_filter_lzma(payload);
+    } else if (!strcmp(tag, "zstd")) {
+        if (archive_write_add_filter_zstd(payload) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_add_filter_zstd: %s", archive_error_string(payload));
+        }
     } else {
-        if (!strcmp(tag, "gzip")) {
-            archive_write_add_filter_gzip(payload);
-        } else if (!strcmp(tag, "bzip2")) {
-            archive_write_add_filter_bzip2(payload);
-        } else if (!strcmp(tag, "xz")) {
-            archive_write_add_filter_xz(payload);
-        } else if (!strcmp(tag, "lzma")) {
-            archive_write_add_filter_lzma(payload);
-        } else if (!strcmp(tag, "zstd")) {
-            archive_write_add_filter_zstd(payload);
-        } else {
-            /* default to no compression */
-            archive_write_add_filter_none(payload);
+        /* unknown compression - default to none with 512 byte blocks */
+        archive_write_add_filter_none(payload);
+
+        if (archive_write_set_bytes_per_block(payload, 512) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_bytes_per_block: %s", archive_error_string(payload));
+        }
+
+        if (archive_write_set_bytes_in_last_block(payload, 512) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
         }
     }
 
@@ -327,15 +370,36 @@ create_payload(struct json_object *header, const char *payload_subdir)
 
     /* open the payload for writing */
     if (archive_write_open_fd(payload, payloadfd) != ARCHIVE_OK) {
-        errx(EXIT_FAILURE, "archive_write_open_FILE: %s", archive_error_string(payload));
+        errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
     }
 
-    /* reset the path trimlen */
-    trimlen = -1;
+    /* Write each file from the header to the payload */
+    for (i = 0; i < numfiles; i++) {
+        dirindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
+        params.dirname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dirindex));
+        params.basename = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
+        params.payload_subdir = payload_subdir;
+        params.size = json_object_get_int64(json_object_array_get_idx(hfl.filesizes, i));
+        params.mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
+        params.rdev = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filerdevs, i));
+        params.mtime = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filemtimes, i));
+        params.linkto = json_object_get_string(json_object_array_get_idx(hfl.filelinktos, i));
 
-    /* write the entries to the payload */
-    if (nftw(payload_subdir, add_payload_entry, 25, FTW_MOUNT | FTW_PHYS) == -1) {
-        warn("nftw");
+        /* we may not have fileuids or filegids, so default to 0 and then try */
+        params.uid = 0;
+        params.gid = 0;
+
+        if (hfl.fileuids) {
+            params.uid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileuids, i));
+        }
+
+        if (hfl.filegids) {
+            params.gid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filegids, i));
+        }
+
+        if (add_file_to_payload(&params) != 0) {
+            warnx("failed to add file: %s%s", params.dirname, params.basename);
+        }
     }
 
     /* close the payload so data can be flushed */
@@ -351,7 +415,8 @@ create_payload(struct json_object *header, const char *payload_subdir)
     }
 #endif
 
-    free_inodes();
+    /* back to the beginning */
+    lseek(payloadfd, 0, SEEK_SET);
 
     return payloadfd;
 }
@@ -371,6 +436,7 @@ write_payload(FILE *rpm, int fd)
     FILE *pload = NULL;
     char buf[BUFSIZ];
     size_t s = 0;
+    size_t total = 0;
 
     if (rpm == NULL) {
         return 0;
@@ -392,6 +458,8 @@ write_payload(FILE *rpm, int fd)
 
     /* copy payload over to the RPM */
     while ((s = fread(buf, sizeof(char), BUFSIZ, pload)) > 0) {
+        total += s;
+
         if (fwrite(buf, sizeof(char), s, rpm) != s) {
             warn("fwrite");
             r = -1;
