@@ -69,7 +69,7 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         i = EVP_DigestInit(ctx, EVP_md5());
     } else if (type == TARPM_DIGEST_SHA1) {
         i = EVP_DigestInit(ctx, EVP_sha1());
-    } else if (type == TARPM_DIGEST_SHA256) {
+    } else if (type == TARPM_DIGEST_SHA256 || type == TARPM_DIGEST_SHA256_PAYLOAD) {
         i = EVP_DigestInit(ctx, EVP_sha256());
     } else {
         warnx("*** unsupported digest type: %d", type);
@@ -83,55 +83,58 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         return NULL;
     }
 
-    /* add the header magic (same as rpm's rpm_header_magic) */
-    if (EVP_DigestUpdate(ctx, hdr, 8) == 0) {
-        warn("EVP_DigestUpdate");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    if (EVP_DigestUpdate(ctx, &(hdr->nentries), sizeof(hdr->nentries)) == 0 || EVP_DigestUpdate(ctx, &(hdr->nbytes), sizeof(hdr->nbytes)) == 0) {
-        warn("EVP_DigestUpdate");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    nentries = ntohl(hdr->nentries);
-    nbytes = ntohl(hdr->nbytes);
-
-    /* add the header entries */
-    if (EVP_DigestUpdate(ctx, hdrinfo->estart, sizeof(struct rpmhdrentry) * nentries) == 0) {
-        warn("EVP_DigestUpdate");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    n = nbytes;
-    i = -1;
-
-    if (has_trailer(nentries, hdrinfo->estart)) {
-        n -= 16;
-        i = get_trailer_data(data, &trailer_data, &trailer_size);
-    }
-
-    if (EVP_DigestUpdate(ctx, hdrinfo->datastart, n) == 0) {
-        warn("EVP_DigestUpdate");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
-    }
-
-    if (i == 0 && trailer_size == 16) {
-        if (EVP_DigestUpdate(ctx, trailer_data, trailer_size) == 0) {
+    /* for payload-only digest, skip the header */
+    if (type != TARPM_DIGEST_SHA256_PAYLOAD) {
+        /* add the header magic (same as rpm's rpm_header_magic) */
+        if (EVP_DigestUpdate(ctx, hdr, 8) == 0) {
             warn("EVP_DigestUpdate");
             EVP_MD_CTX_free(ctx);
             return NULL;
         }
 
-        free(trailer_data);
+        if (EVP_DigestUpdate(ctx, &(hdr->nentries), sizeof(hdr->nentries)) == 0 || EVP_DigestUpdate(ctx, &(hdr->nbytes), sizeof(hdr->nbytes)) == 0) {
+            warn("EVP_DigestUpdate");
+            EVP_MD_CTX_free(ctx);
+            return NULL;
+        }
+
+        nentries = ntohl(hdr->nentries);
+        nbytes = ntohl(hdr->nbytes);
+
+        /* add the header entries */
+        if (EVP_DigestUpdate(ctx, hdrinfo->estart, sizeof(struct rpmhdrentry) * nentries) == 0) {
+            warn("EVP_DigestUpdate");
+            EVP_MD_CTX_free(ctx);
+            return NULL;
+        }
+
+        n = nbytes;
+        i = -1;
+
+        if (has_trailer(nentries, hdrinfo->estart)) {
+            n -= 16;
+            i = get_trailer_data(data, &trailer_data, &trailer_size);
+        }
+
+        if (EVP_DigestUpdate(ctx, hdrinfo->datastart, n) == 0) {
+            warn("EVP_DigestUpdate");
+            EVP_MD_CTX_free(ctx);
+            return NULL;
+        }
+
+        if (i == 0 && trailer_size == 16) {
+            if (EVP_DigestUpdate(ctx, trailer_data, trailer_size) == 0) {
+                warn("EVP_DigestUpdate");
+                EVP_MD_CTX_free(ctx);
+                return NULL;
+            }
+
+            free(trailer_data);
+        }
     }
 
-    /* add the payload data (only for MD5, not for SHA-1 or SHA-256) */
-    if (type == TARPM_DIGEST_MD5) {
+    /* add the payload data (for MD5 and SHA-256 PAYLOAD, not for SHA-1 or SHA-256) */
+    if (type == TARPM_DIGEST_MD5 || type == TARPM_DIGEST_SHA256_PAYLOAD) {
         if (lseek(fd, 0, SEEK_SET) == -1) {
             warn("lseek");
             EVP_MD_CTX_free(ctx);

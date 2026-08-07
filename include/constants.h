@@ -62,5 +62,6 @@
 #define TARPM_DIGEST_MD5             1
 #define TARPM_DIGEST_SHA1            2
 #define TARPM_DIGEST_SHA256          3
+#define TARPM_DIGEST_SHA256_PAYLOAD  4
 
 #endif /* _TARPM_CONSTANTS_H */

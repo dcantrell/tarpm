@@ -150,6 +150,13 @@ add_payload_entry(const char *fpath, const struct stat *sb, __attribute__((unuse
         }
     }
 
+    /* finalize the entry */
+    if (archive_write_finish_entry(payload) != ARCHIVE_OK) {
+        warnx("archive_write_finish_entry: %s", archive_error_string(payload));
+        archive_entry_free(entry);
+        return -1;
+    }
+
     archive_entry_free(entry);
     return 0;
 }
@@ -331,12 +338,17 @@ create_payload(struct json_object *header, const char *payload_subdir)
         warn("nftw");
     }
 
-    /* close the payload */
+    /* close the payload so data can be flushed */
+    if (archive_write_close(payload) != ARCHIVE_OK) {
+        warnx("archive_write_close: %s", archive_error_string(payload));
+    }
+
 #if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_write_close(payload);
     archive_write_finish(payload);
 #else
-    archive_write_free(payload);
+    if (archive_write_free(payload) != ARCHIVE_OK) {
+        warnx("archive_write_free: %s", archive_error_string(payload));
+    }
 #endif
 
     free_inodes();
@@ -394,6 +406,70 @@ write_payload(FILE *rpm, int fd)
     }
 
     return r;
+}
+
+/*
+ * Update the payload digest in the header. Computes payload-only digest
+ * that is stored in the signature header.  Returns non-zero on failure.
+ */
+static int
+update_header_digests(struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
+{
+    int i = 0;
+    unsigned char *digest = NULL;
+    char *buf = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *number = NULL;
+    struct json_object *value = NULL;
+    size_t j = 0;
+
+    if (header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
+        return -1;
+    }
+
+    /* get the tags array from the header */
+    if (json_object_object_get_ex(header, "tags", &tags) == 0) {
+        warnx(_("*** missing tags in header data"));
+        return -1;
+    }
+
+    /* compute SHA-256 PAYLOAD digest (payload only) */
+    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, hdr, hdrinfo, header, payloadfd);
+
+    if (digest == NULL) {
+        warnx(_("*** failed to compute SHA-256 ALT digest"));
+        return -1;
+    }
+
+    buf = xcalloc(SHA256_DIGEST_LENGTH * 2 + 1, sizeof(char));
+
+    for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
+    }
+
+    /* find and update the RPMTAG_PAYLOADSHA256ALT */
+    for (j = 0; j < json_object_array_length(tags); j++) {
+        entry = json_object_array_get_idx(tags, j);
+
+        if (json_object_object_get_ex(entry, "number", &number)) {
+            if (json_object_get_int(number) == RPMTAG_PAYLOADSHA256ALT) {
+                if (json_object_object_get_ex(entry, "value", &value)) {
+                    /* Update the first element of the array */
+                    if (json_object_get_type(value) == json_type_array && json_object_array_length(value) > 0) {
+                        json_object_array_put_idx(value, 0, json_object_new_string(buf));
+                    }
+                }
+
+                break;
+            }
+        }
+    }
+
+    free(digest);
+    free(buf);
+
+    return 0;
 }
 
 /*
@@ -614,7 +690,24 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
     }
 
-    /* recalculate the digests and update the signature data */
+    /* update the header payload digest (payload only) */
+    if (update_header_digests(header, hdr, hdrinfo, payloadfd) != 0) {
+        close(payloadfd);
+        errx(EXIT_FAILURE, "update_header_digests");
+    }
+
+    /* free the old header structures */
+    free(hdr);
+    free(hdrinfo->estart);
+    free(hdrinfo->datastart);
+    free(hdrinfo);
+
+    /* regenerate the header with updated digests */
+    if (create_header(header, &hdr, &hdrinfo) == -1) {
+        errx(EXIT_FAILURE, _("*** unable to reconstruct RPM header"));
+    }
+
+    /* recalculate the digests and update the signature data using the updated header */
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
         close(payloadfd);
         errx(EXIT_FAILURE, "update_signature");
