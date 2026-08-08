@@ -4,29 +4,10 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "tarpm.h"
-
-/* Returns the number of entries in the list */
-size_t
-list_len(const str_list_t *list)
-{
-    str_entry_t *iter = NULL;
-    size_t len = 0;
-
-    if (list == NULL || TAILQ_EMPTY(list)) {
-        return 0;
-    }
-
-    TAILQ_FOREACH(iter, list, items) {
-        len++;
-    }
-
-    return len;
-}
 
 /**
  * @brief Join all members of a str_list_t in to a single string.

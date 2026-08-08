@@ -21,64 +21,6 @@ clean_test_strfuncs(void)
 }
 
 void
-test_strprefix(void)
-{
-    TARPM_ASSERT_TRUE(strprefix("flargenblarfle", "flarg"));
-    TARPM_ASSERT_FALSE(strprefix("flargenblarfle", "monkey"));
-
-    /* test empty prefix - should match */
-    TARPM_ASSERT_TRUE(strprefix("flargenblarfle", ""));
-
-    /* test full string match */
-    TARPM_ASSERT_TRUE(strprefix("flarg", "flarg"));
-
-    /* test prefix longer than string */
-    TARPM_ASSERT_FALSE(strprefix("abc", "abcdef"));
-
-    /* test NULL cases */
-    TARPM_ASSERT_FALSE(strprefix(NULL, "prefix"));
-    TARPM_ASSERT_FALSE(strprefix("string", NULL));
-    TARPM_ASSERT_FALSE(strprefix(NULL, NULL));
-
-    /* test single character */
-    TARPM_ASSERT_TRUE(strprefix("abc", "a"));
-    TARPM_ASSERT_FALSE(strprefix("abc", "b"));
-
-    return;
-}
-
-void
-test_strsuffix(void)
-{
-    TARPM_ASSERT_TRUE(strsuffix("flargenblarfle", "blarfle"));
-    TARPM_ASSERT_FALSE(strsuffix("flargenblarfle", "monkey"));
-
-    /* test empty suffix - should match */
-    TARPM_ASSERT_TRUE(strsuffix("flargenblarfle", ""));
-
-    /* test full string match */
-    TARPM_ASSERT_TRUE(strsuffix("blarfle", "blarfle"));
-
-    /* test suffix longer than string */
-    TARPM_ASSERT_FALSE(strsuffix("abc", "xyzabc"));
-
-    /* test NULL cases */
-    TARPM_ASSERT_FALSE(strsuffix(NULL, "suffix"));
-    TARPM_ASSERT_FALSE(strsuffix("string", NULL));
-    TARPM_ASSERT_FALSE(strsuffix(NULL, NULL));
-
-    /* test single character */
-    TARPM_ASSERT_TRUE(strsuffix("abc", "c"));
-    TARPM_ASSERT_FALSE(strsuffix("abc", "b"));
-
-    /* test case sensitivity */
-    TARPM_ASSERT_FALSE(strsuffix("file.TXT", "txt"));
-    TARPM_ASSERT_TRUE(strsuffix("file.txt", "txt"));
-
-    return;
-}
-
-void
 test_strappend(void)
 {
     char *a = NULL;
@@ -138,7 +80,10 @@ test_strsplit(void)
     /* NULL delimiter returns single entry list */
     list = strsplit("foo", NULL);
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 1);
 
     TAILQ_FOREACH(entry, list, items) {
@@ -150,7 +95,10 @@ test_strsplit(void)
     /* delimiter same as string returns single entry list */
     list = strsplit(",", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 1);
     list_free(list, free);
 
@@ -173,21 +121,30 @@ test_strsplit(void)
     /* split with empty tokens */
     list = strsplit("foo,,bar", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 3);
     list_free(list, free);
 
     /* split empty string */
     list = strsplit("", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 1);
     list_free(list, free);
 
     /* split single element (no delimiter found) */
     list = strsplit("foobar", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 1);
     TAILQ_FOREACH(entry, list, items) {
         TARPM_ASSERT_TRUE(strcmp(entry->str, "foobar") == 0);
@@ -197,14 +154,20 @@ test_strsplit(void)
     /* split with delimiter at start */
     list = strsplit(",foo,bar", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 3);
     list_free(list, free);
 
     /* split with delimiter at end */
     list = strsplit("foo,bar,", ",");
     TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
+    len = 0;
+    TAILQ_FOREACH(entry, list, items) {
+        len++;
+    }
     TARPM_ASSERT_TRUE(len == 3);
     list_free(list, free);
 
@@ -232,9 +195,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test strprefix()", test_strprefix) == NULL ||
-        CU_add_test(pSuite, "test strsuffix()", test_strsuffix) == NULL ||
-        CU_add_test(pSuite, "test strappend()", test_strappend) == NULL ||
+    if (CU_add_test(pSuite, "test strappend()", test_strappend) == NULL ||
         CU_add_test(pSuite, "test strsplit()", test_strsplit) == NULL) {
         return NULL;
     }

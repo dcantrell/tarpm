@@ -6,7 +6,6 @@ digest_src = files('digest.c')
 entry_src = files('entry.c')
 extract_src = files('extract.c')
 header_src = files('header.c')
-inodes_src = files('inodes.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
 lead_src = files('lead.c')
@@ -33,7 +32,6 @@ sources = [
     entry_src,
     extract_src,
     header_src,
-    inodes_src,
     joinpath_src,
     json_src,
     lead_src,

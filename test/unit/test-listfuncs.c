@@ -75,37 +75,6 @@ test_list_to_string(void)
     return;
 }
 
-void
-test_list_len(void)
-{
-    str_list_t *list = NULL;
-    size_t len = 0;
-
-    /* Test NULL list */
-    len = list_len(NULL);
-    TARPM_ASSERT_EQUAL(len, 0);
-
-    /* Test empty list (list_add with NULL creates a valid list) */
-    len = list_len(list);
-    TARPM_ASSERT_EQUAL(len, 0);
-
-    /* Test list with one item */
-    list = list_add(list, "foo");
-    TARPM_ASSERT_TRUE(list != NULL);
-    len = list_len(list);
-    TARPM_ASSERT_EQUAL(len, 1);
-
-    /* Test list with multiple items */
-    list = list_add(list, "bar");
-    list = list_add(list, "baz");
-    list = list_add(list, "qux");
-    len = list_len(list);
-    TARPM_ASSERT_EQUAL(len, 4);
-
-    list_free(list, free);
-    return;
-}
-
 CU_pSuite
 get_suite(void)
 {
@@ -121,8 +90,7 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test list_add()", test_list_add) == NULL ||
         CU_add_test(pSuite, "test list_free()", test_list_free) == NULL ||
-        CU_add_test(pSuite, "test list_to_string()", test_list_to_string) == NULL ||
-        CU_add_test(pSuite, "test list_len()", test_list_len) == NULL) {
+        CU_add_test(pSuite, "test list_to_string()", test_list_to_string) == NULL) {
         return NULL;
     }
 

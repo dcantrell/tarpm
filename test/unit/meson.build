@@ -245,18 +245,6 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
-    test_inodes = executable(
-        'test-inodes',
-        [ 'test-inodes.c',
-          'test-main.c',
-          inodes_src,
-          xalloc_src,
-        ],
-        include_directories : inc,
-        dependencies : [ cunit, jsonc ],
-        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
-    )
-
     test_readfile = executable(
         'test-readfile',
         [ 'test-readfile.c',
@@ -288,7 +276,6 @@ if cunit.found()
     test('test-xread', test_xread)
     test('test-strmode', test_strmode)
     test('test-entry', test_entry)
-    test('test-inodes', test_inodes)
     test('test-readfile', test_readfile)
 else
     warning('CUnit not found, skipping unit test suite')

@@ -34,7 +34,6 @@ static char sccsid[] = "@(#)strmode.c        8.3 (Berkeley) 8/15/94";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <string.h>
 
 void
 strmode(mode_t mode, char *p)

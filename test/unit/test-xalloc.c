@@ -124,25 +124,6 @@ test_xrealloc(void)
     return;
 }
 
-#ifdef _HAVE_REALLOCARRAY
-void
-test_xreallocarray(void)
-{
-    char *buf = NULL;
-
-    buf = xcalloc(47, 47);
-    TARPM_ASSERT_TRUE(buf != NULL);
-    TARPM_ASSERT_TRUE(malloc_usable_size(buf) >= (47 * 47));
-
-    buf = xreallocarray(buf, 147, 147);
-    TARPM_ASSERT_TRUE(buf != NULL);
-    TARPM_ASSERT_TRUE(malloc_usable_size(buf) >= (147 * 147));
-    free(buf);
-
-    return;
-}
-#endif
-
 CU_pSuite
 get_suite(void)
 {
@@ -158,9 +139,6 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test xcalloc()", test_xcalloc) == NULL ||
         CU_add_test(pSuite, "test xalloc()", test_xalloc) == NULL ||
-#ifdef _HAVE_REALLOCARRAY
-        CU_add_test(pSuite, "test xreallocarray()", test_xreallocarray) == NULL ||
-#endif
         CU_add_test(pSuite, "test xrealloc()", test_xrealloc) == NULL) {
         return NULL;
     }

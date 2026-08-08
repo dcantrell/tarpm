@@ -46,23 +46,3 @@ xrealloc(void *p, size_t s)
 
     return ret;
 }
-
-#ifdef _HAVE_REALLOCARRAY
-void *
-xreallocarray(void *p, size_t n, size_t s)
-{
-    void *ret;
-
-    if (p == NULL) {
-        return xcalloc(n, s);
-    }
-
-    ret = reallocarray(p, n, s);
-
-    if (ret == NULL) {
-        err(EXIT_FAILURE, "reallocarray");
-    }
-
-    return ret;
-}
-#endif

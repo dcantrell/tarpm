@@ -28,13 +28,10 @@ char *get_nevr(Header h);
 char *get_nevra(Header h);
 
 /* strfuncs.c */
-bool strprefix(const char *s, const char *prefix);
-bool strsuffix(const char *s, const char *suffix);
 char *strappend(char *dest, ...);
 str_list_t *strsplit(const char *s, const char *delim);
 
 /* listfuncs.c */
-size_t list_len(const str_list_t *list);
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
 str_list_t *list_add(str_list_t *list, const char *s);
 char *list_to_string(const str_list_t *list, const char *delimiter);
@@ -43,9 +40,6 @@ char *list_to_string(const str_list_t *list, const char *delimiter);
 void *xcalloc(size_t n, size_t s);
 void *xalloc(size_t s);
 void *xrealloc(void *p, size_t s);
-#ifdef _HAVE_REALLOCARRAY
-void *xreallocarray(void *p, size_t n, size_t s);
-#endif
 
 /* mkdirp.c */
 int mkdirp(const char *path, mode_t mode);
@@ -106,11 +100,6 @@ void extract_rpm(const char *filename, const char *cwd, const char *output_dir, 
 
 /* create.c */
 void create_rpm(const char *filename, const char *cwd, const char *input_dir);
-
-/* inodes.c */
-char *lookup_inode(const ino_t inode);
-int add_inodes(const char *path);
-void free_inodes(void);
 
 /* list.c */
 void list_rpm(const char *rpm);
