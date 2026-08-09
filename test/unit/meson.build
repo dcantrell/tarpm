@@ -257,6 +257,41 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_digest = executable(
+        'test-digest',
+        [ 'test-digest.c',
+          'test-main.c',
+          digest_src,
+          header_src,
+          entry_src,
+          tags_src,
+          joinpath_src,
+          json_src,
+          read_src,
+          readfile_src,
+          xalloc_src,
+          xread_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc, rpm, openssl ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_list = executable(
+        'test-list',
+        [ 'test-list.c',
+          'test-main.c',
+          list_src,
+          strmode_src,
+          strfuncs_src,
+          listfuncs_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc, rpm ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     # Unit tests
     test('test-strfuncs', test_strfuncs)
     test('test-header', test_header)
@@ -277,6 +312,8 @@ if cunit.found()
     test('test-strmode', test_strmode)
     test('test-entry', test_entry)
     test('test-readfile', test_readfile)
+    test('test-digest', test_digest)
+    test('test-list', test_list)
 else
     warning('CUnit not found, skipping unit test suite')
 endif
