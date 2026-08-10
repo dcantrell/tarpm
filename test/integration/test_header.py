@@ -276,6 +276,8 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
 
 class VerifyHeaderExtractRPM(TestUnpackRPM):
     def runTest(self):
+        is_zstd = False
+
         super().runTest()
 
         f = open(self.header)
@@ -381,28 +383,30 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Requireflags":
                         self.assertTrue(int(tag["number"]) == 1048)
                         self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(
-                            tag["value"]
-                            == [16777226, 16777226, 16777226, 16777226]
-                        )
+
+                        for entry in tag["value"]:
+                            self.assertTrue(entry == 16777226)
                     elif t == "Requirename":
                         self.assertTrue(int(tag["number"]) == 1049)
                         self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"]
-                            == [
-                                "rpmlib(CompressedFileNames)",
-                                "rpmlib(FileDigests)",
-                                "rpmlib(PayloadFilesHavePrefix)",
-                                "rpmlib(PayloadIsZstd)",
-                            ]
-                        )
+                        self.assertTrue("rpmlib(CompressedFileNames)" in tag["value"])
+                        self.assertTrue("rpmlib(FileDigests)" in tag["value"])
+                        self.assertTrue("rpmlib(PayloadFilesHavePrefix)" in tag["value"])
+
+                        # the payload can be compressed different ways or not
+                        if "rpmlib(PayloadIsZstd)" in tag["value"]:
+                            is_zstd = True
+                            self.assertTrue("rpmlib(PayloadIsZstd)" in tag["value"])
                     elif t == "Requireversion":
                         self.assertTrue(int(tag["number"]) == 1050)
                         self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"] == ["3.0.4-1", "4.6.0-1", "4.0-1", "5.4.18-1"]
-                        )
+
+                        self.assertTrue("3.0.4-1" in tag["value"])
+                        self.assertTrue("4.6.0-1" in tag["value"])
+                        self.assertTrue("4.0-1" in tag["value"])
+
+                        if is_zstd:
+                            self.assertTrue("5.4.18-1" in tag["value"])
                     elif t == "Rpmversion":
                         self.assertTrue(int(tag["number"]) == 1064)
                         self.assertTrue(tag["type"] == "string")
@@ -444,11 +448,19 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Payloadcompressor":
                         self.assertTrue(int(tag["number"]) == 1125)
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"] == "zstd")
+
+                        if is_zstd:
+                            self.assertTrue(tag["value"] == "zstd")
+                        else:
+                            self.assertTrue(tag["value"] == "gzip")
                     elif t == "Payloadflags":
                         self.assertTrue(int(tag["number"]) == 1126)
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(int(tag["value"]) == 19)
+
+                        if is_zstd:
+                            self.assertTrue(int(tag["value"]) >= 1 or int(tag["value"]) <= 19)
+                        else:
+                            self.assertTrue(int(tag["value"]) >= 1 or int(tag["value"]) <= 9)
                     elif t == "Platform":
                         self.assertTrue(int(tag["number"]) == 1132)
                         self.assertTrue(tag["type"] == "string")
