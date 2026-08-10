@@ -1,6 +1,9 @@
-# Source Code Control Notes
+Source Code Control Notes
+=========================
 
-### Signed-off-by
+
+Signed-off-by
+-------------
 
 Using
 
@@ -11,7 +14,9 @@ git commit -s
 to sign-off on commits is preferred, but not required.  See
 https://developercertificate.org/ for more information.
 
-### Short Log Headers
+
+Short Log Headers
+-----------------
 
 To categorize commits and make release log generation easier, please
 use categorization headers on the first line of git commit messages.
@@ -32,7 +37,9 @@ This list may expand over time.
 NOTE: Short log messages without a header like this will be excluded
 from release announcements.  That may be appropriate for some commits.
 
-### Consolidated Project History
+
+Consolidated Project History
+----------------------------
 
 Sending pull requests is the preferred workflow, which means
 contributors need to track the upstream repo in their forked copies.
@@ -54,7 +61,9 @@ project history to match upstream.  You need to do this on a clean
 repo, so stash anything you are working on and ensure your copy is
 clean.
 
-### AI Policy
+
+AI Policy
+---------
 
 As a policy, the tarpm project does not accept use of generative AI in
 contributions.
