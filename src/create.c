@@ -11,9 +11,11 @@
 #include <fcntl.h>
 #include <ftw.h>
 #include <err.h>
+#include <errno.h>
 #include <arpa/inet.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <limits.h>
 #include <json_object.h>
 #include <rpm/header.h>
@@ -22,6 +24,7 @@
 #include <archive_entry.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
+#include <zstd.h>
 
 #include "tarpm.h"
 
@@ -212,9 +215,154 @@ add_file_to_payload(const struct file_params *params)
 }
 
 /*
+ * Helper function to compress a cpio archive with zstd without
+ * checksum.  librpm has its own internal cpio code and uses zstd
+ * directly.  tarpm uses libarchive and it handles creating the cpio
+ * payload and zstd compression.  But librpm does not enable XXH64
+ * checksums, but libarchive does.  To ensure librpm can read a zstd
+ * compressed payload created by tarpm, we need our own zstd
+ * compression function to do it the librpm way.
+ *
+ * Reads from uncompressed_fd and writes compressed data to compressed_fd.
+ * Returns 0 on success, -1 on failure.
+ */
+static int
+compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level)
+{
+    size_t zr = 0;
+    ZSTD_CCtx *cctx = NULL;
+    FILE *in = NULL;
+    FILE *out = NULL;
+    size_t const isize = ZSTD_CStreamInSize();
+    size_t const osize = ZSTD_CStreamOutSize();
+    void *ibuf = NULL;
+    void *obuf = NULL;
+    ZSTD_inBuffer zin;
+    ZSTD_outBuffer zout;
+    size_t remaining = 0;
+    size_t n = 0;
+    bool finished = false;
+    int rc = 0;
+
+    /* create compression context */
+    cctx = ZSTD_createCCtx();
+
+    if (cctx == NULL) {
+        warnx("ZSTD_createCCtx failed");
+        return -1;
+    }
+
+    /* set compression level - must be done before opening the stream */
+    zr = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
+
+    if (ZSTD_isError(zr)) {
+        warnx("ZSTD_CCtx_setParameter: %s", ZSTD_getErrorName(zr));
+        rc = -1;
+        goto cleanup;
+    }
+
+    /* disable checksum for rpm compatibility */
+    zr = ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, 0);
+
+    if (ZSTD_isError(zr)) {
+        warnx("ZSTD_CCtx_setParameter: %s", ZSTD_getErrorName(zr));
+        rc = -1;
+        goto cleanup;
+    }
+
+    /* allocate buffers */
+    ibuf = xalloc(isize);
+    obuf = xalloc(osize);
+
+    if (ibuf == NULL || obuf == NULL) {
+        warn("xalloc");
+        rc = -1;
+        goto cleanup;
+    }
+
+    /* open file descriptors */
+    in = fdopen(dup(uncompressed_fd), "rb");
+    out = fdopen(dup(compressed_fd), "wb");
+
+    if (in == NULL || out == NULL) {
+        warn("fdopen");
+        rc = -1;
+        goto cleanup;
+    }
+
+    /* compress the payload */
+    while ((n = fread(ibuf, 1, isize, in)) > 0) {
+        zin.src = ibuf;
+        zin.size = n;
+        zin.pos = 0;
+        finished = false;
+
+        do {
+            zout.dst = obuf;
+            zout.size = osize;
+            zout.pos = 0;
+            remaining = ZSTD_compressStream2(cctx, &zout, &zin, ZSTD_e_continue);
+
+            if (ZSTD_isError(remaining)) {
+                warnx("ZSTD_compressStream2: %s", ZSTD_getErrorName(remaining));
+                rc = -1;
+                goto cleanup;
+            }
+
+            fwrite(obuf, 1, zout.pos, out);
+
+            if (zin.pos == zin.size) {
+                finished = true;
+            }
+        } while (!finished);
+    }
+
+    /* loop until all data is flushed */
+    do {
+        zin.src = NULL;
+        zin.size = 0;
+        zin.pos = 0;
+        zout.dst = obuf;
+        zout.size = osize;
+        zout.pos = 0;
+        remaining = ZSTD_compressStream2(cctx, &zout, &zin, ZSTD_e_end);
+
+        if (ZSTD_isError(remaining)) {
+            warnx("ZSTD_compressStream2(end): %s", ZSTD_getErrorName(remaining));
+            rc = -1;
+            goto cleanup;
+        }
+
+        if (zout.pos > 0) {
+            fwrite(obuf, 1, zout.pos, out);
+        }
+    } while (remaining != 0);
+
+cleanup:
+    if (cctx) {
+        ZSTD_freeCCtx(cctx);
+    }
+
+    if (in) {
+        fclose(in);
+    }
+
+    if (out) {
+        fclose(out);
+    }
+
+    free(ibuf);
+    free(obuf);
+
+    return rc;
+}
+
+/*
  * Helper for create_rpm() that writes the payload data to a temporary
- * file.  Returns an open file descriptor that can then be used later when putting together the final RPM.
- * Caller must close the file descriptor when done which will remove the temporary file associated with it.
+ * file.  Returns an open file descriptor that can then be used later
+ * when putting together the final RPM.  Caller must close the file
+ * descriptor when done which will remove the temporary file
+ * associated with it.
  *
  * Returns -1 on failure.
  */
@@ -222,8 +370,10 @@ static int
 create_payload(struct json_object *header, const char *payload_subdir)
 {
     int payloadfd = -1;
+    int tmp_payloadfd = -1;
     char *template = NULL;
     const char *tag = NULL;
+    const char *level = NULL;
     char *opts = NULL;
     struct hdr_file_lists hfl;
     struct json_object *tags = NULL;
@@ -235,6 +385,11 @@ create_payload(struct json_object *header, const char *payload_subdir)
     size_t numfiles = 0;
     int tagnum = 0;
     struct file_params params;
+    bool use_zstd = false;
+    int zstd_level = 3;
+    int zstd_pipefd[2];
+    pid_t zstd_pid;
+    int status = 0;
 
     if (header == NULL || payload_subdir == NULL) {
         return -1;
@@ -320,10 +475,37 @@ create_payload(struct json_object *header, const char *payload_subdir)
         errx(EXIT_FAILURE, "archive_write_set_format_cpio_newc: %s", archive_error_string(payload));
     }
 
-    /* get the compression algorithm type */
+    /* get the compression algorithm type and level */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
 
-    if (tag == NULL || !strcmp(tag, "none")) {
+    /*
+     * For zstd, we need to compress manually without checksum for rpm compatibility.
+     * RPM's cpio reader cannot handle zstd frames with XXH64 checksums, but
+     * libarchive always enables them. Create uncompressed cpio first, then
+     * compress it manually with checksum disabled.
+     */
+    if (tag != NULL && !strcmp(tag, "zstd")) {
+        use_zstd = true;
+        archive_write_add_filter_none(payload);
+
+        /* get the compression level */
+        level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+
+        if (level != NULL) {
+            zstd_level = strtol(level, NULL, 10);
+
+            if (errno == EINVAL || errno == ERANGE) {
+                warn("strtol");
+                zstd_level = 3;
+            }
+
+            if (zstd_level < 1) {
+                zstd_level = 1;
+            } else if (zstd_level > 22) {
+                zstd_level = 22;
+            }
+        }
+    } else if (tag == NULL || !strcmp(tag, "none")) {
         /* no compression, but RPM still needs 512-byte blocks for the cpio payload */
         archive_write_add_filter_none(payload);
 
@@ -342,10 +524,6 @@ create_payload(struct json_object *header, const char *payload_subdir)
         archive_write_add_filter_xz(payload);
     } else if (!strcmp(tag, "lzma")) {
         archive_write_add_filter_lzma(payload);
-    } else if (!strcmp(tag, "zstd")) {
-        if (archive_write_add_filter_zstd(payload) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_add_filter_zstd: %s", archive_error_string(payload));
-        }
     } else {
         /* unknown compression - default to none with 512 byte blocks */
         archive_write_add_filter_none(payload);
@@ -359,17 +537,66 @@ create_payload(struct json_object *header, const char *payload_subdir)
         }
     }
 
-    /* set the compression level */
-    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+    /* set the compression level for non-zstd compressors */
+    if (!use_zstd) {
+        tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
 
-    if (tag != NULL) {
-        xasprintf(&opts, "compression-level=%s", tag);
-        archive_write_set_options(payload, opts);
-        free(opts);
+        if (tag != NULL) {
+            xasprintf(&opts, "compression-level=%s", tag);
+            archive_write_set_options(payload, opts);
+            free(opts);
+        }
     }
 
-    /* open the payload for writing */
-    if (archive_write_open_fd(payload, payloadfd) != ARCHIVE_OK) {
+    /* open the payload for writing - use pipe for zstd to avoid single-segment mode */
+    if (use_zstd) {
+        if (pipe(zstd_pipefd) == -1) {
+            warn("pipe");
+            return -1;
+        }
+
+        tmp_payloadfd = zstd_pipefd[1];
+
+        /* fork a process to compress from pipe to final fd */
+        zstd_pid = fork();
+
+        if (zstd_pid == -1) {
+            warn("fork");
+
+            if (close(zstd_pipefd[0]) == -1) {
+                warn("close");
+            }
+
+            if (close(zstd_pipefd[1]) == -1) {
+                warn("close");
+            }
+
+            return -1;
+        } else if (zstd_pid == 0) {
+            /* read from pipe, compress, write to payloadfd */
+            if (close(zstd_pipefd[1]) == -1) {
+                warn("close");
+            }
+
+            if (compress_with_zstd_no_checksum(zstd_pipefd[0], payloadfd, zstd_level) != 0) {
+                _exit(1);
+            }
+
+            if (close(zstd_pipefd[0]) == -1) {
+                warn("close");
+            }
+
+            _exit(0);
+        }
+
+        if (close(zstd_pipefd[0]) == -1) {
+            warn("close");
+        }
+    } else {
+        tmp_payloadfd = payloadfd;
+    }
+
+    if (archive_write_open_fd(payload, tmp_payloadfd) != ARCHIVE_OK) {
         errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
     }
 
@@ -415,8 +642,26 @@ create_payload(struct json_object *header, const char *payload_subdir)
     }
 #endif
 
+    /* when using zstd, close pipe and wait for compression child */
+    if (use_zstd) {
+        /* closing the pipe tells child EOF */
+        if (close(tmp_payloadfd) == -1) {
+            warn("close");
+        }
+
+        if (waitpid(zstd_pid, &status, 0) == -1) {
+            warn("waitpid");
+        }
+
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            errx(EXIT_FAILURE, "zstd compression child failed");
+        }
+    }
+
     /* back to the beginning */
-    lseek(payloadfd, 0, SEEK_SET);
+    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
+        warn("lseek");
+    }
 
     return payloadfd;
 }

@@ -56,7 +56,8 @@ deps = [
     rpm,
     libarchive,
     jsonc,
-    openssl
+    openssl,
+    libzstd
 ]
 
 tarpm_prog = executable(

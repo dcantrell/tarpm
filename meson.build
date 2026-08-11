@@ -69,6 +69,7 @@ elif cc.has_function('archive_version_string', dependencies : [ libarchive ])
     add_project_arguments('-D_HAVE_ARCHIVE_VERSION_STRING', language : ['c', 'cpp'])
 endif
 
+libzstd = dependency('libzstd', required : true)
 rpm = dependency('rpm', required : true)
 
 if rpm.version().version_compare('<4.15.0')
