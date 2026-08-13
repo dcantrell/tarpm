@@ -149,22 +149,12 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     rpmTagVal tag_number = 0;
-    uint32_t tag_offset = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
     int32_t padding = 0;
     size_t item_size = 0;
-    size_t max_end = 0;
-    bool has_offsets = false;
 
     if (tags == NULL) {
         return 0;
-    }
-
-    /* check if first entry has offset field */
-    entry = json_object_array_get_idx(tags, 0);
-
-    if (json_object_object_get_ex(entry, RPM_ENTRY_OFFSET_DESC, &key)) {
-        has_offsets = true;
     }
 
     for (i = 0; i < json_object_array_length(tags); i++) {
@@ -186,37 +176,22 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
         if (json_object_object_get_ex(entry, field, &key)) {
             item_size = get_item_size(entry, trailer_index, trailer_size);
 
-            if (has_offsets) {
-                /* calculate buffer size based on max(offset + size) */
-                if (json_object_object_get_ex(entry, RPM_ENTRY_OFFSET_DESC, &key)) {
-                    tag_offset = json_object_get_int64(key);
-
-                    if (tag_offset + item_size > max_end) {
-                        max_end = tag_offset + item_size;
-                    }
-                }
+            /* sequential calculation with alignment */
+            if (entry_type == RPM_INT16_TYPE) {
+                padding = (2 - (datasize % 2)) % 2;
+            } else if (entry_type == RPM_INT32_TYPE) {
+                padding = (4 - (datasize % 4)) % 4;
+            } else if (entry_type == RPM_INT64_TYPE) {
+                padding = (8 - (datasize % 8)) % 8;
             } else {
-                /* sequential calculation with alignment */
-                if (entry_type == RPM_INT16_TYPE) {
-                    padding = (2 - (datasize % 2)) % 2;
-                } else if (entry_type == RPM_INT32_TYPE) {
-                    padding = (4 - (datasize % 4)) % 4;
-                } else if (entry_type == RPM_INT64_TYPE) {
-                    padding = (8 - (datasize % 8)) % 8;
-                } else {
-                    padding = 0;
-                }
-
-                datasize += padding + item_size;
+                padding = 0;
             }
+
+            datasize += padding + item_size;
         }
     }
 
-    if (has_offsets) {
-        return max_end;
-    } else {
-        return datasize;
-    }
+    return datasize;
 }
 
 /* Add the header tags and their values to the data buffer */
