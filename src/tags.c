@@ -155,21 +155,114 @@ sig_tag_name(uint32_t tag)
     }
 }
 
+static uint32_t
+sig_tag_number(const char *tag)
+{
+    if (tag == NULL) {
+        return 0;
+    }
+
+    if (!strcmp(tag, "Headersignatures")) {
+        return HEADER_SIGNATURES;
+    } else if (!strcmp(tag, "Headerimmutable")) {
+        return HEADER_IMMUTABLE;
+    } else if (!strcmp(tag, "Size")) {
+        return RPMSIGTAG_SIZE;
+    } else if (!strcmp(tag, "Lemd5_1")) {
+        return RPMSIGTAG_LEMD5_1;
+    } else if (!strcmp(tag, "Pgp")) {
+        return RPMSIGTAG_PGP;
+    } else if (!strcmp(tag, "Lemd5_2")) {
+        return RPMSIGTAG_LEMD5_2;
+    } else if (!strcmp(tag, "Md5")) {
+        return RPMSIGTAG_MD5;
+    } else if (!strcmp(tag, "Gpg")) {
+        return RPMSIGTAG_GPG;
+    } else if (!strcmp(tag, "Pgp5")) {
+        return RPMSIGTAG_PGP5;
+    } else if (!strcmp(tag, "Payloadsize")) {
+        return RPMSIGTAG_PAYLOADSIZE;
+    } else if (!strcmp(tag, "Reservedspace")) {
+        return RPMSIGTAG_RESERVEDSPACE;
+    } else if (!strcmp(tag, "Badsha1_1")) {
+        return RPMSIGTAG_BADSHA1_1;
+    } else if (!strcmp(tag, "Badsha1_2")) {
+        return RPMSIGTAG_BADSHA1_2;
+    } else if (!strcmp(tag, "Dsa")) {
+        return RPMSIGTAG_DSA;
+    } else if (!strcmp(tag, "Rsa")) {
+        return RPMSIGTAG_RSA;
+    } else if (!strcmp(tag, "Sha1")) {
+        return RPMSIGTAG_SHA1;
+    } else if (!strcmp(tag, "Longsize")) {
+        return RPMSIGTAG_LONGSIZE;
+    } else if (!strcmp(tag, "Longarchivesize")) {
+        return RPMSIGTAG_LONGARCHIVESIZE;
+    } else if (!strcmp(tag, "Sha256")) {
+        return RPMSIGTAG_SHA256;
+#ifdef RPMSIGTAG_FILESIGNATURES
+    } else if (!strcmp(tag, "Filesignatures")) {
+        return RPMSIGTAG_FILESIGNATURES;
+#endif
+#ifdef RPMSIGTAG_FILESIGNATURELENGTH
+    } else if (!strcmp(tag, "Filesignaturelength")) {
+        return RPMSIGTAG_FILESIGNATURELENGTH;
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATURES
+    } else if (!strcmp(tag, "Veritysignatures")) {
+        return RPMSIGTAG_VERITYSIGNATURES;
+#endif
+#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
+    } else if (!strcmp(tag, "Veritysignaturealgo")) {
+        return RPMSIGTAG_VERITYSIGNATUREALGO;
+#endif
+    } else {
+        return 0;
+    }
+}
+
+/* Return the tag number given the tag name */
+rpmTagVal
+get_tag_number(struct json_object *entry)
+{
+    rpmTagVal t = 0;
+    struct json_object *tag = NULL;
+    const char *tagname = NULL;
+
+    if (entry == NULL) {
+        return RPMTAG_NOT_FOUND;
+    }
+
+    if (!json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
+        warnx("json_object_object_get_ex");
+        return RPMTAG_NOT_FOUND;
+    }
+
+    tagname = json_object_get_string(tag);
+    t = rpmTagGetValue(tagname);
+
+    if (t == RPMTAG_NOT_FOUND) {
+        return sig_tag_number(tagname);
+    } else {
+        return t;
+    }
+}
+
 /*
  * Given a json_object representing a "tags" array from a header JSON
- * file, search for the array entry where the "name" field matches the
+ * file, search for the array entry where the "tag" field matches the
  * name parameter on this function.  Return the tag value as a string
  * or NULL if not found.  Caller must not free the returned string.
  */
 const char *
-get_tag_value(const struct json_object *tags, const char *name)
+get_tag_value(const struct json_object *tags, const char *tag)
 {
     const char *v = NULL;
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    if (tags == NULL || name == NULL) {
+    if (tags == NULL || tag == NULL) {
         return NULL;
     }
 
@@ -186,9 +279,9 @@ get_tag_value(const struct json_object *tags, const char *name)
             break;
         }
 
-        if (json_object_object_get_ex(entry, "name", &value) == 1) {
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
             /* we found the name key, check the value */
-            if (strcmp(name, json_object_get_string(value))) {
+            if (strcmp(tag, json_object_get_string(value))) {
                 /* no match */
                 continue;
             }
@@ -196,7 +289,7 @@ get_tag_value(const struct json_object *tags, const char *name)
             value = NULL;
 
             /* we have a match, get the value for the caller */
-            if (json_object_object_get_ex(entry, "value", &value) == 1) {
+            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value) == 1) {
                 v = json_object_get_string(value);
                 break;
             }
@@ -208,18 +301,18 @@ get_tag_value(const struct json_object *tags, const char *name)
 
 /*
  * Given a json_object representing a "tags" array from a header JSON
- * file, search for the array entry where the "name" field matches the
+ * file, search for the array entry where the "tag" field matches the
  * name parameter on this function, and update its value with the
  * new_value parameter.  Returns 0 on success, -1 on failure.
  */
 int
-set_tag_value(struct json_object *tags, const char *name, const char *new_value)
+set_tag_value(struct json_object *tags, const char *tag, const char *new_value)
 {
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    if (tags == NULL || name == NULL || new_value == NULL) {
+    if (tags == NULL || tag == NULL || new_value == NULL) {
         return -1;
     }
 
@@ -236,9 +329,9 @@ set_tag_value(struct json_object *tags, const char *name, const char *new_value)
             break;
         }
 
-        if (json_object_object_get_ex(entry, "name", &value) == 1) {
-            if (!strcmp(name, json_object_get_string(value))) {
-                json_object_object_add(entry, "value", json_object_new_string(new_value));
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
+            if (!strcmp(tag, json_object_get_string(value))) {
+                json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(new_value));
                 return 0;
             }
         }

@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <err.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
@@ -55,6 +56,7 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     struct json_object *entry = NULL;
     rpmSigTag tag = 0;
     rpmTagType datatype = 0;
+    const char *tname = NULL;
     char *tagname = NULL;
     char *tagtype = NULL;
 
@@ -71,14 +73,18 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     /* add all of the entry values to the object */
     if (signature) {
-        xasprintf(&tagname, "%s", sig_tag_name(tag));
+        tname = sig_tag_name(tag);
     } else {
-        xasprintf(&tagname, "%s", rpmTagGetName(tag));
+        tname = rpmTagGetName(tag);
     }
 
-    json_object_object_add(entry, RPM_ENTRY_NAME_DESC, json_object_new_string(tagname));
+    if (!strcmp(tname, "(unknown)")) {
+        xasprintf(&tagname, "#%d", tag);
+    } else {
+        xasprintf(&tagname, "%s", tname);
+    }
 
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_int64(tag));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tagname));
 
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));

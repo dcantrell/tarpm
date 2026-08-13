@@ -106,7 +106,7 @@ create_lead(struct json_object *header)
     lead = xalloc(sizeof(*lead));
 
     /* get the tags array */
-    if (json_object_object_get_ex(header, "tags", &obj) == 0) {
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &obj) == 0) {
         warnx(_("*** missing tags in header.json"));
         free(lead);
         return NULL;
@@ -132,7 +132,7 @@ create_lead(struct json_object *header)
     for (i = 0; i < json_object_array_length(obj); i++) {
         entry = json_object_array_get_idx(obj, i);
 
-        if (json_object_object_get_ex(entry, "name", &key) == 1) {
+        if (json_object_object_get_ex(entry, RPM_LEAD_NAME, &key) == 1) {
             name = json_object_get_string(key);
 
             if (strcmp(name, "Sourcepackage") == 0) {

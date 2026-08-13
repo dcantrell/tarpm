@@ -158,7 +158,7 @@ if cunit.found()
           tags_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc ],
+        dependencies : [ cunit, rpm, jsonc ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 

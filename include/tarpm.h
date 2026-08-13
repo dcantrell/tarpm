@@ -75,6 +75,7 @@ int write_json_file(struct json_object *data, const char *output_dir, const char
 const char *strtagtype(rpmTagType type);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
+rpmTagVal get_tag_number(struct json_object *entry);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 int set_tag_value(struct json_object *tags, const char *name, const char *new_value);
 

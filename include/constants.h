@@ -47,13 +47,13 @@
 #define RPM_SIGNATURE_RESERVED_DESC  "reserved"
 #define RPM_SIGNATURE_MAGIC          0x8EADE801
 #define RPM_SIGNATURE_RESERVED       0
-#define RPM_ENTRY_NAME_DESC          "name"
-#define RPM_ENTRY_TAG_DESC           "number"
+#define RPM_ENTRY_TAG_DESC           "tag"
 #define RPM_ENTRY_TYPE_DESC          "type"
 #define RPM_ENTRY_TAGS_DESC          "tags"
 #define RPM_ENTRY_VALUE_DESC         "value"
 #define RPM_ENTRY_FILE_DESC          "file"
 #define RPM_ENTRY_TRAILER_DESC       "trailer"
+#define RPM_ENTRY_OFFSET_DESC        "offset"
 
 /* general purpose string constants */
 #define RPM_METADATA_READ_ONLY       "read-only"

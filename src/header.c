@@ -22,28 +22,11 @@ get_entry_type(struct json_object *entry)
         return RPM_NULL_TYPE;
     }
 
-    if (json_object_object_get_ex(entry,"type", &key)) {
+    if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &key)) {
         return tag_type(key);
     }
 
     return RPM_NULL_TYPE;
-}
-
-static uint32_t
-get_tag_number(struct json_object *entry)
-{
-    uint32_t tag_number = 0;
-    struct json_object *key = NULL;
-
-    if (entry == NULL) {
-        return 0;
-    }
-
-    if (json_object_object_get_ex(entry, "number", &key)) {
-        tag_number = json_object_get_uint64(key);
-    }
-
-    return tag_number;
 }
 
 static size_t
@@ -51,7 +34,7 @@ get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer
 {
     size_t item_size = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
-    uint32_t tag_number = 0;
+    rpmTagVal tag_number = 0;
     int r = 0;
     uint8_t *blob = NULL;
     size_t blobsize = 0;
@@ -165,7 +148,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     const char *field = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
-    uint32_t tag_number = 0;
+    rpmTagVal tag_number = 0;
     uint32_t tag_offset = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
     int32_t padding = 0;
@@ -180,7 +163,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
     /* check if first entry has offset field */
     entry = json_object_array_get_idx(tags, 0);
 
-    if (json_object_object_get_ex(entry, "offset", &key)) {
+    if (json_object_object_get_ex(entry, RPM_ENTRY_OFFSET_DESC, &key)) {
         has_offsets = true;
     }
 
@@ -205,7 +188,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
             if (has_offsets) {
                 /* calculate buffer size based on max(offset + size) */
-                if (json_object_object_get_ex(entry, "offset", &key)) {
+                if (json_object_object_get_ex(entry, RPM_ENTRY_OFFSET_DESC, &key)) {
                     tag_offset = json_object_get_int64(key);
 
                     if (tag_offset + item_size > max_end) {
@@ -272,16 +255,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     for (i = 0; i < json_object_array_length(tags); i++) {
         padding = 0;
         entry = json_object_array_get_idx(tags, i);
+        v->entry->tag = get_tag_number(entry);
 
-        /* gather the number, type, and count */
-        if (json_object_object_get_ex(entry, "number", &key) == 0) {
-            warnx(_("*** invalid header tag entry, missing 'number'"));
-            r = -1;
-        } else {
-            v->entry->tag = json_object_get_uint64(key);
-        }
-
-        if (json_object_object_get_ex(entry, "type", &key) == 0) {
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'type'"));
             r = -1;
         } else {
@@ -591,7 +567,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     s->reserved = htonl(RPM_SIGNATURE_RESERVED);
 
     /* get the tags for this header */
-    if (json_object_object_get_ex(data, "tags", &tags) == 0) {
+    if (json_object_object_get_ex(data, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in header data"));
         free(s);
         free(v);
@@ -683,12 +659,12 @@ get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t 
         return -1;
     }
 
-    if (json_object_object_get_ex(data, "tags", &tags) == 1) {
+    if (json_object_object_get_ex(data, RPM_ENTRY_TAGS_DESC, &tags) == 1) {
         for (i = 0; i < json_object_array_length(tags); i++) {
             entry = json_object_array_get_idx(tags, i);
 
-            if (json_object_object_get_ex(entry, "trailer", &tobj) == 1) {
-                if (json_object_object_get_ex(entry, "value", &vobj) == 1) {
+            if (json_object_object_get_ex(entry, RPM_ENTRY_TRAILER_DESC, &tobj) == 1) {
+                if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &vobj) == 1) {
                     trailer_value = json_object_get_string(vobj);
                     r = rpmBase64Decode(trailer_value, (void **) trailer_data, trailer_size);
 

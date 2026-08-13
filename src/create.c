@@ -394,7 +394,7 @@ create_payload(struct json_object *header, const char *payload_subdir)
     struct hdr_file_lists hfl;
     struct json_object *tags = NULL;
     struct json_object *entry = NULL;
-    struct json_object *number = NULL;
+    struct json_object *tagname = NULL;
     struct json_object *value = NULL;
     int dirindex = 0;
     size_t i = 0;
@@ -425,7 +425,7 @@ create_payload(struct json_object *header, const char *payload_subdir)
     }
 
     /* get the header tags array */
-    if (json_object_object_get_ex(header, "tags", &tags) == 0) {
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in header data"));
         return -1;
     }
@@ -437,10 +437,10 @@ create_payload(struct json_object *header, const char *payload_subdir)
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
 
-        if (json_object_object_get_ex(entry, "number", &number)) {
-            tagnum = json_object_get_int(number);
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tagname)) {
+            tagnum = rpmTagGetValue(json_object_get_string(tagname));
 
-            if (json_object_object_get_ex(entry, "value", &value)) {
+            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
                 if (tagnum == RPMTAG_BASENAMES) {
                     hfl.basenames = value;
                 } else if (tagnum == RPMTAG_DIRNAMES) {
@@ -878,7 +878,7 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
     char *buf = NULL;
     struct json_object *tags = NULL;
     struct json_object *entry = NULL;
-    struct json_object *number = NULL;
+    struct json_object *tag = NULL;
     struct json_object *value = NULL;
     size_t j = 0;
 
@@ -887,7 +887,7 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
     }
 
     /* get the tags array from the header */
-    if (json_object_object_get_ex(header, "tags", &tags) == 0) {
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in header data"));
         return -1;
     }
@@ -910,9 +910,9 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
     for (j = 0; j < json_object_array_length(tags); j++) {
         entry = json_object_array_get_idx(tags, j);
 
-        if (json_object_object_get_ex(entry, "number", &number)) {
-            if (json_object_get_int(number) == RPMTAG_PAYLOADSHA256ALT) {
-                if (json_object_object_get_ex(entry, "value", &value)) {
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
+            if (rpmTagGetValue(json_object_get_string(tag)) == RPMTAG_PAYLOADSHA256ALT) {
+                if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
                     /* Update the first element of the array */
                     if (json_object_get_type(value) == json_type_array && json_object_array_length(value) > 0) {
                         json_object_array_put_idx(value, 0, json_object_new_string(buf));
@@ -954,7 +954,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     }
 
     /* get the tags array from the signature */
-    if (json_object_object_get_ex(signature, "tags", &tags) == 0) {
+    if (json_object_object_get_ex(signature, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in signature data"));
         return -1;
     }
