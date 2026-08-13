@@ -207,7 +207,9 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue("file" in tag.keys())
                         self.assertTrue(tag["file"] == "spec.txt")
 
-                        spec_file = os.path.join(os.path.dirname(self.header), tag["file"])
+                        spec_file = os.path.join(
+                            os.path.dirname(self.header), tag["file"]
+                        )
                         self.assertTrue(os.path.exists(spec_file))
                         f = open(spec_file, "r")
                         spec_content = f.read()
@@ -319,7 +321,9 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue("rpmlib(CompressedFileNames)" in tag["value"])
                         self.assertTrue("rpmlib(FileDigests)" in tag["value"])
-                        self.assertTrue("rpmlib(PayloadFilesHavePrefix)" in tag["value"])
+                        self.assertTrue(
+                            "rpmlib(PayloadFilesHavePrefix)" in tag["value"]
+                        )
 
                         # the payload can be compressed different ways or not
                         if "rpmlib(PayloadIsZstd)" in tag["value"]:
@@ -374,9 +378,13 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "string")
 
                         if is_zstd:
-                            self.assertTrue(int(tag["value"]) >= 1 or int(tag["value"]) <= 19)
+                            self.assertTrue(
+                                int(tag["value"]) >= 1 or int(tag["value"]) <= 19
+                            )
                         else:
-                            self.assertTrue(int(tag["value"]) >= 1 or int(tag["value"]) <= 9)
+                            self.assertTrue(
+                                int(tag["value"]) >= 1 or int(tag["value"]) <= 9
+                            )
                     elif t == "Platform":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(
