@@ -135,6 +135,159 @@ test_tag_type(void)
     return;
 }
 
+void
+test_get_tag_number(void)
+{
+    struct json_object *entry = NULL;
+    rpmTagVal result = 0;
+
+    /* NULL input returns RPMTAG_NOT_FOUND */
+    result = get_tag_number(NULL);
+    TARPM_ASSERT_TRUE(result == RPMTAG_NOT_FOUND);
+
+    /* test with valid RPM tag name */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    result = get_tag_number(entry);
+    TARPM_ASSERT_TRUE(result == RPMTAG_NAME);
+    json_object_put(entry);
+
+    /* test with valid signature tag name */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Sha256"));
+    result = get_tag_number(entry);
+    TARPM_ASSERT_TRUE(result == RPMSIGTAG_SHA256);
+    json_object_put(entry);
+
+    /* test with another RPM tag */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Version"));
+    result = get_tag_number(entry);
+    TARPM_ASSERT_TRUE(result == RPMTAG_VERSION);
+    json_object_put(entry);
+
+    /* test with entry missing tag field */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "notag", json_object_new_string("Name"));
+    result = get_tag_number(entry);
+    TARPM_ASSERT_TRUE(result == RPMTAG_NOT_FOUND);
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_get_tag_value(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    const char *result = NULL;
+
+    /* NULL inputs return NULL */
+    result = get_tag_value(NULL, "Name");
+    TARPM_ASSERT_TRUE(result == NULL);
+
+    result = get_tag_value(json_object_new_array(), NULL);
+    TARPM_ASSERT_TRUE(result == NULL);
+
+    /* create a tags array with some entries */
+    tags = json_object_new_array();
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Version"));
+    json_object_object_add(entry, "value", json_object_new_string("1.0"));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Release"));
+    json_object_object_add(entry, "value", json_object_new_string("1"));
+    json_object_array_add(tags, entry);
+
+    /* test getting valid tag values */
+    result = get_tag_value(tags, "Name");
+    TARPM_ASSERT_TRUE(result != NULL);
+    TARPM_ASSERT_TRUE(strcmp(result, "testpkg") == 0);
+
+    result = get_tag_value(tags, "Version");
+    TARPM_ASSERT_TRUE(result != NULL);
+    TARPM_ASSERT_TRUE(strcmp(result, "1.0") == 0);
+
+    result = get_tag_value(tags, "Release");
+    TARPM_ASSERT_TRUE(result != NULL);
+    TARPM_ASSERT_TRUE(strcmp(result, "1") == 0);
+
+    /* test getting non-existent tag */
+    result = get_tag_value(tags, "NonExistent");
+    TARPM_ASSERT_TRUE(result == NULL);
+
+    json_object_put(tags);
+
+    return;
+}
+
+void
+test_set_tag_value(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    const char *result = NULL;
+    int ret = 0;
+
+    /* NULL inputs return -1 */
+    ret = set_tag_value(NULL, "Name", "newvalue");
+    TARPM_ASSERT_TRUE(ret == -1);
+
+    tags = json_object_new_array();
+    ret = set_tag_value(tags, NULL, "newvalue");
+    TARPM_ASSERT_TRUE(ret == -1);
+
+    ret = set_tag_value(tags, "Name", NULL);
+    TARPM_ASSERT_TRUE(ret == -1);
+    json_object_put(tags);
+
+    /* create a tags array with some entries */
+    tags = json_object_new_array();
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Version"));
+    json_object_object_add(entry, "value", json_object_new_string("1.0"));
+    json_object_array_add(tags, entry);
+
+    /* test setting an existing tag value */
+    ret = set_tag_value(tags, "Name", "newname");
+    TARPM_ASSERT_TRUE(ret == 0);
+
+    result = get_tag_value(tags, "Name");
+    TARPM_ASSERT_TRUE(result != NULL);
+    TARPM_ASSERT_TRUE(strcmp(result, "newname") == 0);
+
+    /* test setting another existing tag value */
+    ret = set_tag_value(tags, "Version", "2.0");
+    TARPM_ASSERT_TRUE(ret == 0);
+
+    result = get_tag_value(tags, "Version");
+    TARPM_ASSERT_TRUE(result != NULL);
+    TARPM_ASSERT_TRUE(strcmp(result, "2.0") == 0);
+
+    /* test setting non-existent tag (should fail) */
+    ret = set_tag_value(tags, "NonExistent", "value");
+    TARPM_ASSERT_TRUE(ret == -1);
+
+    json_object_put(tags);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -150,7 +303,10 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
         CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL ||
-        CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL) {
+        CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL ||
+        CU_add_test(pSuite, "test get_tag_number()", test_get_tag_number) == NULL ||
+        CU_add_test(pSuite, "test get_tag_value()", test_get_tag_value) == NULL ||
+        CU_add_test(pSuite, "test set_tag_value()", test_set_tag_value) == NULL) {
         return NULL;
     }
 
