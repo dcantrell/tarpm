@@ -65,6 +65,6 @@ Core functionality that still needs to happen:
     program works.
 
 [ ] More test cases.
-    [ ] Unit tests
-    [ ] Integration tests for create mode
+    [*] Unit tests
+    [*] Integration tests for create mode
     [ ] Integration tests for list mode
