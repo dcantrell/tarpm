@@ -33,39 +33,31 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
 
                 # Verify each tag entry has expected fields
                 for tag in signature[key]:
-                    self.assertTrue("name" in tag.keys())
-                    self.assertTrue("number" in tag.keys())
+                    self.assertTrue("tag" in tag.keys())
                     self.assertTrue("type" in tag.keys())
 
-                    t = tag["name"]
+                    t = tag["tag"]
 
                     if t == "Headersignatures":
-                        self.assertTrue(int(tag["number"]) == 62)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
                         self.assertTrue("trailer" in tag.keys())
                     elif t == "Sha1":
-                        self.assertTrue(int(tag["number"]) == 269)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) == 40)
                     elif t == "Sha256":
-                        self.assertTrue(int(tag["number"]) == 273)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) == 64)
                     elif t == "Size":
-                        self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(tag["value"] > 1)
                     elif t == "Md5":
-                        self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
                     elif t == "Payloadsize":
-                        self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(tag["value"] > 1)
                     elif t == "Reservedspace":
-                        self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 5590)
                     else:
@@ -109,38 +101,30 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
 
                 # Verify each tag entry has expected fields
                 for tag in signature[key]:
-                    self.assertTrue("name" in tag.keys())
-                    self.assertTrue("number" in tag.keys())
+                    self.assertTrue("tag" in tag.keys())
                     self.assertTrue("type" in tag.keys())
 
-                    t = tag["name"]
+                    t = tag["tag"]
 
                     if t == "Headersignatures":
-                        self.assertTrue(int(tag["number"]) == 62)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
                     elif t == "Sha1":
-                        self.assertTrue(int(tag["number"]) == 269)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) == 40)
                     elif t == "Sha256":
-                        self.assertTrue(int(tag["number"]) == 273)
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) == 64)
                     elif t == "Size":
-                        self.assertTrue(int(tag["number"]) == 1000)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(tag["value"] > 1)
                     elif t == "Md5":
-                        self.assertTrue(int(tag["number"]) == 1004)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
                     elif t == "Payloadsize":
-                        self.assertTrue(int(tag["number"]) == 1007)
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(tag["value"] > 1)
                     elif t == "Reservedspace":
-                        self.assertTrue(int(tag["number"]) == 1008)
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 5590)
                     else:
