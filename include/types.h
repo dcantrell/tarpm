@@ -102,23 +102,56 @@ struct hdr_file_lists {
     struct json_object *filerdevs;
     struct json_object *filemtimes;
     struct json_object *filelinktos;
+    struct json_object *fileinodes;
 };
 
 /*
  * Payload entries need all of these values from the RPM header
  * metadata.  This struct is to help get that info over to libarchive.
+ * The entries in this struct match entries from RPM header tags for
+ * the file metadata.  RPM divides up the information in a unique way.
+ * We update the data in our structure from the actual filesystem if
+ * it differs from what's in the RPM header metadata.
  */
 struct file_params {
+    /* from RPMTAG_DIRNAMES */
     const char *dirname;
+
+    /* from RPMTAG_BASENAMES */
     const char *basename;
+
+    /* location of the file in our payload subdir */
     const char *payload_subdir;
+
+    /* from RPMTAG_FILESIZES */
     uint64_t size;
+
+    /* from RPMTAG_FILEMODES */
     uint16_t mode;
+
+    /* from RPMTAG_FILEUIDS */
     uint32_t uid;
+
+    /* from RPMTAG_FILEGIDS */
     uint32_t gid;
+
+    /* from RPMTAG_FILERDEVS */
     uint16_t rdev;
+
+    /* from RPMTAG_FILEMTIMES */
     uint32_t mtime;
+
+    /* from RPMTAG_FILELINKTOS */
     const char *linkto;
+
+    /* from RPMTAG_FILEINODES */
+    uint32_t inode;
+
+    /* from RPMTAG_FILENLINKS */
+    uint32_t nlink;
+
+    /* path to the first occurrence of the hardlink in our payload subdir */
+    const char *hardlink;
 };
 
 /* Function pointers */

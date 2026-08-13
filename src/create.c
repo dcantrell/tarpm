@@ -139,7 +139,14 @@ add_file_to_payload(const struct file_params *params)
     /* set file type and related metadata */
     if (S_ISREG(params->mode)) {
         archive_entry_set_filetype(entry, AE_IFREG);
-        archive_entry_set_size(entry, params->size);
+
+        if (params->hardlink != NULL) {
+            /* hardlinks have size=0 and link to the first occurrence */
+            archive_entry_set_size(entry, 0);
+            archive_entry_set_hardlink(entry, params->hardlink);
+        } else {
+            archive_entry_set_size(entry, params->size);
+        }
     } else if (S_ISDIR(params->mode)) {
         archive_entry_set_filetype(entry, AE_IFDIR);
         archive_entry_set_size(entry, 0);
@@ -172,6 +179,15 @@ add_file_to_payload(const struct file_params *params)
     archive_entry_set_uid(entry, params->uid);
     archive_entry_set_gid(entry, params->gid);
 
+    /* set inode number and link count if provided (needed for hardlinks) */
+    if (params->inode > 0) {
+        archive_entry_set_ino64(entry, params->inode);
+    }
+
+    if (params->nlink > 0) {
+        archive_entry_set_nlink(entry, params->nlink);
+    }
+
     /* write the entry header */
     if (archive_write_header(payload, entry) != ARCHIVE_OK) {
         warnx("archive_write_header: %s", archive_error_string(payload));
@@ -181,8 +197,8 @@ add_file_to_payload(const struct file_params *params)
         return -1;
     }
 
-    /* write the data to the payload for regular files */
-    if (S_ISREG(params->mode) && params->size > 0) {
+    /* write the data to the payload for regular files but not hardlinks */
+    if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         if ((fd = open(file_path, O_RDONLY)) == -1) {
             warn("open: %s", file_path);
             archive_entry_free(entry);
@@ -382,14 +398,27 @@ create_payload(struct json_object *header, const char *payload_subdir)
     struct json_object *value = NULL;
     int dirindex = 0;
     size_t i = 0;
+    size_t j = 0;
     size_t numfiles = 0;
     int tagnum = 0;
     struct file_params params;
     bool use_zstd = false;
     int zstd_level = 3;
     int zstd_pipefd[2];
-    pid_t zstd_pid;
+    pid_t zstd_pid = 0;
     int status = 0;
+    char **hardlink_paths = NULL;
+    uint32_t *hardlink_inodes = NULL;
+    uint32_t *hardlink_nlinks = NULL;
+    size_t hardlink_count = 0;
+    char *path = NULL;
+    char *current_path = NULL;
+    uint32_t inode = 0;
+    uint16_t mode = 0;
+    int dindex = 0;
+    const char *dname = NULL;
+    const char *bname = NULL;
+    bool found = false;
 
     if (header == NULL || payload_subdir == NULL) {
         return -1;
@@ -432,6 +461,8 @@ create_payload(struct json_object *header, const char *payload_subdir)
                     hfl.filemtimes = value;
                 } else if (tagnum == RPMTAG_FILELINKTOS) {
                     hfl.filelinktos = value;
+                } else if (tagnum == RPMTAG_FILEINODES) {
+                    hfl.fileinodes = value;
                 }
             }
         }
@@ -442,11 +473,12 @@ create_payload(struct json_object *header, const char *payload_subdir)
         return -1;
     }
 
-    if (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos) {
+    if (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos || !hfl.fileinodes) {
         warnx(_("*** missing file metadata tags in header"));
         return -1;
     }
 
+    /* how many files in the payload */
     numfiles = json_object_array_length(hfl.basenames);
 
     /* get the package name and create a temporary payload file */
@@ -600,6 +632,76 @@ create_payload(struct json_object *header, const char *payload_subdir)
         errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
     }
 
+    /*
+     * Hardlink tracking structure.  We have to track hardlinks by
+     * inode number and link count.
+     */
+    hardlink_paths = xcalloc(numfiles, sizeof(char *));
+    hardlink_inodes = xcalloc(numfiles, sizeof(uint32_t));
+    hardlink_nlinks = xcalloc(numfiles, sizeof(uint32_t));
+
+    /*
+     * RPM expects the last file in each hardlink group to have the
+     * data, with earlier files as hardlinks to it.  Find the last
+     * occurrence of each inode.
+     */
+    for (i = 0; i < numfiles; i++) {
+        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
+
+        /* only regular files can be hardlinks */
+        if (!S_ISREG(mode)) {
+            continue;
+        }
+
+        found = false;
+
+        /* have we seen this inode? */
+        for (j = 0; j < hardlink_count; j++) {
+            if (hardlink_inodes[j] == inode) {
+                found = true;
+                hardlink_nlinks[j]++;
+
+                /*
+                 * This is now the last occurrence of the hardlink, so
+                 * update our tracking structure.
+                 */
+                dindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
+                dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
+                bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
+
+                if (dname[0] == '/') {
+                    xasprintf(&path, ".%s%s", dname, bname);
+                } else {
+                    xasprintf(&path, "./%s%s", dname, bname);
+                }
+
+                /* replace the old path */
+                free(hardlink_paths[j]);
+                hardlink_paths[j] = path;
+                break;
+            }
+        }
+
+        /* new inode, so this is the first occurrence */
+        if (!found) {
+            dindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
+            dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
+            bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
+
+            if (dname[0] == '/') {
+                xasprintf(&path, ".%s%s", dname, bname);
+            } else {
+                xasprintf(&path, "./%s%s", dname, bname);
+            }
+
+            hardlink_paths[hardlink_count] = path;
+            hardlink_inodes[hardlink_count] = inode;
+            hardlink_nlinks[hardlink_count] = 1;
+            hardlink_count++;
+        }
+    }
+
     /* Write each file from the header to the payload */
     for (i = 0; i < numfiles; i++) {
         dirindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
@@ -624,6 +726,37 @@ create_payload(struct json_object *header, const char *payload_subdir)
             params.gid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filegids, i));
         }
 
+        /* check if this is a hardlink */
+        params.inode = 0;
+        params.nlink = 0;
+        params.hardlink = NULL;
+
+        if (S_ISREG(params.mode)) {
+            params.inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+
+            /* find the first occurrence of this inode */
+            for (j = 0; j < hardlink_count; j++) {
+                if (hardlink_inodes[j] == params.inode) {
+                    params.nlink = hardlink_nlinks[j];
+
+                    /* build current file path */
+                    if (params.dirname[0] == '/') {
+                        xasprintf(&current_path, ".%s%s", params.dirname, params.basename);
+                    } else {
+                        xasprintf(&current_path, "./%s%s", params.dirname, params.basename);
+                    }
+
+                    /* set hardlink target */
+                    if (strcmp(current_path, hardlink_paths[j]) != 0) {
+                        params.hardlink = hardlink_paths[j];
+                    }
+
+                    free(current_path);
+                    break;
+                }
+            }
+        }
+
         if (add_file_to_payload(&params) != 0) {
             warnx("failed to add file: %s%s", params.dirname, params.basename);
         }
@@ -641,6 +774,18 @@ create_payload(struct json_object *header, const char *payload_subdir)
         warnx("archive_write_free: %s", archive_error_string(payload));
     }
 #endif
+
+    /* clean up hardlink tracking */
+    if (hardlink_paths) {
+        for (i = 0; i < hardlink_count; i++) {
+            free(hardlink_paths[i]);
+        }
+
+        free(hardlink_paths);
+    }
+
+    free(hardlink_inodes);
+    free(hardlink_nlinks);
 
     /* when using zstd, close pipe and wait for compression child */
     if (use_zstd) {
