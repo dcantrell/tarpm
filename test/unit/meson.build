@@ -189,6 +189,7 @@ if cunit.found()
         [ 'test-abspath.c',
           'test-main.c',
           abspath_src,
+          joinpath_src,
           listfuncs_src,
           strfuncs_src,
           xalloc_src,

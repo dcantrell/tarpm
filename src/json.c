@@ -22,7 +22,6 @@ sort_by_tag_number(const void *a, const void *b)
     struct json_object **bobj = (struct json_object **) b;
     int atag = 0;
     int btag = 0;
-    struct json_object *obj = NULL;
 
     /* handle special conditions */
     if (*aobj == NULL && *bobj == NULL) {
@@ -38,11 +37,8 @@ sort_by_tag_number(const void *a, const void *b)
     }
 
     /* get the tag numbers for sorting */
-    obj = json_object_object_get(*aobj, RPM_ENTRY_TAG_DESC);
-    atag = json_object_get_int(obj);
-
-    obj = json_object_object_get(*bobj, RPM_ENTRY_TAG_DESC);
-    btag = json_object_get_int(obj);
+    atag = get_tag_number(*aobj);
+    btag = get_tag_number(*bobj);
 
     return (atag > btag) - (atag < btag);
 }
@@ -142,11 +138,13 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     struct json_object *kvals = NULL;
     struct json_object *entry = NULL;
     struct json_object *jtrailer = NULL;
-    struct rpmhdrentry *hdrentry = hdrinfo->estart;
+    struct rpmhdrentry *hdrentry = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
         return NULL;
     }
+
+    hdrentry = hdrinfo->estart;
 
     /* create a new array for these tags */
     kvals = json_object_new_array();

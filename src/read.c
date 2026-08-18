@@ -64,6 +64,7 @@ read_header_signature(const int fd)
         return NULL;
     }
 
+    /* tarpm does not do anything with the 'reserved' field, but the others are used */
     hdr->magic = ntohl(hdr->magic);
     hdr->nentries = ntohl(hdr->nentries);
     hdr->nbytes = ntohl(hdr->nbytes);

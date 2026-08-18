@@ -20,6 +20,8 @@ char *abspath(const char *path)
     char *r = NULL;
     char *p = NULL;
     const char *delim = "/";
+    char *cwd = NULL;
+    char *workpath = NULL;
     str_list_t *tokens = NULL;
     str_list_t *newpath = NULL;
     str_entry_t *token = NULL;
@@ -31,6 +33,22 @@ char *abspath(const char *path)
 
     if (!strcmp(path, "") || !strcmp(path, delim)) {
         return strdup(path);
+    }
+
+    /* get current directory if path is relative */
+    if (*path != '/') {
+        cwd = getcwd(NULL, 0);
+
+        if (cwd == NULL) {
+            warn("getcwd");
+            return NULL;
+        }
+
+        workpath = joinpath(cwd, path, NULL);
+        free(cwd);
+    } else {
+        workpath = strdup(path);
+        assert(workpath != NULL);
     }
 
     /* split path in to tokens */

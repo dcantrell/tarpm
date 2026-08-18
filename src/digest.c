@@ -73,14 +73,12 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         i = EVP_DigestInit(ctx, EVP_sha256());
     } else {
         warnx("*** unsupported digest type: %d", type);
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+        goto cleanup_mksigdigest;
     }
 
     if (i == 0) {
         warn("EVP_DigestInit");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+        goto cleanup_mksigdigest;
     }
 
     /* for payload-only digest, skip the header */
@@ -88,14 +86,12 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         /* add the header magic (same as rpm's rpm_header_magic) */
         if (EVP_DigestUpdate(ctx, hdr, 8) == 0) {
             warn("EVP_DigestUpdate");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         if (EVP_DigestUpdate(ctx, &(hdr->nentries), sizeof(hdr->nentries)) == 0 || EVP_DigestUpdate(ctx, &(hdr->nbytes), sizeof(hdr->nbytes)) == 0) {
             warn("EVP_DigestUpdate");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         nentries = ntohl(hdr->nentries);
@@ -104,8 +100,7 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         /* add the header entries */
         if (EVP_DigestUpdate(ctx, hdrinfo->estart, sizeof(struct rpmhdrentry) * nentries) == 0) {
             warn("EVP_DigestUpdate");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         n = nbytes;
@@ -118,18 +113,14 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
 
         if (EVP_DigestUpdate(ctx, hdrinfo->datastart, n) == 0) {
             warn("EVP_DigestUpdate");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         if (i == 0 && trailer_size == 16) {
             if (EVP_DigestUpdate(ctx, trailer_data, trailer_size) == 0) {
                 warn("EVP_DigestUpdate");
-                EVP_MD_CTX_free(ctx);
-                return NULL;
+                goto cleanup_mksigdigest;
             }
-
-            free(trailer_data);
         }
     }
 
@@ -137,31 +128,27 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
     if (type == TARPM_DIGEST_MD5 || type == TARPM_DIGEST_SHA256_PAYLOAD) {
         if (lseek(fd, 0, SEEK_SET) == -1) {
             warn("lseek");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         len = read(fd, buf, sizeof(buf));
 
         if (len == -1) {
             warn("read");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+            goto cleanup_mksigdigest;
         }
 
         while (len > 0) {
             if (EVP_DigestUpdate(ctx, buf, len) == 0) {
                 warn("EVP_DigestUpdate");
-                EVP_MD_CTX_free(ctx);
-                return NULL;
+                goto cleanup_mksigdigest;
             }
 
             len = read(fd, buf, sizeof(buf));
 
             if (len == -1) {
                 warn("read");
-                EVP_MD_CTX_free(ctx);
-                return NULL;
+                goto cleanup_mksigdigest;
             }
         }
     }
@@ -169,12 +156,14 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
     /* finalize the digest context */
     if (EVP_DigestFinal(ctx, digest, &digest_sz) == 0) {
         warn("EVP_DigestFinal");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+        goto cleanup_mksigdigest;
     }
 
     r = xalloc(digest_sz);
     memcpy(r, digest, digest_sz);
 
+cleanup_mksigdigest:
+    free(trailer_data);
+    EVP_MD_CTX_free(ctx);
     return r;
 }

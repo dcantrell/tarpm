@@ -30,7 +30,7 @@ get_entry_type(struct json_object *entry)
 }
 
 static size_t
-get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer_size)
+get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, size_t *trailer_size)
 {
     size_t item_size = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
@@ -38,7 +38,6 @@ get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer
     int r = 0;
     uint8_t *blob = NULL;
     size_t blobsize = 0;
-    size_t i = 0;
     const char *value = NULL;
     struct json_object *key = NULL;
     size_t j = 0;
@@ -74,7 +73,7 @@ get_item_size(struct json_object *entry, int32_t *trailer_index, size_t *trailer
         if (r == 0) {
             /* in the trailer - track it separately */
             if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
-                *trailer_index = i;
+                *trailer_index = index;
                 *trailer_size = blobsize;
             } else {
                 item_size = blobsize;
@@ -174,7 +173,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, field, &key)) {
-            item_size = get_item_size(entry, trailer_index, trailer_size);
+            item_size = get_item_size(i, entry, trailer_index, trailer_size);
 
             /* sequential calculation with alignment */
             if (entry_type == RPM_INT16_TYPE) {
@@ -393,6 +392,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
 
                         if (tmp == NULL) {
                             warnx(_("*** empty or non-existent file: %s"), value);
+                            len = 0;
                         } else {
                             len = strlen(tmp);
                             memcpy(datapos, tmp, len + 1);
@@ -478,6 +478,11 @@ read_header(const int fd, const char *dest_dir)
 
     /* read in the entries */
     buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);
+
+    if (buffer == NULL) {
+        err(EXIT_FAILURE, "read_header_entries");
+    }
+
     hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);
     hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 

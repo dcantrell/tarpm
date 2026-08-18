@@ -5,6 +5,7 @@
  */
 
 #include <string.h>
+#include <inttypes.h>
 #include <err.h>
 #include <rpm/rpmlib.h>
 #include <rpm/header.h>
@@ -57,6 +58,7 @@ max_column_strlen(const char *rpm, const int standard, const int column)
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
+    free(rpmio_flags);
 
     if (gzdi == NULL) {
         warnx("*** Fdopen: %s", Fstrerror(fdi));
@@ -83,7 +85,7 @@ max_column_strlen(const char *rpm, const int standard, const int column)
         if (column == COLUMN_OWNERSHIP) {
             l = strlen(rpmfiFUser(fi)) + strlen(rpmfiFGroup(fi)) + 1;
         } else if (column == COLUMN_SIZE) {
-            xasprintf(&buf, "%lu", rpmfiFSize(fi));
+            xasprintf(&buf, "%" PRIu64 "", rpmfiFSize(fi));
             l = strlen(buf) + 1;
             free(buf);
         }
@@ -223,7 +225,7 @@ list_rpm(const char *rpm)
         xasprintf(&ownership, "%s/%s", rpmfiFUser(fi), rpmfiFGroup(fi));
 
         /* build and display the line for the payload entry */
-        xasprintf(&filename, "%s%-*s%*lu %s .%s%s", modebuf, ownerlen, ownership, sizelen, rpmfiFSize(fi), timebuf, dn, rpmfiBN(fi));
+        xasprintf(&filename, "%s%-*s%*" PRIu64 " %s .%s%s", modebuf, ownerlen, ownership, sizelen, rpmfiFSize(fi), timebuf, dn, rpmfiBN(fi));
         printf("%s\n", filename);
 
         free(filename);

@@ -172,7 +172,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_INT16_TYPE) {
         if (count == 1) {
             memcpy(&dt.i16, data, sizeof(dt.i16));
-            dt.i16 = ntohs(dt.i16);
+            dt.i16 = (int16_t) ntohs(dt.i16);
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_int(dt.i16));
         } else {
             sa = json_object_new_array();
@@ -180,7 +180,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
 
             for (i = 0; i < count; i++) {
                 memcpy(&dt.i16, p, sizeof(dt.i16));
-                dt.i16 = ntohs(dt.i16);
+                dt.i16 = (int16_t) ntohs(dt.i16);
                 json_object_array_add(sa, json_object_new_int(dt.i16));
                 p += sizeof(dt.i16);
             }
@@ -190,7 +190,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_INT32_TYPE) {
         if (count == 1) {
             memcpy(&dt.i32, data, sizeof(dt.i32));
-            dt.i32 = ntohl(dt.i32);
+            dt.i32 = (int32_t) ntohl(dt.i32);
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_int(dt.i32));
         } else {
             sa = json_object_new_array();
@@ -198,7 +198,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
 
             for (i = 0; i < count; i++) {
                 memcpy(&dt.i32, p, sizeof(dt.i32));
-                dt.i32 = ntohl(dt.i32);
+                dt.i32 = (int32_t) ntohl(dt.i32);
                 json_object_array_add(sa, json_object_new_int(dt.i32));
                 p += sizeof(dt.i32);
             }

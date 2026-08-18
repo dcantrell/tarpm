@@ -88,8 +88,16 @@ mkdirp(const char *path, mode_t mode)
     }
 
     /* final directory */
-    if ((stat(start, &sb) != 0) && (mkdir(start, mode) == -1)) {
+    if ((access(start, R_OK|W_OK|X_OK) != 0) && (mkdir(start, mode) == -1)) {
         warn(_("*** unable to mkdir %s"), start);
+        free(start);
+        return -1;
+    }
+
+    r = stat(start, &sb);
+
+    if (r == 0 && !S_ISDIR(sb.st_mode)) {
+        warn(_("*** %s is not a directory"), start);
         free(start);
         return -1;
     }

@@ -81,7 +81,13 @@ convert_payload(const char *rpm)
         goto cleanup;
     }
 
-    xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
+    /* default to "gzip" for compr */
+    if (compr == NULL) {
+        compr = "gzip";
+    }
+
+    /* build the flags for librpm */
+    xasprintf(&rpmio_flags, "r.%s", compr);
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);

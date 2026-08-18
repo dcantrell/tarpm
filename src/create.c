@@ -30,6 +30,32 @@
 
 static struct archive *payload = NULL;
 
+static void
+free_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo)
+{
+    if (hdr) {
+        free(hdr);
+        hdr = NULL;
+    }
+
+    if (hdrinfo) {
+        if (hdrinfo->estart) {
+            free(hdrinfo->estart);
+            hdrinfo->estart = NULL;
+        }
+
+        if (hdrinfo->datastart) {
+            free(hdrinfo->datastart);
+            hdrinfo->datastart = NULL;
+        }
+
+        free(hdrinfo);
+        hdrinfo = NULL;
+    }
+
+    return;
+}
+
 /* Helper for create_rpm() that writes header data to the RPM */
 static int
 write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_signature, struct json_object *data)
@@ -86,9 +112,9 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
             warn("fwrite");
             r = -1;
         }
-
-        free(trailer_data);
     }
+
+    free(trailer_data);
 
     /* write padding after signature data to align to 8-byte boundary */
     if (is_signature) {
@@ -531,6 +557,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
         level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
 
         if (level != NULL) {
+            errno = 0;
             zstd_level = strtol(level, NULL, 10);
 
             if (errno == EINVAL || errno == ERANGE) {
@@ -991,7 +1018,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     /* update Size tag (header + payload) */
     xasprintf(&buf, "%lu", totalsize);
 
-    if (payloadsize > 4294967296) {
+    if (payloadsize > UINT32_MAX) {
         if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_LONGSIZE), buf) != 0) {
             warnx(_("*** failed to update Longsize in signature"));
             free(buf);
@@ -1161,11 +1188,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, "update_header_digests");
     }
 
-    /* free the old header structures */
-    free(hdr);
-    free(hdrinfo->estart);
-    free(hdrinfo->datastart);
-    free(hdrinfo);
+    /* free the old header structures before regenerating */
+    free_header(hdr, hdrinfo);
 
     /* regenerate the header with updated digests */
     if (create_header(header, &hdr, &hdrinfo) == -1) {
@@ -1178,11 +1202,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         errx(EXIT_FAILURE, "update_signature");
     }
 
-    /* free the old signature structures */
-    free(sig);
-    free(siginfo->estart);
-    free(siginfo->datastart);
-    free(siginfo);
+    /* free the old signature structures before regenerating */
+    free_header(sig, siginfo);
 
     /* regenerate the signature with updated digests */
     if (create_header(signature, &sig, &siginfo) == -1) {
@@ -1229,14 +1250,8 @@ create_cleanup:
 
     json_object_put(header);
     json_object_put(signature);
-    free(sig);
-    free(siginfo->estart);
-    free(siginfo->datastart);
-    free(siginfo);
-    free(hdr);
-    free(hdrinfo->estart);
-    free(hdrinfo->datastart);
-    free(hdrinfo);
+    free_header(sig, siginfo);
+    free_header(hdr, hdrinfo);
     free(rawlead);
 
     return;
