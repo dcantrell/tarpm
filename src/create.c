@@ -113,8 +113,9 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
  * than walking the filesystem tree.
  */
 static int
-add_file_to_payload(const struct file_params *params)
+add_file_to_payload(const char *input_dir, const struct file_params *params)
 {
+    char *relative_path = NULL;
     char *full_path = NULL;
     char *file_path = NULL;
     struct archive_entry *entry = NULL;
@@ -122,18 +123,23 @@ add_file_to_payload(const struct file_params *params)
     ssize_t len = 0;
     char buf[BUFSIZ];
 
-    /* the path in the cpio payload needs to begin with "./" */
-    if (params->dirname[0] == '/') {
-        xasprintf(&full_path, ".%s%s", params->dirname, params->basename);
-    } else {
-        xasprintf(&full_path, "./%s%s", params->dirname, params->basename);
+    if (input_dir == NULL || params == NULL) {
+        return -1;
     }
+
+    /* the relative path is where this file will live when installed */
+    relative_path = joinpath(params->dirname, params->basename, NULL);
+
+    /* this is the actual location of the file going in the payload */
+    file_path = joinpath(input_dir, params->payload_subdir, relative_path, NULL);
 
     /* start a new entry */
     entry = archive_entry_new();
 
-    /* build the filesystem path using the header metadata */
-    xasprintf(&file_path, "%s%s%s", params->payload_subdir, params->dirname, params->basename);
+    /*
+     * the path in the cpio payload needs to begin with "./"
+     */
+    xasprintf(&full_path, ".%s", relative_path);
     archive_entry_set_pathname(entry, full_path);
 
     /* set file type and related metadata */
@@ -227,6 +233,7 @@ add_file_to_payload(const struct file_params *params)
     archive_entry_free(entry);
     free(full_path);
     free(file_path);
+    free(relative_path);
     return 0;
 }
 
@@ -383,7 +390,7 @@ cleanup:
  * Returns -1 on failure.
  */
 static int
-create_payload(struct json_object *header, const char *payload_subdir)
+create_payload(struct json_object *header, const char *input_dir, const char *payload_subdir)
 {
     int payloadfd = -1;
     int tmp_payloadfd = -1;
@@ -757,7 +764,7 @@ create_payload(struct json_object *header, const char *payload_subdir)
             }
         }
 
-        if (add_file_to_payload(&params) != 0) {
+        if (add_file_to_payload(input_dir, &params) != 0) {
             warnx("failed to add file: %s%s", params.dirname, params.basename);
         }
     }
@@ -1137,7 +1144,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
     /* create the payload */
-    payloadfd = create_payload(header, PAYLOAD_SUBDIR);
+    payloadfd = create_payload(header, input_dir, PAYLOAD_SUBDIR);
 
     if (payloadfd == -1) {
         errx(EXIT_FAILURE, "create_payload");
