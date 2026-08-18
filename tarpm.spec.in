@@ -17,6 +17,7 @@ BuildRequires:  CUnit-devel
 BuildRequires:  python3-devel
 BuildRequires:  pandoc
 BuildRequires:  gettext
+BuildRequires:  libzstd-devel
 
 
 %description
