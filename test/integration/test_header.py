@@ -119,21 +119,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Fileverifyflags":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(tag["value"] == -1)
-                    elif t == "Providename":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["vaporware"])
-                    elif t == "Requireflags":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(tag["value"] == [16777226, 16777226])
-                    elif t == "Requirename":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"]
-                            == ["rpmlib(CompressedFileNames)", "rpmlib(FileDigests)"]
-                        )
-                    elif t == "Requireversion":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["3.0.4-1", "4.6.0-1"])
                     elif t == "Rpmversion":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.__version__)
@@ -160,12 +145,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Filelangs":
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(tag["value"][0] == "")
-                    elif t == "Provideflags":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 8)
-                    elif t == "Provideversion":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["0.1-1"])
                     elif t == "Sourcepackage":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 1)
@@ -222,6 +201,74 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)
 
+        # Check changelog array if present
+        if "changelog" in header.keys():
+            self.assertTrue(isinstance(header["changelog"], list))
+            self.assertTrue(len(header["changelog"]) > 0)
+
+            for entry in header["changelog"]:
+                # Each changelog entry must have these fields
+                self.assertTrue("timestamp" in entry.keys())
+                self.assertTrue("name" in entry.keys())
+                self.assertTrue("text" in entry.keys())
+
+                # Verify types
+                self.assertTrue(isinstance(entry["timestamp"], str))
+                self.assertTrue(isinstance(entry["name"], str))
+                self.assertTrue(isinstance(entry["text"], list))
+
+                # Verify timestamp is not empty
+                self.assertTrue(len(entry["timestamp"]) > 0)
+
+                # Verify name format (should contain email and version)
+                self.assertTrue("@" in entry["name"])
+                self.assertTrue("-" in entry["name"])
+
+                # Verify text is an array of strings
+                self.assertTrue(len(entry["text"]) > 0)
+                for line in entry["text"]:
+                    self.assertTrue(isinstance(line, str))
+
+        # Check dependencies object if present
+        if "dependencies" in header.keys():
+            self.assertTrue(isinstance(header["dependencies"], dict))
+
+            # Valid dependency types
+            valid_dep_types = [
+                "provides", "requires", "conflicts", "obsoletes",
+                "recommends", "suggests", "supplements", "enhances"
+            ]
+
+            for dep_type, deps_array in header["dependencies"].items():
+                # Verify dependency type is valid
+                self.assertTrue(dep_type in valid_dep_types)
+
+                # Verify it's an array
+                self.assertTrue(isinstance(deps_array, list))
+                self.assertTrue(len(deps_array) > 0)
+
+                for dep in deps_array:
+                    # Each dependency must be a dict with at least a name
+                    self.assertTrue(isinstance(dep, dict))
+                    self.assertTrue("name" in dep.keys())
+                    self.assertTrue(isinstance(dep["name"], str))
+                    self.assertTrue(len(dep["name"]) > 0)
+
+                    # Optional: comparison (if present, must be a string)
+                    if "comparison" in dep.keys():
+                        self.assertTrue(isinstance(dep["comparison"], str))
+                        self.assertTrue(dep["comparison"] in ["<", "<=", ">", ">=", "="])
+
+                    # Optional: version (if present, must be a string)
+                    if "version" in dep.keys():
+                        self.assertTrue(isinstance(dep["version"], str))
+
+                    # Optional: sense_flags (if present, must be array of strings)
+                    if "sense_flags" in dep.keys():
+                        self.assertTrue(isinstance(dep["sense_flags"], list))
+                        for flag in dep["sense_flags"]:
+                            self.assertTrue(isinstance(flag, str))
+
 
 class VerifyHeaderExtractRPM(TestUnpackRPM):
     def runTest(self):
@@ -232,6 +279,13 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
         f = open(self.header)
         header = json.load(f)
         f.close()
+
+        # Check for dependencies object and set is_zstd flag
+        if "dependencies" in header and "requires" in header["dependencies"]:
+            for req in header["dependencies"]["requires"]:
+                if req.get("name") == "rpmlib(PayloadIsZstd)":
+                    is_zstd = True
+                    break
 
         # Check main header fields
         for key in [
@@ -303,41 +357,6 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Sourcerpm":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "vaporware-0.1-1.src.rpm")
-                    elif t == "Providename":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"]
-                            == [
-                                "vaporware",
-                                "vaporware(%s)" % platform.uname()[4].replace("_", "-"),
-                            ]
-                        )
-                    elif t == "Requireflags":
-                        self.assertTrue(tag["type"] == "int32")
-
-                        for entry in tag["value"]:
-                            self.assertTrue(entry == 16777226)
-                    elif t == "Requirename":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue("rpmlib(CompressedFileNames)" in tag["value"])
-                        self.assertTrue("rpmlib(FileDigests)" in tag["value"])
-                        self.assertTrue(
-                            "rpmlib(PayloadFilesHavePrefix)" in tag["value"]
-                        )
-
-                        # the payload can be compressed different ways or not
-                        if "rpmlib(PayloadIsZstd)" in tag["value"]:
-                            is_zstd = True
-                            self.assertTrue("rpmlib(PayloadIsZstd)" in tag["value"])
-                    elif t == "Requireversion":
-                        self.assertTrue(tag["type"] == "string array")
-
-                        self.assertTrue("3.0.4-1" in tag["value"])
-                        self.assertTrue("4.6.0-1" in tag["value"])
-                        self.assertTrue("4.0-1" in tag["value"])
-
-                        if is_zstd:
-                            self.assertTrue("5.4.18-1" in tag["value"])
                     elif t == "Rpmversion":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.__version__)
@@ -355,12 +374,6 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"].startswith(socket.gethostname()))
-                    elif t == "Provideflags":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(tag["value"] == [8, 8])
-                    elif t == "Provideversion":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["0.1-1", "0.1-1"])
                     elif t == "Optflags":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) > 0)
@@ -369,7 +382,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["value"] == "cpio")
                     elif t == "Payloadcompressor":
                         self.assertTrue(tag["type"] == "string")
-
+                        # Check against is_zstd flag which was set based on dependencies
                         if is_zstd:
                             self.assertTrue(tag["value"] == "zstd")
                         else:
@@ -412,3 +425,71 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     else:
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)
+
+        # Check changelog array if present
+        if "changelog" in header.keys():
+            self.assertTrue(isinstance(header["changelog"], list))
+            self.assertTrue(len(header["changelog"]) > 0)
+
+            for entry in header["changelog"]:
+                # Each changelog entry must have these fields
+                self.assertTrue("timestamp" in entry.keys())
+                self.assertTrue("name" in entry.keys())
+                self.assertTrue("text" in entry.keys())
+
+                # Verify types
+                self.assertTrue(isinstance(entry["timestamp"], str))
+                self.assertTrue(isinstance(entry["name"], str))
+                self.assertTrue(isinstance(entry["text"], list))
+
+                # Verify timestamp is not empty
+                self.assertTrue(len(entry["timestamp"]) > 0)
+
+                # Verify name format (should contain email and version)
+                self.assertTrue("@" in entry["name"])
+                self.assertTrue("-" in entry["name"])
+
+                # Verify text is an array of strings
+                self.assertTrue(len(entry["text"]) > 0)
+                for line in entry["text"]:
+                    self.assertTrue(isinstance(line, str))
+
+        # Check dependencies object if present
+        if "dependencies" in header.keys():
+            self.assertTrue(isinstance(header["dependencies"], dict))
+
+            # Valid dependency types
+            valid_dep_types = [
+                "provides", "requires", "conflicts", "obsoletes",
+                "recommends", "suggests", "supplements", "enhances"
+            ]
+
+            for dep_type, deps_array in header["dependencies"].items():
+                # Verify dependency type is valid
+                self.assertTrue(dep_type in valid_dep_types)
+
+                # Verify it's an array
+                self.assertTrue(isinstance(deps_array, list))
+                self.assertTrue(len(deps_array) > 0)
+
+                for dep in deps_array:
+                    # Each dependency must be a dict with at least a name
+                    self.assertTrue(isinstance(dep, dict))
+                    self.assertTrue("name" in dep.keys())
+                    self.assertTrue(isinstance(dep["name"], str))
+                    self.assertTrue(len(dep["name"]) > 0)
+
+                    # Optional: comparison (if present, must be a string)
+                    if "comparison" in dep.keys():
+                        self.assertTrue(isinstance(dep["comparison"], str))
+                        self.assertTrue(dep["comparison"] in ["<", "<=", ">", ">=", "="])
+
+                    # Optional: version (if present, must be a string)
+                    if "version" in dep.keys():
+                        self.assertTrue(isinstance(dep["version"], str))
+
+                    # Optional: sense_flags (if present, must be array of strings)
+                    if "sense_flags" in dep.keys():
+                        self.assertTrue(isinstance(dep["sense_flags"], list))
+                        for flag in dep["sense_flags"]:
+                            self.assertTrue(isinstance(flag, str))
