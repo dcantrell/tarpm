@@ -30,10 +30,10 @@ Core functionality that still needs to happen:
         writing to the header.  Need a conversion function that can
         yeet between them.
 
-    [ ] The changelog should be combined back together in a similar
+    [*] The changelog should be combined back together in a similar
         style, but in JSON format.
 
-    [ ] Package dependencies should be written in a JSON array in a
+    [*] Package dependencies should be written in a JSON array in a
         style similar to what you see in spec files.
 
     [*] Scriptlets should go to individual files for easier editing.
