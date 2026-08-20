@@ -474,3 +474,16 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
 
     return;
 }
+
+/*
+ * Check if a tag is a changelog tag that should be excluded from normal tag processing.
+ */
+bool
+is_changelog_tag(rpmTagVal tag)
+{
+    if (tag == RPMTAG_CHANGELOGTIME || tag == RPMTAG_CHANGELOGNAME || tag == RPMTAG_CHANGELOGTEXT) {
+        return true;
+    }
+
+    return false;
+}

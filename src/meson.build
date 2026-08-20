@@ -3,6 +3,7 @@
 abspath_src = files('abspath.c')
 changelog_src = files('changelog.c')
 create_src = files('create.c')
+deps_src = files('deps.c')
 digest_src = files('digest.c')
 entry_src = files('entry.c')
 extract_src = files('extract.c')
@@ -30,6 +31,7 @@ sources = [
     abspath_src,
     changelog_src,
     create_src,
+    deps_src,
     digest_src,
     entry_src,
     extract_src,

@@ -463,6 +463,7 @@ read_header(const int fd, const char *dest_dir)
     struct json_object *jvals = NULL;
     struct json_object *header = NULL;
     struct json_object *changelog = NULL;
+    struct json_object *dependencies = NULL;
 
     if (fd < 0) {
         return NULL;
@@ -500,6 +501,13 @@ read_header(const int fd, const char *dest_dir)
 
     /* write the header to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
+
+    /* build the dependencies object if dependency tags are present */
+    dependencies = generate_dependencies(rawhdr, hdrinfo);
+
+    if (dependencies != NULL) {
+        json_object_object_add(header, RPM_DEPENDENCIES_DESC, dependencies);
+    }
 
     /* build the changelog array if changelog tags are present */
     changelog = generate_changelog(rawhdr, hdrinfo);
@@ -540,6 +548,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct rpmhdrinfo *v;
     struct json_object *tags = NULL;
     struct json_object *changelog = NULL;
+    struct json_object *dependencies = NULL;
     struct json_object *tags_copy = NULL;
     size_t totalsize = 0;
     int32_t trailer_index = -1;
@@ -589,6 +598,24 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         /* Use the copy for processing */
         tags = tags_copy;
         need_free_tags = true;
+    }
+
+    /* Check if there's a dependencies object that needs to be converted to tags */
+    if (json_object_object_get_ex(data, RPM_DEPENDENCIES_DESC, &dependencies)) {
+        /* Create a mutable copy if we haven't already */
+        if (!need_free_tags) {
+            tags_copy = json_object_new_array();
+
+            for (i = 0; i < json_object_array_length(tags); i++) {
+                json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
+            }
+
+            tags = tags_copy;
+            need_free_tags = true;
+        }
+
+        /* Add the dependency tags to the copy */
+        add_dependency_tags(tags_copy, dependencies);
     }
 
     /* number of header index entries */

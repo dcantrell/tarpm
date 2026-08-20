@@ -157,8 +157,8 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         datatype = ntohl(hdrentry[i].type);
         count = ntohl(hdrentry[i].count);
 
-        /* Skip changelog tags - they go in a separate array */
-        if (tag == RPMTAG_CHANGELOGTIME || tag == RPMTAG_CHANGELOGNAME || tag == RPMTAG_CHANGELOGTEXT) {
+        /* skip tags that go to dedicated arrays */
+        if (is_changelog_tag(tag) || is_dependency_tag(tag)) {
             continue;
         }
 

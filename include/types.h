@@ -154,6 +154,14 @@ struct file_params {
     const char *hardlink;
 };
 
+/* Dependency type definitions */
+struct dep_type {
+    const char *key;
+    rpmTagVal name;
+    rpmTagVal flags;
+    rpmTagVal version;
+};
+
 /* Function pointers */
 typedef void (*list_entry_data_free_func)(void *);
 
