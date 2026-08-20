@@ -85,9 +85,18 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 
-    /* all of the tags in the signature header are really read-only */
+    /*
+     * Mark cryptographic signature tags as read-only since they cannot be
+     * recreated without the private signing keys. However, digest and size
+     * tags that are recalculated by update_signature() should NOT be marked
+     * as read-only.
+     */
     if (signature) {
-        json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
+        /* These tags are recalculated by update_signature(), so they are NOT read-only */
+        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256) {
+            /* All other signature tags are read-only (RSA, DSA, etc.) */
+            json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
+        }
     }
 
     /* clean up */

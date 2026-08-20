@@ -30,6 +30,23 @@ get_entry_type(struct json_object *entry)
     return RPM_NULL_TYPE;
 }
 
+/* Helper to check if a tag is read-only */
+static bool
+is_read_only_tag(struct json_object *entry)
+{
+    struct json_object *readonly = NULL;
+
+    if (entry == NULL) {
+        return false;
+    }
+
+    if (json_object_object_get_ex(entry, RPM_METADATA_READ_ONLY, &readonly)) {
+        return true;
+    }
+
+    return false;
+}
+
 static size_t
 get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, size_t *trailer_size)
 {
@@ -161,6 +178,11 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
 
+        /* skip read-only tags */
+        if (is_read_only_tag(entry)) {
+            continue;
+        }
+
         /* get the tag number and type from this entry */
         tag_number = get_tag_number(entry);
         entry_type = get_entry_type(entry);
@@ -230,6 +252,12 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     for (i = 0; i < json_object_array_length(tags); i++) {
         padding = 0;
         entry = json_object_array_get_idx(tags, i);
+
+        /* skip read-only tags */
+        if (is_read_only_tag(entry)) {
+            continue;
+        }
+
         v->entry->tag = get_tag_number(entry);
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &key) == 0) {
@@ -618,8 +646,14 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         add_dependency_tags(tags_copy, dependencies);
     }
 
-    /* number of header index entries */
-    s->nentries = json_object_array_length(tags);
+    /* number of header index entries (excluding read-only tags) */
+    s->nentries = 0;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        if (!is_read_only_tag(json_object_array_get_idx(tags, i))) {
+            s->nentries++;
+        }
+    }
 
     /* allocate an array for the header index entries */
     v->estart = xcalloc(s->nentries, sizeof(*(v->estart)));
