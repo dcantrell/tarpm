@@ -131,7 +131,7 @@ struct json_object *
 generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature)
 {
     uint32_t i = 0;
-    rpmSigTag tag = 0;
+    uint32_t tag = 0;
     uint32_t offset = 0;
     rpmTagType datatype = 0;
     uint32_t count = 0;
@@ -156,6 +156,11 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         offset = ntohl(hdrentry[i].offset);
         datatype = ntohl(hdrentry[i].type);
         count = ntohl(hdrentry[i].count);
+
+        /* Skip changelog tags - they go in a separate array */
+        if (tag == RPMTAG_CHANGELOGTIME || tag == RPMTAG_CHANGELOGNAME || tag == RPMTAG_CHANGELOGTEXT) {
+            continue;
+        }
 
         entry = create_json_entry(&hdrentry[i], signature);
 

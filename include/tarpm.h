@@ -61,6 +61,10 @@ int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rp
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
 
+/* changelog.c */
+struct json_object *generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
+void add_changelog_tags(struct json_object *tags, struct json_object *changelog);
+
 /* joinpath.c */
 char *joinpath(const char *path, ...);
 

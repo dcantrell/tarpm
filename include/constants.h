@@ -53,6 +53,7 @@
 #define RPM_ENTRY_VALUE_DESC         "value"
 #define RPM_ENTRY_FILE_DESC          "file"
 #define RPM_ENTRY_TRAILER_DESC       "trailer"
+#define RPM_CHANGELOG_DESC           "changelog"
 
 /* general purpose string constants */
 #define RPM_METADATA_READ_ONLY       "read-only"

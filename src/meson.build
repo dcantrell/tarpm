@@ -1,6 +1,7 @@
 # Define source files as File objects so they can be used in unit
 # tests.
 abspath_src = files('abspath.c')
+changelog_src = files('changelog.c')
 create_src = files('create.c')
 digest_src = files('digest.c')
 entry_src = files('entry.c')
@@ -27,6 +28,7 @@ xread_src = files('xread.c')
 
 sources = [
     abspath_src,
+    changelog_src,
     create_src,
     digest_src,
     entry_src,

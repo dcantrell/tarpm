@@ -10,6 +10,7 @@
 #include <rpm/rpmbase64.h>
 #include <rpm/rpmtd.h>
 #include <json.h>
+#include <time.h>
 
 #include "tarpm.h"
 
@@ -461,6 +462,7 @@ read_header(const int fd, const char *dest_dir)
     struct rpmhdrentry *trailer = NULL;
     struct json_object *jvals = NULL;
     struct json_object *header = NULL;
+    struct json_object *changelog = NULL;
 
     if (fd < 0) {
         return NULL;
@@ -499,6 +501,13 @@ read_header(const int fd, const char *dest_dir)
     /* write the header to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
+    /* build the changelog array if changelog tags are present */
+    changelog = generate_changelog(rawhdr, hdrinfo);
+
+    if (changelog != NULL) {
+        json_object_object_add(header, RPM_CHANGELOG_DESC, changelog);
+    }
+
     /* cleanup */
     free(hdrinfo);
     json_object_put(jvals);
@@ -530,9 +539,13 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct rpmhdr *s;
     struct rpmhdrinfo *v;
     struct json_object *tags = NULL;
+    struct json_object *changelog = NULL;
+    struct json_object *tags_copy = NULL;
     size_t totalsize = 0;
     int32_t trailer_index = -1;
     size_t trailer_size = 0;
+    bool need_free_tags = false;
+    size_t i = 0;
 
     if (data == NULL) {
         return -1;
@@ -559,6 +572,23 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         free(s);
         free(v);
         return -1;
+    }
+
+    /* Check if there's a changelog array that needs to be converted to tags */
+    if (json_object_object_get_ex(data, RPM_CHANGELOG_DESC, &changelog)) {
+        /* Create a mutable copy of the tags array */
+        tags_copy = json_object_new_array();
+
+        for (i = 0; i < json_object_array_length(tags); i++) {
+            json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
+        }
+
+        /* Add the changelog tags to the copy */
+        add_changelog_tags(tags_copy, changelog);
+
+        /* Use the copy for processing */
+        tags = tags_copy;
+        need_free_tags = true;
     }
 
     /* number of header index entries */
@@ -591,6 +621,11 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     /* walk the header tags and add them to the values structure */
     r = add_header_tags(tags, v, totalsize, trailer_index, trailer_size);
+
+    /* cleanup temporary tags array if we created one */
+    if (need_free_tags) {
+        json_object_put(tags);
+    }
 
     /* ensure caller gets the header and data */
     *hdr = s;
