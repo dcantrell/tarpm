@@ -460,6 +460,31 @@ test_add_changelog_tags_missing_text(void)
     return;
 }
 
+/* Test is_changelog_tag with changelog tags */
+void
+test_is_changelog_tag_changelog_tags(void)
+{
+    TARPM_ASSERT_TRUE(is_changelog_tag(RPMTAG_CHANGELOGTIME));
+    TARPM_ASSERT_TRUE(is_changelog_tag(RPMTAG_CHANGELOGNAME));
+    TARPM_ASSERT_TRUE(is_changelog_tag(RPMTAG_CHANGELOGTEXT));
+
+    return;
+}
+
+/* Test is_changelog_tag with non-changelog tags */
+void
+test_is_changelog_tag_non_changelog_tags(void)
+{
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_NAME));
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_VERSION));
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_RELEASE));
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_ARCH));
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_PROVIDENAME));
+    TARPM_ASSERT_FALSE(is_changelog_tag(RPMTAG_REQUIRENAME));
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -484,7 +509,9 @@ get_suite(void)
         CU_add_test(pSuite, "test add_changelog_tags() with empty text", test_add_changelog_tags_empty_text) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with missing timestamp", test_add_changelog_tags_missing_timestamp) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with missing name", test_add_changelog_tags_missing_name) == NULL ||
-        CU_add_test(pSuite, "test add_changelog_tags() with missing text", test_add_changelog_tags_missing_text) == NULL) {
+        CU_add_test(pSuite, "test add_changelog_tags() with missing text", test_add_changelog_tags_missing_text) == NULL ||
+        CU_add_test(pSuite, "test is_changelog_tag() with changelog tags", test_is_changelog_tag_changelog_tags) == NULL ||
+        CU_add_test(pSuite, "test is_changelog_tag() with non-changelog tags", test_is_changelog_tag_non_changelog_tags) == NULL) {
         return NULL;
     }
 
