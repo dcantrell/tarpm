@@ -71,6 +71,11 @@ struct json_object *generate_dependencies(const struct rpmhdr *hdr, const struct
 void add_dependency_tags(struct json_object *tags, struct json_object *dependencies);
 bool is_dependency_tag(rpmTagVal tag);
 
+/* files.c */
+struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
+void add_file_list_tags(struct json_object *tags, struct json_object *files);
+bool is_file_list_tag(rpmTagVal tag);
+
 /* joinpath.c */
 char *joinpath(const char *path, ...);
 

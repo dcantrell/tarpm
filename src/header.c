@@ -492,6 +492,7 @@ read_header(const int fd, const char *dest_dir)
     struct json_object *header = NULL;
     struct json_object *changelog = NULL;
     struct json_object *dependencies = NULL;
+    struct json_object *files = NULL;
 
     if (fd < 0) {
         return NULL;
@@ -537,6 +538,13 @@ read_header(const int fd, const char *dest_dir)
         json_object_object_add(header, RPM_DEPENDENCIES_DESC, dependencies);
     }
 
+    /* build the files array if file list tags are present */
+    files = generate_files(rawhdr, hdrinfo);
+
+    if (files != NULL) {
+        json_object_object_add(header, RPM_FILES_DESC, files);
+    }
+
     /* build the changelog array if changelog tags are present */
     changelog = generate_changelog(rawhdr, hdrinfo);
 
@@ -577,6 +585,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct json_object *tags = NULL;
     struct json_object *changelog = NULL;
     struct json_object *dependencies = NULL;
+    struct json_object *files = NULL;
     struct json_object *tags_copy = NULL;
     size_t totalsize = 0;
     int32_t trailer_index = -1;
@@ -644,6 +653,24 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
         /* Add the dependency tags to the copy */
         add_dependency_tags(tags_copy, dependencies);
+    }
+
+    /* Check if there's a files array that needs to be converted to tags */
+    if (json_object_object_get_ex(data, RPM_FILES_DESC, &files)) {
+        /* Create a mutable copy if we haven't already */
+        if (!need_free_tags) {
+            tags_copy = json_object_new_array();
+
+            for (i = 0; i < json_object_array_length(tags); i++) {
+                json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
+            }
+
+            tags = tags_copy;
+            need_free_tags = true;
+        }
+
+        /* Add the file list tags to the copy */
+        add_file_list_tags(tags_copy, files);
     }
 
     /* number of header index entries (excluding read-only tags) */

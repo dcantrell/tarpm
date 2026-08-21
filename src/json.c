@@ -167,7 +167,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         count = ntohl(hdrentry[i].count);
 
         /* skip tags that go to dedicated arrays */
-        if (is_changelog_tag(tag) || is_dependency_tag(tag)) {
+        if (is_changelog_tag(tag) || is_dependency_tag(tag) || is_file_list_tag(tag)) {
             continue;
         }
 

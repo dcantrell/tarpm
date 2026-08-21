@@ -7,6 +7,7 @@ deps_src = files('deps.c')
 digest_src = files('digest.c')
 entry_src = files('entry.c')
 extract_src = files('extract.c')
+files_src = files('files.c')
 header_src = files('header.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
@@ -35,6 +36,7 @@ sources = [
     digest_src,
     entry_src,
     extract_src,
+    files_src,
     header_src,
     joinpath_src,
     json_src,

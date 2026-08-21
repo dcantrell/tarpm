@@ -55,6 +55,7 @@
 #define RPM_ENTRY_TRAILER_DESC         "trailer"
 #define RPM_CHANGELOG_DESC             "changelog"
 #define RPM_DEPENDENCIES_DESC          "dependencies"
+#define RPM_FILES_DESC                 "files"
 #define RPM_DEPENDENCY_NAME_DESC       "name"
 #define RPM_DEPENDENCY_FLAGS_DESC      "flags"
 #define RPM_DEPENDENCY_COMPARISON_DESC "comparison"

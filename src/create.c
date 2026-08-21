@@ -426,10 +426,13 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     char *opts = NULL;
     struct hdr_file_lists hfl;
     struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *tags_with_files = NULL;
     struct json_object *entry = NULL;
     struct json_object *tagname = NULL;
     struct json_object *value = NULL;
     int dirindex = 0;
+    bool need_free_tags = false;
     size_t i = 0;
     size_t j = 0;
     size_t numfiles = 0;
@@ -465,6 +468,23 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
 
     /* initialize */
     memset(&hfl, '\0', sizeof(hfl));
+
+    /* Check if there's a files array that needs to be converted to tags */
+    if (json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
+        /* Create a mutable copy of the tags array */
+        tags_with_files = json_object_new_array();
+
+        for (i = 0; i < json_object_array_length(tags); i++) {
+            json_object_array_add(tags_with_files, json_object_get(json_object_array_get_idx(tags, i)));
+        }
+
+        /* Add the file list tags to the copy */
+        add_file_list_tags(tags_with_files, files);
+
+        /* Use the copy for processing */
+        tags = tags_with_files;
+        need_free_tags = true;
+    }
 
     /* Get file lists from header */
     for (i = 0; i < json_object_array_length(tags); i++) {
@@ -835,6 +855,11 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             errx(EXIT_FAILURE, "zstd compression child failed");
         }
+    }
+
+    /* cleanup temporary tags array if we created one */
+    if (need_free_tags) {
+        json_object_put(tags);
     }
 
     /* back to the beginning */
