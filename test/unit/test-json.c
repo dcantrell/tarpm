@@ -4,6 +4,9 @@
  */
 
 #include <CUnit/Basic.h>
+#include <arpa/inet.h>
+#include <rpm/rpmtag.h>
+#include <json.h>
 #include "tarpm.h"
 
 #include "test-main.h"
@@ -45,6 +48,223 @@ test_write_json_file(void)
     return;
 }
 
+void
+test_create_json_entry_null(void)
+{
+    struct json_object *entry = NULL;
+
+    /* NULL hdrentry returns NULL */
+    entry = create_json_entry(NULL, true);
+    TARPM_ASSERT_PTR_NULL(entry);
+
+    entry = create_json_entry(NULL, false);
+    TARPM_ASSERT_PTR_NULL(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_non_signature(void)
+{
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    /* non-signature entry should not have read-only field */
+    hdrentry.tag = htonl(RPMTAG_NAME);
+    hdrentry.type = htonl(RPM_STRING_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, false);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+
+    /* should not have read-only field */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_signature_digest_tags(void)
+{
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    /* MD5 tag should NOT be read-only (recalculated by update_signature) */
+    hdrentry.tag = htonl(RPMSIGTAG_MD5);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(16);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    /* SHA1 tag should NOT be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_SHA1);
+    hdrentry.type = htonl(RPM_STRING_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    /* SHA256 tag should NOT be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_SHA256);
+    hdrentry.type = htonl(RPM_STRING_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_signature_size_tags(void)
+{
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    /* SIZE tag should NOT be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_SIZE);
+    hdrentry.type = htonl(RPM_INT32_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    /* LONGSIZE tag should NOT be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_LONGSIZE);
+    hdrentry.type = htonl(RPM_INT64_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    /* PAYLOADSIZE tag should NOT be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_PAYLOADSIZE);
+    hdrentry.type = htonl(RPM_INT32_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_signature_crypto_tags(void)
+{
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+    const char *readonly_str = NULL;
+
+    /* RSA tag should be read-only (cryptographic signature) */
+    hdrentry.tag = htonl(RPMSIGTAG_RSA);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(512);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    readonly_str = json_object_get_string(value);
+    TARPM_ASSERT_STRING_EQUAL(readonly_str, "true");
+    json_object_put(entry);
+
+    /* DSA tag should be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_DSA);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(512);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    readonly_str = json_object_get_string(value);
+    TARPM_ASSERT_STRING_EQUAL(readonly_str, "true");
+    json_object_put(entry);
+
+    /* GPG tag should be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_GPG);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(512);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    readonly_str = json_object_get_string(value);
+    TARPM_ASSERT_STRING_EQUAL(readonly_str, "true");
+    json_object_put(entry);
+
+    /* PGP tag should be read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_PGP);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(512);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    readonly_str = json_object_get_string(value);
+    TARPM_ASSERT_STRING_EQUAL(readonly_str, "true");
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_has_required_fields(void)
+{
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    /* verify all required fields are present */
+    hdrentry.tag = htonl(RPMTAG_NAME);
+    hdrentry.type = htonl(RPM_STRING_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, false);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+
+    /* should have "tag" field */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "tag", &value));
+    TARPM_ASSERT_PTR_NOT_NULL(value);
+
+    /* should have "type" field */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "type", &value));
+    TARPM_ASSERT_PTR_NOT_NULL(value);
+
+    json_object_put(entry);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -60,7 +280,13 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test generate_json()", test_generate_json) == NULL ||
         CU_add_test(pSuite, "test generate_json_entries()", test_generate_json_entries) == NULL ||
-        CU_add_test(pSuite, "test write_json_file()", test_write_json_file) == NULL) {
+        CU_add_test(pSuite, "test write_json_file()", test_write_json_file) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with NULL", test_create_json_entry_null) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with non-signature", test_create_json_entry_non_signature) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with signature digest tags", test_create_json_entry_signature_digest_tags) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with signature size tags", test_create_json_entry_signature_size_tags) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with signature crypto tags", test_create_json_entry_signature_crypto_tags) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL) {
         return NULL;
     }
 
