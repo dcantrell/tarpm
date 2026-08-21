@@ -57,7 +57,7 @@ struct json_object *read_signature(const int fd);
 /* header.c */
 bool valid_header(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd, const char *dest_dir);
-int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo);
+int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
 
@@ -73,7 +73,7 @@ bool is_dependency_tag(rpmTagVal tag);
 
 /* files.c */
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
-void add_file_list_tags(struct json_object *tags, struct json_object *files);
+void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir);
 bool is_file_list_tag(rpmTagVal tag);
 
 /* joinpath.c */

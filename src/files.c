@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <err.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
 #include <json.h>
@@ -13,7 +16,8 @@
 
 /*
  * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
- * Returns a JSON array where each entry is {"path": "/full/path/to/file"}.
+ * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
+ * optionally "size" for regular files.
  * Returns NULL if the required tags are not found.
  */
 struct json_object *
@@ -35,8 +39,17 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nbasenames = 0;
     uint32_t *dirindexes = NULL;
     uint32_t ndirindexes = 0;
+    uint32_t *filesizes = NULL;
+    uint32_t nfilesizes = 0;
+    uint16_t *filemodes = NULL;
+    uint32_t nfilemodes = 0;
+    uint32_t *filemtimes = NULL;
+    uint32_t nfilemtimes = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
+    uint32_t size_val = 0;
+    uint16_t mode_val = 0;
+    uint32_t mtime_val = 0;
     char *path = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -45,7 +58,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 
     hdrentry = hdrinfo->estart;
 
-    /* First pass: collect the three file list arrays */
+    /* First pass: collect the file list arrays */
     for (i = 0; i < hdr->nentries; i++) {
         tag = ntohl(hdrentry[i].tag);
         offset = ntohl(hdrentry[i].offset);
@@ -81,6 +94,36 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 dirindexes[j] = ntohl(dirindex);
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILESIZES && datatype == RPM_INT32_TYPE) {
+            nfilesizes = count;
+            filesizes = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&size_val, p, sizeof(uint32_t));
+                filesizes[j] = ntohl(size_val);
+                p += sizeof(uint32_t);
+            }
+        } else if (tag == RPMTAG_FILEMODES && datatype == RPM_INT16_TYPE) {
+            nfilemodes = count;
+            filemodes = xalloc(count * sizeof(uint16_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&mode_val, p, sizeof(uint16_t));
+                filemodes[j] = ntohs(mode_val);
+                p += sizeof(uint16_t);
+            }
+        } else if (tag == RPMTAG_FILEMTIMES && datatype == RPM_INT32_TYPE) {
+            nfilemtimes = count;
+            filemtimes = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&mtime_val, p, sizeof(uint32_t));
+                filemtimes[j] = ntohl(mtime_val);
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -101,6 +144,9 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         }
 
         free(dirindexes);
+        free(filesizes);
+        free(filemodes);
+        free(filemtimes);
         return NULL;
     }
 
@@ -119,6 +165,9 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(basenames);
 
         free(dirindexes);
+        free(filesizes);
+        free(filemodes);
+        free(filemtimes);
         return NULL;
     }
 
@@ -138,6 +187,33 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         /* Create file entry with path */
         file = json_object_new_object();
         json_object_object_add(file, "path", json_object_new_string(path));
+
+        /* Add size for regular files only */
+        if (filesizes && filemodes && j < nfilesizes && j < nfilemodes) {
+            if (S_ISREG(filemodes[j])) {
+                json_object_object_add(file, "size", json_object_new_int64(filesizes[j]));
+            }
+        }
+
+        /* Add mode if available (as octal string of permission bits only) */
+        if (filemodes && j < nfilemodes) {
+            char mode_str[5];
+            snprintf(mode_str, sizeof(mode_str), "%04o", filemodes[j] & ALLPERMS);
+            json_object_object_add(file, "mode", json_object_new_string(mode_str));
+        }
+
+        /* Add mtime if available (as ISO 8601 timestamp) */
+        if (filemtimes && j < nfilemtimes) {
+            time_t mtime = (time_t) filemtimes[j];
+            struct tm *tm_info = gmtime(&mtime);
+            char mtime_str[32];
+
+            if (tm_info != NULL) {
+                strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+                json_object_object_add(file, "mtime", json_object_new_string(mtime_str));
+            }
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -155,16 +231,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     free(basenames);
 
     free(dirindexes);
+    free(filesizes);
+    free(filemodes);
+    free(filemtimes);
 
     return files;
 }
 
 /*
- * Reconstruct the three file list tag entries from the files array.
- * Adds the three tag entries (DIRNAMES, BASENAMES, DIRINDEXES) to the provided tags array.
+ * Reconstruct the file list tag entries from the files array.
+ * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
+ * to the provided tags array.
  */
 void
-add_file_list_tags(struct json_object *tags, struct json_object *files)
+add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir)
 {
     size_t i = 0;
     size_t j = 0;
@@ -172,17 +252,32 @@ add_file_list_tags(struct json_object *tags, struct json_object *files)
     size_t ndirs = 0;
     struct json_object *file = NULL;
     struct json_object *path_obj = NULL;
+    struct json_object *size_obj = NULL;
+    struct json_object *mode_obj = NULL;
+    struct json_object *mtime_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
+    struct json_object *filesizes = NULL;
+    struct json_object *filemodes = NULL;
+    struct json_object *filemtimes = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
     const char *dirname = NULL;
+    const char *mode_str = NULL;
+    const char *mtime_str = NULL;
     char *dirname_copy = NULL;
     char *separator = NULL;
+    char *file_path = NULL;
     char **unique_dirs = NULL;
+    struct stat sb;
+    struct tm tm_info;
     int dirindex = 0;
+    int64_t size = 0;
+    int mode = 0;
+    int perms = 0;
+    time_t mtime = 0;
     bool found = false;
 
     if (tags == NULL || files == NULL) {
@@ -202,10 +297,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files)
     /* Allocate arrays for unique directory tracking */
     unique_dirs = xcalloc(count, sizeof(char *));
 
-    /* Create the three arrays */
+    /* Create the arrays */
     dirnames = json_object_new_array();
     basenames = json_object_new_array();
     dirindexes = json_object_new_array();
+    filesizes = json_object_new_array();
+    filemodes = json_object_new_array();
+    filemtimes = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -258,6 +356,66 @@ add_file_list_tags(struct json_object *tags, struct json_object *files)
         json_object_array_add(basenames, json_object_new_string(basename));
         json_object_array_add(dirindexes, json_object_new_int(dirindex));
 
+        /* Add size (regular files have size, non-files get 0) */
+        if (json_object_object_get_ex(file, "size", &size_obj)) {
+            size = json_object_get_int64(size_obj);
+        } else {
+            size = 0;
+        }
+
+        json_object_array_add(filesizes, json_object_new_int64(size));
+
+        /* Reconstruct full mode from permission bits and actual file type */
+        mode = 0;
+
+        if (json_object_object_get_ex(file, "mode", &mode_obj)) {
+            /* Parse octal permission string */
+            mode_str = json_object_get_string(mode_obj);
+            perms = (int) strtol(mode_str, NULL, 8);
+
+            /* Determine file type */
+            if (input_dir != NULL && payload_subdir != NULL) {
+                /* Strip leading slash from path for payload lookup */
+                const char *relative_path = (path[0] == '/') ? path + 1 : path;
+                file_path = joinpath(input_dir, payload_subdir, relative_path, NULL);
+
+                if (lstat(file_path, &sb) == 0) {
+                    /* Combine file type from stat with permissions from JSON */
+                    mode = (sb.st_mode & ~ALLPERMS) | (perms & ALLPERMS);
+                } else {
+                    /* File doesn't exist in payload (e.g., 0-byte file or directory) */
+                    /* Use heuristic: if entry has "size" field, it's a regular file */
+                    if (json_object_object_get_ex(file, "size", NULL)) {
+                        mode = S_IFREG | (perms & ALLPERMS);
+                    } else {
+                        /* No size field, assume directory */
+                        mode = S_IFDIR | (perms & ALLPERMS);
+                    }
+                }
+
+                free(file_path);
+            } else {
+                /* No input_dir provided, use permissions only (assume regular file) */
+                mode = S_IFREG | (perms & ALLPERMS);
+            }
+        }
+
+        json_object_array_add(filemodes, json_object_new_int(mode));
+
+        /* Parse mtime from ISO 8601 timestamp string */
+        mtime = 0;
+
+        if (json_object_object_get_ex(file, "mtime", &mtime_obj)) {
+            mtime_str = json_object_get_string(mtime_obj);
+            memset(&tm_info, 0, sizeof(struct tm));
+
+            if (strptime(mtime_str, "%Y-%m-%dT%H:%M:%SZ", &tm_info) != NULL) {
+                mtime = timegm(&tm_info);
+            }
+        }
+
+        json_object_array_add(filemtimes, json_object_new_int64(mtime));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -292,6 +450,27 @@ add_file_list_tags(struct json_object *tags, struct json_object *files)
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dirnames);
     json_object_array_add(tags, tag);
+
+    /* Add FILESIZES tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filesizes"));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filesizes);
+    json_object_array_add(tags, tag);
+
+    /* Add FILEMODES tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filemodes"));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int16"));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemodes);
+    json_object_array_add(tags, tag);
+
+    /* Add FILEMTIMES tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filemtimes"));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemtimes);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -300,7 +479,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files)
 bool
 is_file_list_tag(rpmTagVal tag)
 {
-    if (tag == RPMTAG_DIRNAMES || tag == RPMTAG_BASENAMES || tag == RPMTAG_DIRINDEXES) {
+    if (tag == RPMTAG_DIRNAMES || tag == RPMTAG_BASENAMES || tag == RPMTAG_DIRINDEXES || tag == RPMTAG_FILESIZES || tag == RPMTAG_FILEMODES || tag == RPMTAG_FILEMTIMES) {
         return true;
     }
 

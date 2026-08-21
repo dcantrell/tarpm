@@ -577,7 +577,7 @@ read_header(const int fd, const char *dest_dir)
  * Caller must free memory associated with those structures.
  */
 int
-create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo)
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir)
 {
     int r = 0;
     struct rpmhdr *s;
@@ -670,7 +670,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         }
 
         /* Add the file list tags to the copy */
-        add_file_list_tags(tags_copy, files);
+        add_file_list_tags(tags_copy, files, input_dir, payload_subdir);
     }
 
     /* number of header index entries (excluding read-only tags) */
