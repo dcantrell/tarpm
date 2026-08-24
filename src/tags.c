@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
@@ -158,7 +160,22 @@ sig_tag_name(uint32_t tag)
 static uint32_t
 sig_tag_number(const char *tag)
 {
+    char *endptr = NULL;
+    long tag_num = 0;
+
     if (tag == NULL) {
+        return 0;
+    }
+
+    /* Handle numeric tags in "#XXXX" format */
+    if (tag[0] == '#') {
+        errno = 0;
+        tag_num = strtol(tag + 1, &endptr, 10);
+
+        if (errno == 0 && endptr != (tag + 1) && *endptr == '\0' && tag_num > 0) {
+            return (uint32_t) tag_num;
+        }
+
         return 0;
     }
 
@@ -223,9 +240,10 @@ sig_tag_number(const char *tag)
 
 /* Return the tag number given the tag name */
 rpmTagVal
-get_tag_number(struct json_object *entry)
+get_tag_number(struct json_object *entry, bool signature)
 {
     rpmTagVal t = 0;
+    uint32_t sigtag = 0;
     struct json_object *tag = NULL;
     const char *tagname = NULL;
 
@@ -239,6 +257,19 @@ get_tag_number(struct json_object *entry)
     }
 
     tagname = json_object_get_string(tag);
+
+    /*
+     * For signature tags, check signature tag names first to
+     * avoid conflicts with header tags
+     */
+    if (signature) {
+        sigtag = sig_tag_number(tagname);
+
+        if (sigtag != 0) {
+            return sigtag;
+        }
+    }
+
     t = rpmTagGetValue(tagname);
 
     if (t == RPMTAG_NOT_FOUND) {

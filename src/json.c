@@ -37,8 +37,8 @@ sort_by_tag_number(const void *a, const void *b)
     }
 
     /* get the tag numbers for sorting */
-    atag = get_tag_number(*aobj);
-    btag = get_tag_number(*bobj);
+    atag = get_tag_number(*aobj, false);
+    btag = get_tag_number(*bobj, false);
 
     return (atag > btag) - (atag < btag);
 }
@@ -92,8 +92,11 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
      * as read-only.
      */
     if (signature) {
-        /* These tags are recalculated by update_signature(), so they are NOT read-only */
-        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256) {
+        /*
+         * These tags are recalculated by update_signature() or should
+         * be preserved, so they are NOT read-only
+         */
+        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256 && tag != RPMSIGTAG_RESERVEDSPACE && tag != HEADER_SIGNATURES) {
             /* All other signature tags are read-only (RSA, DSA, etc.) */
             json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
         }

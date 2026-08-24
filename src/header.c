@@ -48,7 +48,7 @@ is_read_only_tag(struct json_object *entry)
 }
 
 static size_t
-get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, size_t *trailer_size)
+get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
 {
     size_t item_size = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
@@ -70,7 +70,7 @@ get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, s
     }
 
     entry_type = get_entry_type(entry);
-    tag_number = get_tag_number(entry);
+    tag_number = get_tag_number(entry, is_signature);
 
     /* get the value field from the entry */
     if (is_file_tag(tag_number)) {
@@ -158,7 +158,7 @@ get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, s
 
 /* Calculate the size of the data buffer for this header. */
 static size_t
-get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size)
+get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
 {
     size_t datasize = 0;
     size_t i = 0;
@@ -184,7 +184,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
         }
 
         /* get the tag number and type from this entry */
-        tag_number = get_tag_number(entry);
+        tag_number = get_tag_number(entry, is_signature);
         entry_type = get_entry_type(entry);
 
         /* get the field name based on the tag number */
@@ -196,7 +196,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, field, &key)) {
-            item_size = get_item_size(i, entry, trailer_index, trailer_size);
+            item_size = get_item_size(i, entry, trailer_index, trailer_size, is_signature);
 
             /* sequential calculation with alignment */
             if (entry_type == RPM_INT16_TYPE) {
@@ -218,7 +218,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
 /* Add the header tags and their values to the data buffer */
 static int
-add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size)
+add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size, bool is_signature)
 {
     int r = 0;
     int b = 0;
@@ -258,7 +258,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             continue;
         }
 
-        v->entry->tag = get_tag_number(entry);
+        v->entry->tag = get_tag_number(entry, is_signature);
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &key) == 0) {
             warnx(_("*** invalid header tag entry, missing 'type'"));
@@ -577,7 +577,7 @@ read_header(const int fd, const char *dest_dir)
  * Caller must free memory associated with those structures.
  */
 int
-create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir)
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, bool is_signature)
 {
     int r = 0;
     struct rpmhdr *s;
@@ -691,7 +691,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
      * total size is just the sequential data, NOT including trailer
      * trailer offset will point past the end of data
      */
-    totalsize = get_data_buffer_size(tags, &trailer_index, &trailer_size);
+    totalsize = get_data_buffer_size(tags, &trailer_index, &trailer_size, is_signature);
 
     /* allocate the data buffer */
     v->datastart = xcalloc(totalsize, sizeof(uint8_t));
@@ -708,7 +708,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     /* walk the header tags and add them to the values structure */
-    r = add_header_tags(tags, v, totalsize, trailer_index, trailer_size);
+    r = add_header_tags(tags, v, totalsize, trailer_index, trailer_size, is_signature);
 
     /* cleanup temporary tags array if we created one */
     if (need_free_tags) {

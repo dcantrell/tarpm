@@ -1191,7 +1191,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
     /* create the header (the main header) */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
         errx(EXIT_FAILURE, _("*** unable to construct RPM header"));
     }
 
@@ -1203,7 +1203,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
     /* create the signature */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
     }
 
@@ -1217,7 +1217,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     free_header(hdr, hdrinfo);
 
     /* regenerate the header with updated digests */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
         errx(EXIT_FAILURE, _("*** unable to reconstruct RPM header"));
     }
 
@@ -1231,7 +1231,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     free_header(sig, siginfo);
 
     /* regenerate the signature with updated digests */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         errx(EXIT_FAILURE, _("*** unable to reconstruct RPM signature"));
     }
 

@@ -142,34 +142,34 @@ test_get_tag_number(void)
     rpmTagVal result = 0;
 
     /* NULL input returns RPMTAG_NOT_FOUND */
-    result = get_tag_number(NULL);
+    result = get_tag_number(NULL, false);
     TARPM_ASSERT_TRUE(result == RPMTAG_NOT_FOUND);
 
     /* test with valid RPM tag name */
     entry = json_object_new_object();
     json_object_object_add(entry, "tag", json_object_new_string("Name"));
-    result = get_tag_number(entry);
+    result = get_tag_number(entry, false);
     TARPM_ASSERT_TRUE(result == RPMTAG_NAME);
     json_object_put(entry);
 
     /* test with valid signature tag name */
     entry = json_object_new_object();
     json_object_object_add(entry, "tag", json_object_new_string("Sha256"));
-    result = get_tag_number(entry);
+    result = get_tag_number(entry, true);
     TARPM_ASSERT_TRUE(result == RPMSIGTAG_SHA256);
     json_object_put(entry);
 
     /* test with another RPM tag */
     entry = json_object_new_object();
     json_object_object_add(entry, "tag", json_object_new_string("Version"));
-    result = get_tag_number(entry);
+    result = get_tag_number(entry, false);
     TARPM_ASSERT_TRUE(result == RPMTAG_VERSION);
     json_object_put(entry);
 
     /* test with entry missing tag field */
     entry = json_object_new_object();
     json_object_object_add(entry, "notag", json_object_new_string("Name"));
-    result = get_tag_number(entry);
+    result = get_tag_number(entry, false);
     TARPM_ASSERT_TRUE(result == RPMTAG_NOT_FOUND);
     json_object_put(entry);
 
