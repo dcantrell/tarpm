@@ -92,9 +92,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Filemodes":
                         self.assertTrue(tag["type"] == "int16")
                         self.assertTrue(int(tag["value"]) == 33188)
-                    elif t == "Filerdevs":
-                        self.assertTrue(tag["type"] == "int16")
-                        self.assertTrue(int(tag["value"]) == 0)
                     elif t == "Filemtimes":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) > 0)
@@ -130,9 +127,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"].startswith(socket.gethostname()))
-                    elif t == "Filedevices":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 1)
                     elif t == "Fileinodes":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 1)

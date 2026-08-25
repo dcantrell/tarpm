@@ -49,11 +49,17 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfileusernames = 0;
     char **filegroupnames = NULL;
     uint32_t nfilegroupnames = 0;
+    uint16_t *filerdevs = NULL;
+    uint32_t nfilerdevs = 0;
+    uint32_t *filedevices = NULL;
+    uint32_t nfiledevices = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
     uint16_t mode_val = 0;
     uint32_t mtime_val = 0;
+    uint16_t rdev_val = 0;
+    uint32_t device_val = 0;
     char *path = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -146,6 +152,26 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 filegroupnames[j] = strdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
+        } else if (tag == RPMTAG_FILERDEVS && datatype == RPM_INT16_TYPE) {
+            nfilerdevs = count;
+            filerdevs = xalloc(count * sizeof(uint16_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&rdev_val, p, sizeof(uint16_t));
+                filerdevs[j] = ntohs(rdev_val);
+                p += sizeof(uint16_t);
+            }
+        } else if (tag == RPMTAG_FILEDEVICES && datatype == RPM_INT32_TYPE) {
+            nfiledevices = count;
+            filedevices = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&device_val, p, sizeof(uint32_t));
+                filedevices[j] = ntohl(device_val);
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -183,6 +209,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filesizes);
         free(filemodes);
         free(filemtimes);
+        free(filerdevs);
+        free(filedevices);
         return NULL;
     }
 
@@ -218,6 +246,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filesizes);
         free(filemodes);
         free(filemtimes);
+        free(filerdevs);
+        free(filedevices);
         return NULL;
     }
 
@@ -274,6 +304,18 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             json_object_object_add(file, "group", json_object_new_string(filegroupnames[j]));
         }
 
+        /* Add rdev if available (only for device nodes with non-zero values) */
+        if (filerdevs && filemodes && j < nfilerdevs && j < nfilemodes) {
+            if ((S_ISCHR(filemodes[j]) || S_ISBLK(filemodes[j])) && filerdevs[j] != 0) {
+                json_object_object_add(file, "rdev", json_object_new_int(filerdevs[j]));
+            }
+        }
+
+        /* Add device if available */
+        if (filedevices && j < nfiledevices) {
+            json_object_object_add(file, "device", json_object_new_int64(filedevices[j]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -308,6 +350,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     free(filesizes);
     free(filemodes);
     free(filemtimes);
+    free(filerdevs);
+    free(filedevices);
 
     return files;
 }
@@ -331,6 +375,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *mtime_obj = NULL;
     struct json_object *user_obj = NULL;
     struct json_object *group_obj = NULL;
+    struct json_object *rdev_obj = NULL;
+    struct json_object *device_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -339,6 +385,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filemtimes = NULL;
     struct json_object *fileusernames = NULL;
     struct json_object *filegroupnames = NULL;
+    struct json_object *filerdevs = NULL;
+    struct json_object *filedevices = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
@@ -357,6 +405,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     int64_t size = 0;
     int mode = 0;
     int perms = 0;
+    int rdev = 0;
+    int64_t device = 0;
     time_t mtime = 0;
     bool found = false;
 
@@ -386,6 +436,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filemtimes = json_object_new_array();
     fileusernames = json_object_new_array();
     filegroupnames = json_object_new_array();
+    filerdevs = json_object_new_array();
+    filedevices = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -524,6 +576,24 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             json_object_array_add(filegroupnames, json_object_new_string("root"));
         }
 
+        /* Extract rdev if available */
+        rdev = 0;
+
+        if (json_object_object_get_ex(file, "rdev", &rdev_obj)) {
+            rdev = json_object_get_int(rdev_obj);
+        }
+
+        json_object_array_add(filerdevs, json_object_new_int(rdev));
+
+        /* Extract device if available */
+        device = 0;
+
+        if (json_object_object_get_ex(file, "device", &device_obj)) {
+            device = json_object_get_int64(device_obj);
+        }
+
+        json_object_array_add(filedevices, json_object_new_int64(device));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -593,6 +663,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filegroupnames);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILERDEVS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILERDEVS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT16_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filerdevs);
+    json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILEDEVICES tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEVICES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedevices);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -610,6 +694,8 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEMTIMES:
         case RPMTAG_FILEUSERNAME:
         case RPMTAG_FILEGROUPNAME:
+        case RPMTAG_FILERDEVS:
+        case RPMTAG_FILEDEVICES:
             return true;
     }
 
