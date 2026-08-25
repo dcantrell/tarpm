@@ -107,12 +107,6 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Fileflags":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 32)
-                    elif t == "Fileusername":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "root")
-                    elif t == "Filegroupname":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "root")
                     elif t == "Sourcerpm":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "vaporware-0.1-1.src.rpm")

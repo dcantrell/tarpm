@@ -45,6 +45,10 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfilemodes = 0;
     uint32_t *filemtimes = NULL;
     uint32_t nfilemtimes = 0;
+    char **fileusernames = NULL;
+    uint32_t nfileusernames = 0;
+    char **filegroupnames = NULL;
+    uint32_t nfilegroupnames = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
@@ -124,6 +128,24 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 filemtimes[j] = ntohl(mtime_val);
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILEUSERNAME && datatype == RPM_STRING_ARRAY_TYPE) {
+            nfileusernames = count;
+            fileusernames = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                fileusernames[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
+        } else if (tag == RPMTAG_FILEGROUPNAME && datatype == RPM_STRING_ARRAY_TYPE) {
+            nfilegroupnames = count;
+            filegroupnames = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                filegroupnames[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
         }
     }
 
@@ -141,6 +163,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 free(basenames[i]);
             }
             free(basenames);
+        }
+
+        if (fileusernames) {
+            for (i = 0; i < nfileusernames; i++) {
+                free(fileusernames[i]);
+            }
+            free(fileusernames);
+        }
+
+        if (filegroupnames) {
+            for (i = 0; i < nfilegroupnames; i++) {
+                free(filegroupnames[i]);
+            }
+            free(filegroupnames);
         }
 
         free(dirindexes);
@@ -163,6 +199,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             free(basenames[i]);
         }
         free(basenames);
+
+        if (fileusernames) {
+            for (i = 0; i < nfileusernames; i++) {
+                free(fileusernames[i]);
+            }
+            free(fileusernames);
+        }
+
+        if (filegroupnames) {
+            for (i = 0; i < nfilegroupnames; i++) {
+                free(filegroupnames[i]);
+            }
+            free(filegroupnames);
+        }
 
         free(dirindexes);
         free(filesizes);
@@ -214,6 +264,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             }
         }
 
+        /* Add user if available */
+        if (fileusernames && j < nfileusernames) {
+            json_object_object_add(file, "user", json_object_new_string(fileusernames[j]));
+        }
+
+        /* Add group if available */
+        if (filegroupnames && j < nfilegroupnames) {
+            json_object_object_add(file, "group", json_object_new_string(filegroupnames[j]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -229,6 +289,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(basenames[i]);
     }
     free(basenames);
+
+    if (fileusernames) {
+        for (i = 0; i < nfileusernames; i++) {
+            free(fileusernames[i]);
+        }
+        free(fileusernames);
+    }
+
+    if (filegroupnames) {
+        for (i = 0; i < nfilegroupnames; i++) {
+            free(filegroupnames[i]);
+        }
+        free(filegroupnames);
+    }
 
     free(dirindexes);
     free(filesizes);
@@ -255,18 +329,24 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *size_obj = NULL;
     struct json_object *mode_obj = NULL;
     struct json_object *mtime_obj = NULL;
+    struct json_object *user_obj = NULL;
+    struct json_object *group_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
     struct json_object *filesizes = NULL;
     struct json_object *filemodes = NULL;
     struct json_object *filemtimes = NULL;
+    struct json_object *fileusernames = NULL;
+    struct json_object *filegroupnames = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
     const char *dirname = NULL;
     const char *mode_str = NULL;
     const char *mtime_str = NULL;
+    const char *user_str = NULL;
+    const char *group_str = NULL;
     char *dirname_copy = NULL;
     char *separator = NULL;
     char *file_path = NULL;
@@ -304,6 +384,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filesizes = json_object_new_array();
     filemodes = json_object_new_array();
     filemtimes = json_object_new_array();
+    fileusernames = json_object_new_array();
+    filegroupnames = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -416,6 +498,32 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(filemtimes, json_object_new_int64(mtime));
 
+        /* Extract user if available */
+        user_str = NULL;
+
+        if (json_object_object_get_ex(file, "user", &user_obj)) {
+            user_str = json_object_get_string(user_obj);
+        }
+
+        if (user_str != NULL) {
+            json_object_array_add(fileusernames, json_object_new_string(user_str));
+        } else {
+            json_object_array_add(fileusernames, json_object_new_string("root"));
+        }
+
+        /* Extract group if available */
+        group_str = NULL;
+
+        if (json_object_object_get_ex(file, "group", &group_obj)) {
+            group_str = json_object_get_string(group_obj);
+        }
+
+        if (group_str != NULL) {
+            json_object_array_add(filegroupnames, json_object_new_string(group_str));
+        } else {
+            json_object_array_add(filegroupnames, json_object_new_string("root"));
+        }
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -430,46 +538,60 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
     free(unique_dirs);
 
-    /* Add BASENAMES tag */
+    /* Add RPMTAG_BASENAMES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Basenames"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_BASENAMES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, basenames);
     json_object_array_add(tags, tag);
 
-    /* Add DIRINDEXES tag */
+    /* Add RPMTAG_DIRINDEXES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Dirindexes"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DIRINDEXES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dirindexes);
     json_object_array_add(tags, tag);
 
-    /* Add DIRNAMES tag */
+    /* Add RPMTAG_DIRNAMES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Dirnames"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DIRNAMES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dirnames);
     json_object_array_add(tags, tag);
 
-    /* Add FILESIZES tag */
+    /* Add RPMTAG_FILESIZES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filesizes"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILESIZES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filesizes);
     json_object_array_add(tags, tag);
 
-    /* Add FILEMODES tag */
+    /* Add RPMTAG_FILEMODES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filemodes"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int16"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMODES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT16_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemodes);
     json_object_array_add(tags, tag);
 
-    /* Add FILEMTIMES tag */
+    /* Add RPMTAG_FILEMTIMES tag */
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string("Filemtimes"));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMTIMES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemtimes);
+    json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILEUSERNAME tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEUSERNAME)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileusernames);
+    json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILEGROUPNAME tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEGROUPNAME)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filegroupnames);
     json_object_array_add(tags, tag);
 }
 
@@ -479,8 +601,16 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 bool
 is_file_list_tag(rpmTagVal tag)
 {
-    if (tag == RPMTAG_DIRNAMES || tag == RPMTAG_BASENAMES || tag == RPMTAG_DIRINDEXES || tag == RPMTAG_FILESIZES || tag == RPMTAG_FILEMODES || tag == RPMTAG_FILEMTIMES) {
-        return true;
+    switch (tag) {
+        case RPMTAG_DIRNAMES:
+        case RPMTAG_BASENAMES:
+        case RPMTAG_DIRINDEXES:
+        case RPMTAG_FILESIZES:
+        case RPMTAG_FILEMODES:
+        case RPMTAG_FILEMTIMES:
+        case RPMTAG_FILEUSERNAME:
+        case RPMTAG_FILEGROUPNAME:
+            return true;
     }
 
     return false;
