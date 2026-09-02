@@ -35,14 +35,14 @@ test_mkdirp(void)
     TARPM_ASSERT_TRUE(mkdirp(NULL, 0) == -1);
 
     /* create a simple directory */
-    TARPM_ASSERT_TRUE(mktemp(tmpdir1) != NULL);
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir1) != NULL);
     TARPM_ASSERT_TRUE(mkdirp(tmpdir1, mode) == 0);
     TARPM_ASSERT_TRUE(stat(tmpdir1, &sb) == 0);
     TARPM_ASSERT_TRUE(S_ISDIR(sb.st_mode));
     TARPM_ASSERT_TRUE(rmdir(tmpdir1) == 0);
 
     /* create nested directories */
-    TARPM_ASSERT_TRUE(mktemp(tmpdir2) != NULL);
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir2) != NULL);
     xasprintf(&nested, "%s/a/b/c/d", tmpdir2);
     TARPM_ASSERT_TRUE(mkdirp(nested, mode) == 0);
     TARPM_ASSERT_TRUE(stat(nested, &sb) == 0);
