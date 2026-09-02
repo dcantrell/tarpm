@@ -268,9 +268,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         file = json_object_new_object();
         json_object_object_add(file, "path", json_object_new_string(path));
 
-        /* Add size for regular files only */
+        /*
+         * Add size for regular files and symlinks.  RPM stores the
+         * length of a symlink's target string in FILESIZES, and the
+         * payload reader consumes that many bytes for the target, so
+         * the value must be preserved for symlinks too.
+         */
         if (filesizes && filemodes && j < nfilesizes && j < nfilemodes) {
-            if (S_ISREG(filemodes[j])) {
+            if (S_ISREG(filemodes[j]) || S_ISLNK(filemodes[j])) {
                 json_object_object_add(file, "size", json_object_new_int64(filesizes[j]));
             }
         }
