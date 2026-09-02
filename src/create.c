@@ -885,7 +885,6 @@ write_payload(FILE *rpm, int fd)
     FILE *pload = NULL;
     char buf[BUFSIZ];
     size_t s = 0;
-    size_t total = 0;
 
     if (rpm == NULL) {
         return 0;
@@ -907,8 +906,6 @@ write_payload(FILE *rpm, int fd)
 
     /* copy payload over to the RPM */
     while ((s = fread(buf, sizeof(char), BUFSIZ, pload)) > 0) {
-        total += s;
-
         if (fwrite(buf, sizeof(char), s, rpm) != s) {
             warn("fwrite");
             r = -1;

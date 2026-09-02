@@ -396,7 +396,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *user_str = NULL;
     const char *group_str = NULL;
     char *dirname_copy = NULL;
-    char *separator = NULL;
+    const char *separator = NULL;
     char *file_path = NULL;
     char **unique_dirs = NULL;
     struct stat sb;
