@@ -18,6 +18,7 @@ BuildRequires:  python3-devel
 BuildRequires:  pandoc
 BuildRequires:  gettext
 BuildRequires:  libzstd-devel
+BuildRequires:  openssl-devel
 
 
 %description
