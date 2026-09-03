@@ -29,6 +29,22 @@ Core functionality that still needs to happen:
         to read for users.  But these then need to be broken out for
         writing to the header.  Need a conversion function that can
         yeet between them.
+        [*] Filerdevs
+        [ ] Filedigests
+        [ ] Filelinktos
+        [ ] Fileflags
+        [*] Fileusername
+        [*] Filegroupname
+        [ ] Fileverifyflags
+        [*] Filedevices
+        [ ] Fileinodes
+        [ ] Filelangs
+        [ ] Filecolors
+        [ ] Fileclass (strings from Classdict)
+
+    [ ] Filedigestalgo should become a symbolic string, but fall back
+        on an integer if we do not have a definition for that
+        algorithm type.
 
     [*] The changelog should be combined back together in a similar
         style, but in JSON format.
