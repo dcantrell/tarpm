@@ -32,9 +32,13 @@ test_is_file_tag(void)
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTUN));
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PRETRANS));
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTTRANS));
+#ifdef _HAS_UNTRANS_TAG
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_PREUNTRANS));
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_POSTUNTRANS));
+#endif
+#ifdef _HAS_SPEC_TAG
     TARPM_ASSERT_TRUE(is_file_tag(RPMTAG_SPEC));
+#endif
 
     /* other common tags should not be file tags */
     TARPM_ASSERT_FALSE(is_file_tag(RPMTAG_NAME));
@@ -59,6 +63,7 @@ test_get_tag_filename(void)
 {
     char *filename = NULL;
 
+#ifdef _HAS_SPEC_TAG
     /* test RPMTAG_SPEC with default ending */
     filename = get_tag_filename(RPMTAG_SPEC, NULL);
     TARPM_ASSERT_TRUE(filename != NULL);
@@ -70,6 +75,7 @@ test_get_tag_filename(void)
     TARPM_ASSERT_TRUE(filename != NULL);
     TARPM_ASSERT_TRUE(strcmp(filename, "spec.txt") == 0);
     free(filename);
+#endif
 
     /* test non-file tag should return NULL */
     filename = get_tag_filename(RPMTAG_NAME, NULL);

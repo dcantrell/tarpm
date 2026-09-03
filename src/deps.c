@@ -154,6 +154,7 @@ generate_sense_flags(uint32_t flags)
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_POSTTRANS));
     }
 
+#ifdef _HAS_UNTRANS_TAG
     if (flags & RPMSENSE_PREUNTRANS) {
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_PREUNTRANS));
     }
@@ -161,6 +162,7 @@ generate_sense_flags(uint32_t flags)
     if (flags & RPMSENSE_POSTUNTRANS) {
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_POSTUNTRANS));
     }
+#endif
 
     if (flags & RPMSENSE_CONFIG) {
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_CONFIG));
@@ -250,10 +252,12 @@ read_sense_flags(struct json_object *sense_flags)
             flags |= RPMSENSE_PRETRANS;
         } else if (!strcmp(s, SENSE_FLAG_POSTTRANS)) {
             flags |= RPMSENSE_POSTTRANS;
+#ifdef _HAS_UNTRANS_TAG
         } else if (!strcmp(s, SENSE_FLAG_PREUNTRANS)) {
             flags |= RPMSENSE_PREUNTRANS;
         } else if (!strcmp(s, SENSE_FLAG_POSTUNTRANS)) {
             flags |= RPMSENSE_POSTUNTRANS;
+#endif
         } else if (!strcmp(s, SENSE_FLAG_CONFIG)) {
             flags |= RPMSENSE_CONFIG;
         } else if (!strcmp(s, SENSE_FLAG_MISSINGOK)) {
@@ -314,7 +318,7 @@ generate_formatted_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinf
 {
     uint32_t i = 0;
     uint32_t j = 0;
-    uint32_t tag = 0;
+    rpmTagVal tag = 0;
     uint32_t offset = 0;
     uint32_t count = 0;
     rpmTagType datatype = 0;

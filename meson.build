@@ -79,8 +79,18 @@ if rpm.version().version_compare('<=6.0.0')
     add_project_arguments('-D_USE_RPMTAG_PAYLOADDIGESTALT', language : ['c', 'cpp'])
 endif
 
-openssl = dependency('openssl', required : true)
+# See commits:
+#     db46bd8bd1af3868163a88e73ee9310d896658b7
+#     122bb4ffae7b2bacd8d790cac2c765d51b23d7d9
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains db46bd8bd1af3868163a88e73ee9310d896658b7)
+# (git tag --contains 122bb4ffae7b2bacd8d790cac2c765d51b23d7d9)
+if rpm.version().version_compare('>=4.19.0')
+    add_project_arguments('-D_HAS_UNTRANS_TAG', language : ['c', 'cpp'])
+    add_project_arguments('-D_HAS_SPEC_TAG', language : ['c', 'cpp'])
+endif
 
+openssl = dependency('openssl', required : true)
 # Test suite dependencies
 run_tests = get_option('tests')
 if run_tests

@@ -27,9 +27,13 @@ is_file_tag(rpmTagVal tag)
         case RPMTAG_POSTUN:
         case RPMTAG_PRETRANS:
         case RPMTAG_POSTTRANS:
+#ifdef _HAS_UNTRANS_TAG
         case RPMTAG_PREUNTRANS:
         case RPMTAG_POSTUNTRANS:
+#endif
+#ifdef _HAS_SPEC_TAG
         case RPMTAG_SPEC:
+#endif
             r = true;
             break;
         default:
