@@ -53,6 +53,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfilerdevs = 0;
     uint32_t *filedevices = NULL;
     uint32_t nfiledevices = 0;
+    char **filedigests = NULL;
+    uint32_t nfiledigests = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
@@ -172,6 +174,15 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 filedevices[j] = ntohl(device_val);
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILEDIGESTS && datatype == RPM_STRING_ARRAY_TYPE) {
+            nfiledigests = count;
+            filedigests = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                filedigests[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
         }
     }
 
@@ -181,6 +192,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < ndirnames; i++) {
                 free(dirnames[i]);
             }
+
             free(dirnames);
         }
 
@@ -188,6 +200,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < nbasenames; i++) {
                 free(basenames[i]);
             }
+
             free(basenames);
         }
 
@@ -195,6 +208,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < nfileusernames; i++) {
                 free(fileusernames[i]);
             }
+
             free(fileusernames);
         }
 
@@ -202,7 +216,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < nfilegroupnames; i++) {
                 free(filegroupnames[i]);
             }
+
             free(filegroupnames);
+        }
+
+        if (filedigests) {
+            for (i = 0; i < nfiledigests; i++) {
+                free(filedigests[i]);
+            }
+
+            free(filedigests);
         }
 
         free(dirindexes);
@@ -240,6 +263,13 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 free(filegroupnames[i]);
             }
             free(filegroupnames);
+        }
+
+        if (filedigests) {
+            for (i = 0; i < nfiledigests; i++) {
+                free(filedigests[i]);
+            }
+            free(filedigests);
         }
 
         free(dirindexes);
@@ -321,6 +351,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             json_object_object_add(file, "device", json_object_new_int64(filedevices[j]));
         }
 
+        /*
+         * Add digest for regular files that have one.  RPM stores an
+         * empty string for entries without a digest (directories,
+         * symlinks, device nodes, etc.), so only emit the key when the
+         * digest is non-empty.
+         */
+        if (filedigests && j < nfiledigests && filedigests[j][0] != '\0') {
+            json_object_object_add(file, "digest", json_object_new_string(filedigests[j]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -330,17 +370,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     for (i = 0; i < ndirnames; i++) {
         free(dirnames[i]);
     }
+
     free(dirnames);
 
     for (i = 0; i < nbasenames; i++) {
         free(basenames[i]);
     }
+
     free(basenames);
 
     if (fileusernames) {
         for (i = 0; i < nfileusernames; i++) {
             free(fileusernames[i]);
         }
+
         free(fileusernames);
     }
 
@@ -348,7 +391,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         for (i = 0; i < nfilegroupnames; i++) {
             free(filegroupnames[i]);
         }
+
         free(filegroupnames);
+    }
+
+    if (filedigests) {
+        for (i = 0; i < nfiledigests; i++) {
+            free(filedigests[i]);
+        }
+
+        free(filedigests);
     }
 
     free(dirindexes);
@@ -382,6 +434,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *group_obj = NULL;
     struct json_object *rdev_obj = NULL;
     struct json_object *device_obj = NULL;
+    struct json_object *digest_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -392,6 +445,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filegroupnames = NULL;
     struct json_object *filerdevs = NULL;
     struct json_object *filedevices = NULL;
+    struct json_object *filedigests = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
@@ -400,6 +454,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *mtime_str = NULL;
     const char *user_str = NULL;
     const char *group_str = NULL;
+    const char *digest_str = NULL;
     char *dirname_copy = NULL;
     const char *separator = NULL;
     char *file_path = NULL;
@@ -443,6 +498,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filegroupnames = json_object_new_array();
     filerdevs = json_object_new_array();
     filedevices = json_object_new_array();
+    filedigests = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -599,6 +655,23 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(filedevices, json_object_new_int64(device));
 
+        /*
+         * Extract digest if available.  Entries without a "digest" key
+         * (directories, symlinks, device nodes, etc.) carry an empty
+         * string so the array stays parallel to the file list.
+         */
+        digest_str = NULL;
+
+        if (json_object_object_get_ex(file, "digest", &digest_obj)) {
+            digest_str = json_object_get_string(digest_obj);
+        }
+
+        if (digest_str != NULL) {
+            json_object_array_add(filedigests, json_object_new_string(digest_str));
+        } else {
+            json_object_array_add(filedigests, json_object_new_string(""));
+        }
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -682,6 +755,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedevices);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILEDIGESTS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDIGESTS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedigests);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -701,6 +781,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEGROUPNAME:
         case RPMTAG_FILERDEVS:
         case RPMTAG_FILEDEVICES:
+        case RPMTAG_FILEDIGESTS:
             return true;
     }
 
