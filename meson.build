@@ -72,8 +72,11 @@ endif
 libzstd = dependency('libzstd', required : true)
 rpm = dependency('rpm', required : true)
 
-if rpm.version().version_compare('<4.15.0')
-    add_project_arguments('-D_HAVE_OLD_RPM_API', language : ['c', 'cpp'])
+# See commit f14557cd521ddf95994aa6518f006eeb3fc58d87 in
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains f14557cd521ddf95994aa6518f006eeb3fc58d87)
+if rpm.version().version_compare('<=6.0.0')
+    add_project_arguments('-D_USE_RPMTAG_PAYLOADDIGESTALT', language : ['c', 'cpp'])
 endif
 
 openssl = dependency('openssl', required : true)
