@@ -933,14 +933,11 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
     unsigned char *digest = NULL;
     char *buf = NULL;
     struct json_object *tags = NULL;
+#ifdef _USE_RPMTAG_5097
     struct json_object *entry = NULL;
     struct json_object *tag = NULL;
     struct json_object *value = NULL;
     size_t j = 0;
-#ifdef _USE_RPMTAG_PAYLOADDIGESTALT
-    rpmTag digesttag = RPMTAG_PAYLOADDIGESTALT;
-#else
-    rpmTag digesttag = RPMTAG_PAYLOADSHA256ALT;
 #endif
 
     if (header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
@@ -967,12 +964,13 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
         sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
     }
 
+#ifdef _USE_RPMTAG_5097
     /* find and update the payload digest tag */
     for (j = 0; j < json_object_array_length(tags); j++) {
         entry = json_object_array_get_idx(tags, j);
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
-            if (rpmTagGetValue(json_object_get_string(tag)) == digesttag) {
+            if (rpmTagGetValue(json_object_get_string(tag)) == 5097) {
                 if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
                     /* Update the first element of the array */
                     if (json_object_get_type(value) == json_type_array && json_object_array_length(value) > 0) {
@@ -984,6 +982,7 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
             }
         }
     }
+#endif
 
     free(digest);
     free(buf);

@@ -75,8 +75,13 @@ rpm = dependency('rpm', required : true)
 # See commit f14557cd521ddf95994aa6518f006eeb3fc58d87 in
 # https://github.com/rpm-software-management/rpm
 # (git tag --contains f14557cd521ddf95994aa6518f006eeb3fc58d87)
-if rpm.version().version_compare('>=4.16.0') and rpm.version().version_compare('<=6.0.0')
-    add_project_arguments('-D_USE_RPMTAG_PAYLOADDIGESTALT', language : ['c', 'cpp'])
+#
+# The spelling changed for tag 5097 at version 6.0.0, but that's fine.
+# We will just use the integer in our code.  It was
+# RPMTAG_PAYLOADDIGESTALT then became RPMTAG_PAYLOADSHA256ALT, but it
+# will always be 5097 to me.
+if rpm.version().version_compare('>=4.16.0')
+    add_project_arguments('-D_USE_RPMTAG_5097', language : ['c', 'cpp'])
 endif
 
 # See commits:
