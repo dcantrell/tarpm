@@ -75,7 +75,7 @@ rpm = dependency('rpm', required : true)
 # See commit f14557cd521ddf95994aa6518f006eeb3fc58d87 in
 # https://github.com/rpm-software-management/rpm
 # (git tag --contains f14557cd521ddf95994aa6518f006eeb3fc58d87)
-if rpm.version().version_compare('<=6.0.0')
+if rpm.version().version_compare('>=4.16.0') and rpm.version().version_compare('<=6.0.0')
     add_project_arguments('-D_USE_RPMTAG_PAYLOADDIGESTALT', language : ['c', 'cpp'])
 endif
 
@@ -88,6 +88,14 @@ endif
 if rpm.version().version_compare('>=4.19.0')
     add_project_arguments('-D_HAS_UNTRANS_TAG', language : ['c', 'cpp'])
     add_project_arguments('-D_HAS_SPEC_TAG', language : ['c', 'cpp'])
+endif
+
+# See commit:
+#     b4a3f6c624edb0175855a925f3e0c38e907cb8a9
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains b4a3f6c624edb0175855a925f3e0c38e907cb8a9)
+if rpm.version().version_compare('>=4.16.0')
+    add_project_arguments('-D_HAS_META_TAG', language : ['c', 'cpp'])
 endif
 
 openssl = dependency('openssl', required : true)

@@ -172,9 +172,11 @@ generate_sense_flags(uint32_t flags)
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_MISSINGOK));
     }
 
+#ifdef _HAS_META_TAG
     if (flags & RPMSENSE_META) {
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_META));
     }
+#endif
 
     if (flags & RPMSENSE_TRIGGERIN) {
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_TRIGGERIN));
@@ -262,8 +264,10 @@ read_sense_flags(struct json_object *sense_flags)
             flags |= RPMSENSE_CONFIG;
         } else if (!strcmp(s, SENSE_FLAG_MISSINGOK)) {
             flags |= RPMSENSE_MISSINGOK;
+#ifdef _HAS_META_TAG
         } else if (!strcmp(s, SENSE_FLAG_META)) {
             flags |= RPMSENSE_META;
+#endif
         } else if (!strcmp(s, SENSE_FLAG_TRIGGERIN)) {
             flags |= RPMSENSE_TRIGGERIN;
         } else if (!strcmp(s, SENSE_FLAG_TRIGGERUN)) {
