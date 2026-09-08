@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <CUnit/Basic.h>
 #include "tarpm.h"
@@ -26,6 +29,8 @@ test_xread(void)
 {
     int fd = -1;
     char buf[47];
+    char tmpfile[] = "/tmp/tarpm-test-xread-XXXXXX";
+    char *expected = "test content\n";
 
     /* basic read check */
     fd = open("/proc/uptime", O_RDONLY);
@@ -47,13 +52,29 @@ test_xread(void)
     fd = close(fd);
     TARPM_ASSERT_FALSE(fd == -1);
 
-    /* read larger buffer (only read what's available) */
-    fd = open("/proc/uptime", O_RDONLY);
+    /* create a temporary test file of a known size */
+    fd = mkstemp(tmpfile);
+    TARPM_ASSERT_FALSE(fd == -1);
+    TARPM_ASSERT_TRUE(write(fd, expected, strlen(expected)) == (ssize_t) strlen(expected));
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* reading exactly what is available should succeed */
+    fd = open(tmpfile, O_RDONLY);
     TARPM_ASSERT_FALSE(fd == -1);
     memset(buf, 0, sizeof(buf));
-    TARPM_ASSERT_TRUE(xread(fd, &buf, 20));
-    fd = close(fd);
+    TARPM_ASSERT_TRUE(xread(fd, &buf, strlen(expected)));
+    TARPM_ASSERT_STRING_EQUAL(buf, expected);
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* reading more than is available should fail */
+    fd = open(tmpfile, O_RDONLY);
     TARPM_ASSERT_FALSE(fd == -1);
+    memset(buf, 0, sizeof(buf));
+    TARPM_ASSERT_FALSE(xread(fd, &buf, sizeof(buf)));
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* clean up */
+    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
 
     return;
 }
