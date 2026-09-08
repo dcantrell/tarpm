@@ -61,6 +61,34 @@
 #define RPM_DEPENDENCY_COMPARISON_DESC "comparison"
 #define RPM_DEPENDENCY_VERSION_DESC    "version"
 
+/* keys used by the entries in the "files" array */
+#define RPM_FILE_PATH_DESC             "path"
+#define RPM_FILE_SIZE_DESC             "size"
+#define RPM_FILE_MODE_DESC             "mode"
+#define RPM_FILE_MTIME_DESC            "mtime"
+#define RPM_FILE_USER_DESC             "user"
+#define RPM_FILE_GROUP_DESC            "group"
+#define RPM_FILE_RDEV_DESC             "rdev"
+#define RPM_FILE_DEVICE_DESC           "device"
+#define RPM_FILE_DIGEST_DESC           "digest"
+#define RPM_FILE_LINKTO_DESC           "linkto"
+#define RPM_FILE_INODE_DESC            "inode"
+#define RPM_FILE_CLASS_DESC            "class"
+#define RPM_FILE_LANGS_DESC            "langs"
+#define RPM_FILE_COLORS_DESC           "colors"
+
+/* values used by the entries in the "files" array */
+#define RPM_FILE_DEFAULT_USER          "root"
+#define RPM_FILE_DEFAULT_GROUP         "root"
+#define RPM_FILE_CURRENT_DIRECTORY     "./"
+#define RPM_FILE_LANG_SEPARATOR        "|"
+#define RPM_FILE_MODE_FORMAT           "%04o"
+#define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"
+
+/* names used for the file color bits in the "files" array */
+#define RPM_FILE_COLOR_ELF32           "Elf32"
+#define RPM_FILE_COLOR_ELF64           "Elf64"
+
 /* comparison operator string constants */
 #define COMPARISON_LE                  "<="
 #define COMPARISON_GE                  ">="

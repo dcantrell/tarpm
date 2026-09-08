@@ -16,10 +16,6 @@
 
 #include "tarpm.h"
 
-/* Names used for the file color bits in the "files" array */
-#define FILE_COLOR_ELF32 "Elf32"
-#define FILE_COLOR_ELF64 "Elf64"
-
 /*
  * Holds the raw file lists read out of the header while
  * generate_files() restructures them in to the "files" JSON array.
@@ -100,12 +96,12 @@ color_names(uint32_t color)
     rest = color;
 
     if (color & RPMFC_ELF32) {
-        json_object_array_add(names, json_object_new_string(FILE_COLOR_ELF32));
+        json_object_array_add(names, json_object_new_string(RPM_FILE_COLOR_ELF32));
         rest &= ~((uint32_t) RPMFC_ELF32);
     }
 
     if (color & RPMFC_ELF64) {
-        json_object_array_add(names, json_object_new_string(FILE_COLOR_ELF64));
+        json_object_array_add(names, json_object_new_string(RPM_FILE_COLOR_ELF64));
         rest &= ~((uint32_t) RPMFC_ELF64);
     }
 
@@ -146,9 +142,9 @@ color_value(struct json_object *names)
             continue;
         }
 
-        if (!strcmp(s, FILE_COLOR_ELF32)) {
+        if (!strcmp(s, RPM_FILE_COLOR_ELF32)) {
             color |= RPMFC_ELF32;
-        } else if (!strcmp(s, FILE_COLOR_ELF64)) {
+        } else if (!strcmp(s, RPM_FILE_COLOR_ELF64)) {
             color |= RPMFC_ELF64;
         } else {
             errno = 0;
@@ -406,7 +402,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 
             /* Create file entry with path */
             file = json_object_new_object();
-            json_object_object_add(file, "path", json_object_new_string(path));
+            json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
 
             /*
              * Add size for regular files and symlinks.  RPM stores the
@@ -416,14 +412,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
              */
             if (filesize != NULL && filemode != NULL) {
                 if (S_ISREG(filemode->value) || S_ISLNK(filemode->value)) {
-                    json_object_object_add(file, "size", json_object_new_int64(filesize->value));
+                    json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64(filesize->value));
                 }
             }
 
             /* Add mode if available (as octal string of permission bits only) */
             if (filemode != NULL) {
-                snprintf(mode_str, sizeof(mode_str), "%04o", filemode->value & ALLPERMS);
-                json_object_object_add(file, "mode", json_object_new_string(mode_str));
+                snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, filemode->value & ALLPERMS);
+                json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
             }
 
             /* Add mtime if available (as ISO 8601 timestamp) */
@@ -432,31 +428,31 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 tm_info = gmtime(&mtime);
 
                 if (tm_info != NULL) {
-                    strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
-                    json_object_object_add(file, "mtime", json_object_new_string(mtime_str));
+                    strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+                    json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
                 }
             }
 
             /* Add user if available */
             if (username != NULL) {
-                json_object_object_add(file, "user", json_object_new_string(username->str));
+                json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(username->str));
             }
 
             /* Add group if available */
             if (groupname != NULL) {
-                json_object_object_add(file, "group", json_object_new_string(groupname->str));
+                json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(groupname->str));
             }
 
             /* Add rdev if available (only for device nodes with non-zero values) */
             if (filerdev != NULL && filemode != NULL) {
                 if ((S_ISCHR(filemode->value) || S_ISBLK(filemode->value)) && filerdev->value != 0) {
-                    json_object_object_add(file, "rdev", json_object_new_int(filerdev->value));
+                    json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int(filerdev->value));
                 }
             }
 
             /* Add device if available */
             if (filedevice != NULL) {
-                json_object_object_add(file, "device", json_object_new_int64(filedevice->value));
+                json_object_object_add(file, RPM_FILE_DEVICE_DESC, json_object_new_int64(filedevice->value));
             }
 
             /*
@@ -466,7 +462,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
              * digest is non-empty.
              */
             if (digest != NULL && digest->str[0] != '\0') {
-                json_object_object_add(file, "digest", json_object_new_string(digest->str));
+                json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest->str));
             }
 
             /*
@@ -475,7 +471,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
              * the target is non-empty.
              */
             if (linkto != NULL && linkto->str[0] != '\0') {
-                json_object_object_add(file, "linkto", json_object_new_string(linkto->str));
+                json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(linkto->str));
             }
 
             /*
@@ -484,7 +480,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
              * that share an inode number are hard links of one another.
              */
             if (fileinode != NULL) {
-                json_object_object_add(file, "inode", json_object_new_int(fileinode->value));
+                json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int(fileinode->value));
             }
 
             /*
@@ -497,7 +493,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 classname = str_list_nth(fmd.classdict, fileclass->value);
 
                 if (classname != NULL && classname[0] != '\0') {
-                    json_object_object_add(file, "class", json_object_new_string(classname));
+                    json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(classname));
                 }
             }
 
@@ -508,7 +504,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
              * Entries with no language carry an empty string.
              */
             if (filelang != NULL && filelang->str[0] != '\0') {
-                langs = strsplit(filelang->str, "|");
+                langs = strsplit(filelang->str, RPM_FILE_LANG_SEPARATOR);
 
                 if (langs != NULL) {
                     langs_array = json_object_new_array();
@@ -517,7 +513,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                         json_object_array_add(langs_array, json_object_new_string(lang->str));
                     }
 
-                    json_object_object_add(file, "langs", langs_array);
+                    json_object_object_add(file, RPM_FILE_LANGS_DESC, langs_array);
                     list_free(langs, free);
                     langs = NULL;
                 }
@@ -533,7 +529,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 colors_array = color_names(filecolor->value);
 
                 if (colors_array != NULL) {
-                    json_object_object_add(file, "colors", colors_array);
+                    json_object_object_add(file, RPM_FILE_COLORS_DESC, colors_array);
                     colors_array = NULL;
                 }
             }
@@ -687,7 +683,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     for (i = 0; i < count; i++) {
         file = json_object_array_get_idx(files, i);
 
-        if (!json_object_object_get_ex(file, "path", &path_obj)) {
+        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &path_obj)) {
             continue;
         }
 
@@ -698,7 +694,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         if (separator == NULL) {
             /* No directory separator, use current directory */
-            dirname = "./";
+            dirname = RPM_FILE_CURRENT_DIRECTORY;
             basename = path;
         } else {
             /* Split into dirname and basename */
@@ -735,7 +731,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         json_object_array_add(dirindexes, json_object_new_int(dirindex));
 
         /* Add size (regular files have size, non-files get 0) */
-        if (json_object_object_get_ex(file, "size", &size_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, &size_obj)) {
             size = json_object_get_int64(size_obj);
         } else {
             size = 0;
@@ -746,7 +742,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         /* Reconstruct full mode from permission bits and actual file type */
         mode = 0;
 
-        if (json_object_object_get_ex(file, "mode", &mode_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_MODE_DESC, &mode_obj)) {
             /* Parse octal permission string */
             mode_str = json_object_get_string(mode_obj);
             perms = (int) strtol(mode_str, NULL, 8);
@@ -763,7 +759,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
                 } else {
                     /* File doesn't exist in payload (e.g., 0-byte file or directory) */
                     /* Use heuristic: if entry has "size" field, it's a regular file */
-                    if (json_object_object_get_ex(file, "size", NULL)) {
+                    if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
                         mode = S_IFREG | (perms & ALLPERMS);
                     } else {
                         /* No size field, assume directory */
@@ -783,11 +779,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         /* Parse mtime from ISO 8601 timestamp string */
         mtime = 0;
 
-        if (json_object_object_get_ex(file, "mtime", &mtime_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_MTIME_DESC, &mtime_obj)) {
             mtime_str = json_object_get_string(mtime_obj);
             memset(&tm_info, 0, sizeof(struct tm));
 
-            if (strptime(mtime_str, "%Y-%m-%dT%H:%M:%SZ", &tm_info) != NULL) {
+            if (strptime(mtime_str, RPM_FILE_MTIME_FORMAT, &tm_info) != NULL) {
                 mtime = timegm(&tm_info);
             }
         }
@@ -797,33 +793,33 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         /* Extract user if available */
         user_str = NULL;
 
-        if (json_object_object_get_ex(file, "user", &user_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_USER_DESC, &user_obj)) {
             user_str = json_object_get_string(user_obj);
         }
 
         if (user_str != NULL) {
             json_object_array_add(fileusernames, json_object_new_string(user_str));
         } else {
-            json_object_array_add(fileusernames, json_object_new_string("root"));
+            json_object_array_add(fileusernames, json_object_new_string(RPM_FILE_DEFAULT_USER));
         }
 
         /* Extract group if available */
         group_str = NULL;
 
-        if (json_object_object_get_ex(file, "group", &group_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_GROUP_DESC, &group_obj)) {
             group_str = json_object_get_string(group_obj);
         }
 
         if (group_str != NULL) {
             json_object_array_add(filegroupnames, json_object_new_string(group_str));
         } else {
-            json_object_array_add(filegroupnames, json_object_new_string("root"));
+            json_object_array_add(filegroupnames, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
         }
 
         /* Extract rdev if available */
         rdev = 0;
 
-        if (json_object_object_get_ex(file, "rdev", &rdev_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_RDEV_DESC, &rdev_obj)) {
             rdev = json_object_get_int(rdev_obj);
         }
 
@@ -832,7 +828,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         /* Extract device if available */
         device = 0;
 
-        if (json_object_object_get_ex(file, "device", &device_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_DEVICE_DESC, &device_obj)) {
             device = json_object_get_int64(device_obj);
         }
 
@@ -845,7 +841,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         digest_str = NULL;
 
-        if (json_object_object_get_ex(file, "digest", &digest_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_DIGEST_DESC, &digest_obj)) {
             digest_str = json_object_get_string(digest_obj);
         }
 
@@ -862,7 +858,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         linkto_str = NULL;
 
-        if (json_object_object_get_ex(file, "linkto", &linkto_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, &linkto_obj)) {
             linkto_str = json_object_get_string(linkto_obj);
         }
 
@@ -878,7 +874,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * by RPM.  When absent, fall back to a sequential number (RPM
          * numbers inodes starting at 1) so every entry maps to one.
          */
-        if (json_object_object_get_ex(file, "inode", &inode_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_INODE_DESC, &inode_obj)) {
             inode = json_object_get_int(inode_obj);
         } else {
             inode = (int) (i + 1);
@@ -894,7 +890,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         class_str = "";
 
-        if (json_object_object_get_ex(file, "class", &class_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, &class_obj)) {
             class_str = json_object_get_string(class_obj);
         }
 
@@ -926,14 +922,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         langs_str = NULL;
 
-        if (json_object_object_get_ex(file, "langs", &langs_obj) && json_object_get_type(langs_obj) == json_type_array) {
+        if (json_object_object_get_ex(file, RPM_FILE_LANGS_DESC, &langs_obj) && json_object_get_type(langs_obj) == json_type_array) {
             nlangs = json_object_array_length(langs_obj);
 
             for (j = 0; j < nlangs; j++) {
                 langs = list_add(langs, json_object_get_string(json_object_array_get_idx(langs_obj, j)));
             }
 
-            langs_str = list_to_string(langs, "|");
+            langs_str = list_to_string(langs, RPM_FILE_LANG_SEPARATOR);
             list_free(langs, free);
             langs = NULL;
         }
@@ -954,7 +950,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         color = 0;
 
-        if (json_object_object_get_ex(file, "colors", &colors_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_COLORS_DESC, &colors_obj)) {
             color = color_value(colors_obj);
         }
 
