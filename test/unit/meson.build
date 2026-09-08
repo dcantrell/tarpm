@@ -371,6 +371,49 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_files = executable(
+        'test-files',
+        [ 'test-files.c',
+          'test-main.c',
+          files_src,
+          listfuncs_src,
+          strfuncs_src,
+          joinpath_src,
+          tags_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, rpm, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_create = executable(
+        'test-create',
+        [ 'test-create.c',
+          'test-main.c',
+          changelog_src,
+          create_src,
+          deps_src,
+          digest_src,
+          entry_src,
+          files_src,
+          header_src,
+          joinpath_src,
+          json_src,
+          lead_src,
+          listfuncs_src,
+          read_src,
+          readfile_src,
+          strfuncs_src,
+          tags_src,
+          xalloc_src,
+          xread_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, rpm, jsonc, libarchive, libzstd, openssl ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     # Unit tests
     test('test-strfuncs', test_strfuncs)
     test('test-header', test_header)
@@ -395,6 +438,8 @@ if cunit.found()
     test('test-list', test_list)
     test('test-changelog', test_changelog)
     test('test-deps', test_deps)
+    test('test-files', test_files)
+    test('test-create', test_create)
 else
     warning('CUnit not found, skipping unit test suite')
 endif

@@ -4,6 +4,9 @@
  */
 
 #include <CUnit/Basic.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <rpm/rpmtag.h>
 #include <json.h>
@@ -265,6 +268,68 @@ test_create_json_entry_has_required_fields(void)
     return;
 }
 
+void
+test_read_json_file_missing(void)
+{
+    /* a NULL input file returns nothing */
+    TARPM_ASSERT_PTR_NULL(read_json_file(NULL));
+
+    /* a file that does not exist returns nothing */
+    TARPM_ASSERT_PTR_NULL(read_json_file("/nonexistent/tarpm-test-read-json-file.json"));
+
+    return;
+}
+
+void
+test_read_json_file_invalid(void)
+{
+    int fd = -1;
+    char tmpfile[] = "/tmp/tarpm-test-json-XXXXXX";
+    const char *contents = "this is not json\n";
+
+    /* write out a file that does not hold JSON data */
+    fd = mkstemp(tmpfile);
+    TARPM_ASSERT_FALSE(fd == -1);
+    TARPM_ASSERT_TRUE(write(fd, contents, strlen(contents)) == (ssize_t) strlen(contents));
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* invalid JSON data returns nothing */
+    TARPM_ASSERT_PTR_NULL(read_json_file(tmpfile));
+
+    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
+
+    return;
+}
+
+void
+test_read_json_file_valid(void)
+{
+    int fd = -1;
+    char tmpfile[] = "/tmp/tarpm-test-json-XXXXXX";
+    const char *contents = "{ \"name\": \"testpkg\", \"epoch\": 47 }";
+    struct json_object *data = NULL;
+    struct json_object *value = NULL;
+
+    /* write out a file holding known JSON data */
+    fd = mkstemp(tmpfile);
+    TARPM_ASSERT_FALSE(fd == -1);
+    TARPM_ASSERT_TRUE(write(fd, contents, strlen(contents)) == (ssize_t) strlen(contents));
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* the data read back should match what was written */
+    data = read_json_file(tmpfile);
+    TARPM_ASSERT_PTR_NOT_NULL(data);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "name", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "testpkg");
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "epoch", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int(value), 47);
+
+    json_object_put(data);
+    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -286,7 +351,10 @@ get_suite(void)
         CU_add_test(pSuite, "test create_json_entry() with signature digest tags", test_create_json_entry_signature_digest_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature size tags", test_create_json_entry_signature_size_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature crypto tags", test_create_json_entry_signature_crypto_tags) == NULL ||
-        CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL) {
+        CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL ||
+        CU_add_test(pSuite, "test read_json_file() with a missing file", test_read_json_file_missing) == NULL ||
+        CU_add_test(pSuite, "test read_json_file() with invalid JSON", test_read_json_file_invalid) == NULL ||
+        CU_add_test(pSuite, "test read_json_file() with valid JSON", test_read_json_file_valid) == NULL) {
         return NULL;
     }
 

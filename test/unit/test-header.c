@@ -273,6 +273,84 @@ test_get_trailer_data_valid(void)
     return;
 }
 
+void
+test_create_header_invalid(void)
+{
+    struct json_object *data = NULL;
+    struct rpmhdr *hdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+    int r = 0;
+
+    /* NULL data returns an error */
+    r = create_header(NULL, &hdr, &hdrinfo, NULL, NULL, false);
+    TARPM_ASSERT_EQUAL(r, -1);
+
+    /* data with no tags array returns an error */
+    data = json_object_new_object();
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
+    TARPM_ASSERT_EQUAL(r, -1);
+    json_object_put(data);
+
+    /* tags that are not an array returns an error */
+    data = json_object_new_object();
+    json_object_object_add(data, "tags", json_object_new_string("not an array"));
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
+    TARPM_ASSERT_EQUAL(r, -1);
+    json_object_put(data);
+
+    return;
+}
+
+void
+test_create_header_valid(void)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct rpmhdr *hdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+    int r = 0;
+
+    /* a header with two simple tags */
+    data = json_object_new_object();
+    tags = json_object_new_array();
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    json_object_object_add(entry, "type", json_object_new_string("string"));
+    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Version"));
+    json_object_object_add(entry, "type", json_object_new_string("string"));
+    json_object_object_add(entry, "value", json_object_new_string("1.0"));
+    json_object_array_add(tags, entry);
+
+    json_object_object_add(data, "tags", tags);
+
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
+    TARPM_ASSERT_EQUAL(r, 0);
+    TARPM_ASSERT_PTR_NOT_NULL(hdr);
+    TARPM_ASSERT_PTR_NOT_NULL(hdrinfo);
+
+    /* the generated header should be valid and hold both tags */
+    TARPM_ASSERT_EQUAL(ntohl(hdr->magic), RPM_SIGNATURE_MAGIC);
+    TARPM_ASSERT_EQUAL(ntohl(hdr->reserved), RPM_SIGNATURE_RESERVED);
+    TARPM_ASSERT_EQUAL(ntohl(hdr->nentries), 2);
+
+    /* the data area holds both strings and their trailing NUL bytes */
+    TARPM_ASSERT_EQUAL(ntohl(hdr->nbytes), strlen("testpkg") + strlen("1.0") + 2);
+
+    free(hdrinfo->estart);
+    free(hdrinfo->datastart);
+    free(hdrinfo);
+    free(hdr);
+    json_object_put(data);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -295,7 +373,9 @@ get_suite(void)
         CU_add_test(pSuite, "test get_trailer_data() with no trailer", test_get_trailer_data_no_trailer) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with no value", test_get_trailer_data_no_value) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with invalid size", test_get_trailer_data_invalid_size) == NULL ||
-        CU_add_test(pSuite, "test get_trailer_data() with valid data", test_get_trailer_data_valid) == NULL) {
+        CU_add_test(pSuite, "test get_trailer_data() with valid data", test_get_trailer_data_valid) == NULL ||
+        CU_add_test(pSuite, "test create_header() with invalid data", test_create_header_invalid) == NULL ||
+        CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL) {
         return NULL;
     }
 
