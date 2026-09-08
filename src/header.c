@@ -18,16 +18,26 @@ static rpmTagType
 get_entry_type(struct json_object *entry)
 {
     struct json_object *key = NULL;
+    rpmTagType type = RPM_NULL_TYPE;
 
     if (entry == NULL) {
         return RPM_NULL_TYPE;
     }
 
     if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &key)) {
-        return tag_type(key);
+        type = tag_type(key);
     }
 
-    return RPM_NULL_TYPE;
+    /*
+     * The file digest algorithm is written by name in header.json, so
+     * it carries the string type there, but it is an int32 in the
+     * header itself.
+     */
+    if (type == RPM_STRING_TYPE && json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key) && !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO))) {
+        type = RPM_INT32_TYPE;
+    }
+
+    return type;
 }
 
 /* Helper to check if a tag is read-only */
@@ -264,7 +274,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
             warnx(_("*** invalid header tag entry, missing 'type'"));
             r = -1;
         } else {
-            v->entry->type = tag_type(key);
+            v->entry->type = get_entry_type(entry);
         }
 
         /* calculate offset */
@@ -371,7 +381,14 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                         }
                     } else {
                         v->entry->count = 1;
-                        i32 = htonl((uint32_t) json_object_get_int64(key));
+
+                        if (v->entry->tag == RPMTAG_FILEDIGESTALGO && json_object_get_type(key) == json_type_string) {
+                            /* the digest algorithm is recorded by name */
+                            i32 = htonl(digest_algo(json_object_get_string(key)));
+                        } else {
+                            i32 = htonl((uint32_t) json_object_get_int64(key));
+                        }
+
                         memcpy(datapos, &i32, sizeof(i32));
                         datapos += sizeof(i32);
                         offset += sizeof(i32);

@@ -192,7 +192,14 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);
         }
     } else if (datatype == RPM_INT32_TYPE) {
-        if (count == 1) {
+        if (tag == RPMTAG_FILEDIGESTALGO && count == 1) {
+            /* record the digest algorithm by name rather than by number */
+            memcpy(&dt.i32, data, sizeof(dt.i32));
+            dt.i32 = (int32_t) ntohl(dt.i32);
+            s = strdigestalgo((uint32_t) dt.i32);
+            json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
+            free(s);
+        } else if (count == 1) {
             memcpy(&dt.i32, data, sizeof(dt.i32));
             dt.i32 = (int32_t) ntohl(dt.i32);
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_int(dt.i32));

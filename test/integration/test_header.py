@@ -155,8 +155,8 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(int(tag["value"]) == 9)
                     elif t == "Filedigestalgo":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 8)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == "sha256")
                     elif t == "Encoding":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "utf-8")
@@ -396,8 +396,8 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
                     elif t == "Filedigestalgo":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 8)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == "sha256")
                     elif t == "Encoding":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "utf-8")

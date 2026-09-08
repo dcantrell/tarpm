@@ -264,6 +264,7 @@ if cunit.found()
         [ 'test-entry.c',
           'test-main.c',
           entry_src,
+          tags_src,
           xalloc_src,
         ],
         include_directories : inc,

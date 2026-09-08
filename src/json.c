@@ -82,6 +82,15 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 
     json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tagname));
 
+    /*
+     * The file digest algorithm is recorded by name in header.json,
+     * so it is a string there even though it is an int32 in the
+     * header itself.
+     */
+    if (!signature && ((rpmTagVal) tag) == RPMTAG_FILEDIGESTALGO && datatype == RPM_INT32_TYPE) {
+        datatype = RPM_STRING_TYPE;
+    }
+
     xasprintf(&tagtype, "%s", strtagtype(datatype));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 

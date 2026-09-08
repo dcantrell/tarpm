@@ -97,6 +97,8 @@ int write_json_file(struct json_object *data, const char *output_dir, const char
 
 /* tags.c */
 const char *strtagtype(rpmTagType type);
+char *strdigestalgo(uint32_t algo);
+uint32_t digest_algo(const char *name);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);

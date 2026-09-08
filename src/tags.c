@@ -8,8 +8,33 @@
 #include <string.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
+#include <rpm/rpmcrypto.h>
 
 #include "tarpm.h"
+
+/*
+ * Known file digest algorithms.  The names are the RPM_HASH_*
+ * constants from librpm (include/rpm/rpmcrypto.h) turned in to
+ * human-readable strings.
+ */
+static struct {
+    uint32_t algo;
+    const char *name;
+} digest_algos[] = {
+    { RPM_HASH_MD5, "md5" },
+    { RPM_HASH_SHA1, "sha1" },
+    { RPM_HASH_RIPEMD160, "ripemd160" },
+    { RPM_HASH_MD2, "md2" },
+    { RPM_HASH_TIGER192, "tiger192" },
+    { RPM_HASH_HAVAL_5_160, "haval-5-160" },
+    { RPM_HASH_SHA256, "sha256" },
+    { RPM_HASH_SHA384, "sha384" },
+    { RPM_HASH_SHA512, "sha512" },
+    { RPM_HASH_SHA224, "sha224" },
+    { RPM_HASH_SHA3_256, "sha3-256" },
+    { RPM_HASH_SHA3_512, "sha3-512" },
+    { 0, NULL }
+};
 
 /*
  * Convert tag type to symbolic type name.  Caller must not free the
@@ -85,6 +110,68 @@ tag_type(struct json_object *tag)
     } else {
         return RPM_NULL_TYPE;
     }
+}
+
+/*
+ * Convert a file digest algorithm number to its name.  Algorithms
+ * that have no known name are returned as the number itself in string
+ * form.  Caller must free the string returned.
+ */
+char *
+strdigestalgo(uint32_t algo)
+{
+    int i = 0;
+    char *s = NULL;
+
+    for (i = 0; digest_algos[i].name != NULL; i++) {
+        if (digest_algos[i].algo == algo) {
+            s = strdup(digest_algos[i].name);
+
+            if (s == NULL) {
+                err(EXIT_FAILURE, "strdup");
+            }
+
+            return s;
+        }
+    }
+
+    /* no name for this algorithm, so use the number */
+    xasprintf(&s, "%u", algo);
+    return s;
+}
+
+/*
+ * Convert a file digest algorithm name back to its number.  Names
+ * that are not known are read as a number, which is how
+ * strdigestalgo() writes out algorithms it has no name for.  Returns
+ * zero if the name is neither known nor a number.
+ */
+uint32_t
+digest_algo(const char *name)
+{
+    int i = 0;
+    char *end = NULL;
+    unsigned long value = 0;
+
+    if (name == NULL) {
+        return 0;
+    }
+
+    for (i = 0; digest_algos[i].name != NULL; i++) {
+        if (!strcmp(digest_algos[i].name, name)) {
+            return digest_algos[i].algo;
+        }
+    }
+
+    errno = 0;
+    value = strtoul(name, &end, 10);
+
+    if (errno != 0 || end == name || *end != '\0') {
+        warnx(_("*** unknown file digest algorithm: %s"), name);
+        return 0;
+    }
+
+    return (uint32_t) value;
 }
 
 /*
