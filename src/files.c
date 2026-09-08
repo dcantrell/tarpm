@@ -36,6 +36,7 @@ struct file_metadata {
     uint32_list_t *fileinodes;
     uint32_list_t *fileclass;
     str_list_t *classdict;
+    str_list_t *filelangs;
 };
 
 /*
@@ -57,6 +58,7 @@ free_file_metadata(struct file_metadata *fmd)
     list_free(fmd->filedigests, free);
     list_free(fmd->filelinktos, free);
     list_free(fmd->classdict, free);
+    list_free(fmd->filelangs, free);
     uint32_list_free(fmd->dirindexes);
     uint32_list_free(fmd->filesizes);
     uint32_list_free(fmd->filemodes);
@@ -99,6 +101,10 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     str_entry_t *groupname = NULL;
     str_entry_t *digest = NULL;
     str_entry_t *linkto = NULL;
+    str_entry_t *filelang = NULL;
+    str_entry_t *lang = NULL;
+    str_list_t *langs = NULL;
+    struct json_object *langs_array = NULL;
     uint32_entry_t *dirindex = NULL;
     uint32_entry_t *filesize = NULL;
     uint32_entry_t *filemode = NULL;
@@ -240,6 +246,13 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 fmd.classdict = list_add(fmd.classdict, (char *) p);
                 p += strlen((char *) p) + 1;
             }
+        } else if (tag == RPMTAG_FILELANGS && datatype == RPM_STRING_ARRAY_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                fmd.filelangs = list_add(fmd.filelangs, (char *) p);
+                p += strlen((char *) p) + 1;
+            }
         }
     }
 
@@ -264,6 +277,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     groupname = first_str(fmd.filegroupnames);
     digest = first_str(fmd.filedigests);
     linkto = first_str(fmd.filelinktos);
+    filelang = first_str(fmd.filelangs);
     dirindex = first_uint32(fmd.dirindexes);
     filesize = first_uint32(fmd.filesizes);
     filemode = first_uint32(fmd.filemodes);
@@ -380,6 +394,28 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 }
             }
 
+            /*
+             * Add langs for entries that carry one.  RPM stores the
+             * languages of a file as a single string with each language
+             * separated by a "|", so split that in to an array here.
+             * Entries with no language carry an empty string.
+             */
+            if (filelang != NULL && filelang->str[0] != '\0') {
+                langs = strsplit(filelang->str, "|");
+
+                if (langs != NULL) {
+                    langs_array = json_object_new_array();
+
+                    TAILQ_FOREACH(lang, langs, items) {
+                        json_object_array_add(langs_array, json_object_new_string(lang->str));
+                    }
+
+                    json_object_object_add(file, "langs", langs_array);
+                    list_free(langs, free);
+                    langs = NULL;
+                }
+            }
+
             json_object_array_add(files, file);
 
             free(path);
@@ -391,6 +427,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         groupname = next_str(groupname);
         digest = next_str(digest);
         linkto = next_str(linkto);
+        filelang = next_str(filelang);
         dirindex = next_uint32(dirindex);
         filesize = next_uint32(filesize);
         filemode = next_uint32(filemode);
@@ -432,6 +469,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *linkto_obj = NULL;
     struct json_object *inode_obj = NULL;
     struct json_object *class_obj = NULL;
+    struct json_object *langs_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -447,7 +485,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *fileinodes = NULL;
     struct json_object *fileclass = NULL;
     struct json_object *classdict = NULL;
+    struct json_object *filelangs = NULL;
     struct json_object *tag = NULL;
+    str_list_t *langs = NULL;
+    char *langs_str = NULL;
+    size_t nlangs = 0;
     const char *path = NULL;
     const char *basename = NULL;
     const char *dirname = NULL;
@@ -512,6 +554,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     fileinodes = json_object_new_array();
     fileclass = json_object_new_array();
     classdict = json_object_new_array();
+    filelangs = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -747,6 +790,35 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(fileclass, json_object_new_int(classindex));
 
+        /*
+         * Extract langs if available.  The "langs" value is an array of
+         * language strings which RPM stores as a single string with each
+         * language separated by a "|".  Entries without a "langs" key
+         * carry an empty string so the array stays parallel to the file
+         * list.
+         */
+        langs_str = NULL;
+
+        if (json_object_object_get_ex(file, "langs", &langs_obj) && json_object_get_type(langs_obj) == json_type_array) {
+            nlangs = json_object_array_length(langs_obj);
+
+            for (j = 0; j < nlangs; j++) {
+                langs = list_add(langs, json_object_get_string(json_object_array_get_idx(langs_obj, j)));
+            }
+
+            langs_str = list_to_string(langs, "|");
+            list_free(langs, free);
+            langs = NULL;
+        }
+
+        if (langs_str != NULL) {
+            json_object_array_add(filelangs, json_object_new_string(langs_str));
+            free(langs_str);
+            langs_str = NULL;
+        } else {
+            json_object_array_add(filelangs, json_object_new_string(""));
+        }
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -873,6 +945,15 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, classdict);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILELANGS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILELANGS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelangs);
+    json_object_array_add(tags, tag);
+
+    return;
 }
 
 /*
@@ -897,6 +978,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEINODES:
         case RPMTAG_FILECLASS:
         case RPMTAG_CLASSDICT:
+        case RPMTAG_FILELANGS:
             return true;
     }
 
