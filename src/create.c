@@ -68,6 +68,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     uint8_t padding[8] = {0};
     uint8_t *trailer_data = NULL;
     size_t trailer_size = 0;
+    int32_t trailer_offset = 0;
     int r = 0;
 
     if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
@@ -99,6 +100,19 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     if (has_trailer(nentries, hdrinfo->estart)) {
         n -= 16;
         r = get_trailer_data(data, &trailer_data, &trailer_size);
+
+        /*
+         * The region trailer records the size of the index entries it
+         * covers as a negative offset.  The trailer read from the JSON
+         * still describes the original header, so recompute the offset
+         * from the number of index entries actually written out (which
+         * excludes any read-only tags, such as the signatures on a
+         * signed package).
+         */
+        if (r == 0 && trailer_size == 16) {
+            trailer_offset = htonl(-((int32_t) (nentries * sizeof(struct rpmhdrentry))));
+            memcpy(trailer_data + (2 * sizeof(int32_t)), &trailer_offset, sizeof(trailer_offset));
+        }
     }
 
     if (fwrite(hdrinfo->datastart, 1, n, rpm) != n) {
