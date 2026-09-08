@@ -23,6 +23,7 @@
  *     1024, 2048                       filesizes   ( 8 bytes)
  *     0100755, 0100755                 filemodes   ( 4 bytes)
  *     "en|de\0\0"                      filelangs   ( 7 bytes)
+ *     2, 0                             filecolors  ( 8 bytes)
  */
 #define DIRNAMES_OFFSET    0
 #define BASENAMES_OFFSET   10
@@ -30,7 +31,9 @@
 #define FILESIZES_OFFSET   25
 #define FILEMODES_OFFSET   33
 #define FILELANGS_OFFSET   37
-#define DATA_SIZE          44
+#define FILECOLORS_OFFSET  44
+#define DATA_SIZE          52
+#define NUM_ENTRIES        7
 
 int
 init_test_files(void)
@@ -64,7 +67,7 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
 
     memset(hdr, 0, sizeof(*hdr));
     memset(hdrinfo, 0, sizeof(*hdrinfo));
-    memset(entries, 0, sizeof(*entries) * 6);
+    memset(entries, 0, sizeof(*entries) * NUM_ENTRIES);
     memset(data, 0, DATA_SIZE);
 
     /* dirnames */
@@ -92,14 +95,21 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
     /* filelangs (the second entry is the empty string) */
     memcpy(data + FILELANGS_OFFSET, "en|de", 6);
 
+    /* filecolors (the second entry has no color) */
+    val32 = htonl(2);
+    memcpy(data + FILECOLORS_OFFSET, &val32, sizeof(val32));
+    val32 = htonl(0);
+    memcpy(data + FILECOLORS_OFFSET + sizeof(val32), &val32, sizeof(val32));
+
     set_entry(&entries[0], RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, DIRNAMES_OFFSET, 1);
     set_entry(&entries[1], RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE, BASENAMES_OFFSET, 2);
     set_entry(&entries[2], RPMTAG_DIRINDEXES, RPM_INT32_TYPE, DIRINDEXES_OFFSET, 2);
     set_entry(&entries[3], RPMTAG_FILESIZES, RPM_INT32_TYPE, FILESIZES_OFFSET, 2);
     set_entry(&entries[4], RPMTAG_FILEMODES, RPM_INT16_TYPE, FILEMODES_OFFSET, 2);
     set_entry(&entries[5], RPMTAG_FILELANGS, RPM_STRING_ARRAY_TYPE, FILELANGS_OFFSET, 2);
+    set_entry(&entries[6], RPMTAG_FILECOLORS, RPM_INT32_TYPE, FILECOLORS_OFFSET, 2);
 
-    hdr->nentries = 6;
+    hdr->nentries = NUM_ENTRIES;
     hdrinfo->estart = entries;
     hdrinfo->datastart = data;
 
@@ -170,7 +180,7 @@ test_generate_files_no_file_list(void)
 {
     struct rpmhdr hdr;
     struct rpmhdrinfo hdrinfo;
-    struct rpmhdrentry entries[6];
+    struct rpmhdrentry entries[NUM_ENTRIES];
     uint8_t data[DATA_SIZE];
 
     build_header(&hdr, &hdrinfo, entries, data);
@@ -189,7 +199,7 @@ test_generate_files_mismatched_lengths(void)
 {
     struct rpmhdr hdr;
     struct rpmhdrinfo hdrinfo;
-    struct rpmhdrentry entries[6];
+    struct rpmhdrentry entries[NUM_ENTRIES];
     uint8_t data[DATA_SIZE];
 
     build_header(&hdr, &hdrinfo, entries, data);
@@ -208,12 +218,13 @@ test_generate_files_valid(void)
 {
     struct rpmhdr hdr;
     struct rpmhdrinfo hdrinfo;
-    struct rpmhdrentry entries[6];
+    struct rpmhdrentry entries[NUM_ENTRIES];
     uint8_t data[DATA_SIZE];
     struct json_object *files = NULL;
     struct json_object *file = NULL;
     struct json_object *value = NULL;
     struct json_object *langs = NULL;
+    struct json_object *colors = NULL;
 
     build_header(&hdr, &hdrinfo, entries, data);
 
@@ -234,6 +245,11 @@ test_generate_files_valid(void)
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(langs, 0)), "en");
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(langs, 1)), "de");
 
+    /* the first file is a 64 bit ELF object */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "colors", &colors));
+    TARPM_ASSERT_EQUAL(json_object_array_length(colors), 1);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(colors, 0)), "Elf64");
+
     /* the second file has an empty language string, so no langs key */
     file = json_object_array_get_idx(files, 1);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "path", &value));
@@ -241,6 +257,9 @@ test_generate_files_valid(void)
     TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "size", &value));
     TARPM_ASSERT_EQUAL(json_object_get_int64(value), 2048);
     TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "langs", &langs));
+
+    /* the second file has no color, so no colors key */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "colors", &colors));
 
     json_object_put(files);
 
@@ -336,8 +355,8 @@ test_add_file_list_tags_file_list(void)
 
     add_file_list_tags(tags, files, NULL, NULL);
 
-    /* all sixteen file list tags should be present */
-    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 16);
+    /* all seventeen file list tags should be present */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 17);
 
     /* basenames come from the last path component */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_BASENAMES));
@@ -482,6 +501,65 @@ test_add_file_list_tags_langs(void)
     return;
 }
 
+/* Test add_file_list_tags() with color values */
+void
+test_add_file_list_tags_colors(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *colors = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a 64 bit ELF object */
+    file = add_file(files, "/usr/bin/ls");
+    colors = json_object_new_array();
+    json_object_array_add(colors, json_object_new_string("Elf64"));
+    json_object_object_add(file, "colors", colors);
+
+    /* a 32 bit ELF object */
+    file = add_file(files, "/usr/bin/cat");
+    colors = json_object_new_array();
+    json_object_array_add(colors, json_object_new_string("Elf32"));
+    json_object_object_add(file, "colors", colors);
+
+    /* an entry carrying both ELF classes */
+    file = add_file(files, "/usr/bin/mv");
+    colors = json_object_new_array();
+    json_object_array_add(colors, json_object_new_string("Elf32"));
+    json_object_array_add(colors, json_object_new_string("Elf64"));
+    json_object_object_add(file, "colors", colors);
+
+    /* an entry with a color that has no name */
+    file = add_file(files, "/usr/bin/cp");
+    colors = json_object_new_array();
+    json_object_array_add(colors, json_object_new_string("4"));
+    json_object_object_add(file, "colors", colors);
+
+    /* an entry with no color at all */
+    add_file(files, "/usr/share/man/man1/ls.1");
+
+    add_file_list_tags(tags, files, NULL, NULL);
+
+    /* names turn back in to bits and missing colors are zero */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILECOLORS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 2);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 4);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
 /* Test is_file_list_tag() with file list tags */
 void
 test_is_file_list_tag_file_list_tags(void)
@@ -502,6 +580,7 @@ test_is_file_list_tag_file_list_tags(void)
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILECLASS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_CLASSDICT));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILELANGS));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILECOLORS));
 
     return;
 }
@@ -545,6 +624,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with a file list", test_add_file_list_tags_file_list) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

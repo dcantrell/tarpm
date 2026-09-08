@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -10,9 +11,14 @@
 #include <sys/stat.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
+#include <rpm/rpmfc.h>
 #include <json.h>
 
 #include "tarpm.h"
+
+/* Names used for the file color bits in the "files" array */
+#define FILE_COLOR_ELF32 "Elf32"
+#define FILE_COLOR_ELF64 "Elf64"
 
 /*
  * Holds the raw file lists read out of the header while
@@ -37,6 +43,7 @@ struct file_metadata {
     uint32_list_t *fileclass;
     str_list_t *classdict;
     str_list_t *filelangs;
+    uint32_list_t *filecolors;
 };
 
 /*
@@ -67,7 +74,96 @@ free_file_metadata(struct file_metadata *fmd)
     uint32_list_free(fmd->filedevices);
     uint32_list_free(fmd->fileinodes);
     uint32_list_free(fmd->fileclass);
+    uint32_list_free(fmd->filecolors);
     return;
+}
+
+/*
+ * Convert a FILECOLORS value in to an array of color name strings.
+ * Bit 0 marks a 32-bit ELF object and bit 1 marks a 64-bit ELF object.
+ * Any remaining bits have no name, so they are carried as a single
+ * decimal number to keep the value intact across a round trip.
+ * Returns NULL for a color of zero, which callers use to omit the key.
+ */
+static struct json_object *
+color_names(uint32_t color)
+{
+    uint32_t rest = 0;
+    char *s = NULL;
+    struct json_object *names = NULL;
+
+    if (color == 0) {
+        return NULL;
+    }
+
+    names = json_object_new_array();
+    rest = color;
+
+    if (color & RPMFC_ELF32) {
+        json_object_array_add(names, json_object_new_string(FILE_COLOR_ELF32));
+        rest &= ~((uint32_t) RPMFC_ELF32);
+    }
+
+    if (color & RPMFC_ELF64) {
+        json_object_array_add(names, json_object_new_string(FILE_COLOR_ELF64));
+        rest &= ~((uint32_t) RPMFC_ELF64);
+    }
+
+    if (rest != 0) {
+        xasprintf(&s, "%u", rest);
+        json_object_array_add(names, json_object_new_string(s));
+        free(s);
+    }
+
+    return names;
+}
+
+/*
+ * Convert an array of color name strings back in to a FILECOLORS
+ * value.  Names that color_names() had no name for come back as a
+ * decimal number.  Returns zero for a missing or empty array.
+ */
+static uint32_t
+color_value(struct json_object *names)
+{
+    size_t i = 0;
+    size_t len = 0;
+    uint32_t color = 0;
+    const char *s = NULL;
+    char *end = NULL;
+    unsigned long value = 0;
+
+    if (names == NULL || json_object_get_type(names) != json_type_array) {
+        return 0;
+    }
+
+    len = json_object_array_length(names);
+
+    for (i = 0; i < len; i++) {
+        s = json_object_get_string(json_object_array_get_idx(names, i));
+
+        if (s == NULL) {
+            continue;
+        }
+
+        if (!strcmp(s, FILE_COLOR_ELF32)) {
+            color |= RPMFC_ELF32;
+        } else if (!strcmp(s, FILE_COLOR_ELF64)) {
+            color |= RPMFC_ELF64;
+        } else {
+            errno = 0;
+            value = strtoul(s, &end, 10);
+
+            if (errno != 0 || end == s || *end != '\0') {
+                warnx(_("*** unknown file color: %s"), s);
+                continue;
+            }
+
+            color |= (uint32_t) value;
+        }
+    }
+
+    return color;
 }
 
 /*
@@ -105,6 +201,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     str_entry_t *lang = NULL;
     str_list_t *langs = NULL;
     struct json_object *langs_array = NULL;
+    struct json_object *colors_array = NULL;
     uint32_entry_t *dirindex = NULL;
     uint32_entry_t *filesize = NULL;
     uint32_entry_t *filemode = NULL;
@@ -113,6 +210,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_entry_t *filedevice = NULL;
     uint32_entry_t *fileinode = NULL;
     uint32_entry_t *fileclass = NULL;
+    uint32_entry_t *filecolor = NULL;
     char mode_str[5];
     char mtime_str[32];
     time_t mtime = 0;
@@ -253,6 +351,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 fmd.filelangs = list_add(fmd.filelangs, (char *) p);
                 p += strlen((char *) p) + 1;
             }
+        } else if (tag == RPMTAG_FILECOLORS && datatype == RPM_INT32_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filecolors = uint32_list_add(fmd.filecolors, ntohl(val32));
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -286,6 +392,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     filedevice = first_uint32(fmd.filedevices);
     fileinode = first_uint32(fmd.fileinodes);
     fileclass = first_uint32(fmd.fileclass);
+    filecolor = first_uint32(fmd.filecolors);
 
     while (basename != NULL && dirindex != NULL) {
         /* Verify dirindex is valid */
@@ -416,6 +523,21 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 }
             }
 
+            /*
+             * Add colors for entries that carry one.  RPM records the
+             * ELF class of a file as a bitfield, so turn that in to an
+             * array of names here.  Entries with no color carry a zero,
+             * which color_names() reports as NULL so the key is left off.
+             */
+            if (filecolor != NULL) {
+                colors_array = color_names(filecolor->value);
+
+                if (colors_array != NULL) {
+                    json_object_object_add(file, "colors", colors_array);
+                    colors_array = NULL;
+                }
+            }
+
             json_object_array_add(files, file);
 
             free(path);
@@ -436,6 +558,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         filedevice = next_uint32(filedevice);
         fileinode = next_uint32(fileinode);
         fileclass = next_uint32(fileclass);
+        filecolor = next_uint32(filecolor);
     }
 
     /* Cleanup */
@@ -470,6 +593,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *inode_obj = NULL;
     struct json_object *class_obj = NULL;
     struct json_object *langs_obj = NULL;
+    struct json_object *colors_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -486,6 +610,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *fileclass = NULL;
     struct json_object *classdict = NULL;
     struct json_object *filelangs = NULL;
+    struct json_object *filecolors = NULL;
     struct json_object *tag = NULL;
     str_list_t *langs = NULL;
     char *langs_str = NULL;
@@ -516,6 +641,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     int64_t device = 0;
     int inode = 0;
     int classindex = 0;
+    uint32_t color = 0;
     time_t mtime = 0;
     bool found = false;
     bool class_found = false;
@@ -555,6 +681,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     fileclass = json_object_new_array();
     classdict = json_object_new_array();
     filelangs = json_object_new_array();
+    filecolors = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -819,6 +946,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             json_object_array_add(filelangs, json_object_new_string(""));
         }
 
+        /*
+         * Extract colors if available.  The "colors" value is an array
+         * of color names which RPM stores as a bitfield.  Entries
+         * without a "colors" key carry a zero so the array stays
+         * parallel to the file list.
+         */
+        color = 0;
+
+        if (json_object_object_get_ex(file, "colors", &colors_obj)) {
+            color = color_value(colors_obj);
+        }
+
+        json_object_array_add(filecolors, json_object_new_int64(color));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -953,6 +1094,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelangs);
     json_object_array_add(tags, tag);
 
+    /* Add RPMTAG_FILECOLORS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECOLORS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filecolors);
+    json_object_array_add(tags, tag);
+
     return;
 }
 
@@ -979,6 +1127,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILECLASS:
         case RPMTAG_CLASSDICT:
         case RPMTAG_FILELANGS:
+        case RPMTAG_FILECOLORS:
             return true;
     }
 
