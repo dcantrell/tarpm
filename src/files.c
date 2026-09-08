@@ -15,26 +15,56 @@
 #include "tarpm.h"
 
 /*
- * Free a NULL-terminated-agnostic array of strings.  Frees each of the
- * "count" elements and then the array itself.  Safe to call repeatedly
- * for different arrays and safe to call with a NULL array.
+ * Holds the raw file lists read out of the header while
+ * generate_files() restructures them in to the "files" JSON array.
+ * Every list carries one entry per file in the same order as the
+ * header tag it came from.
+ */
+struct file_metadata {
+    str_list_t *dirnames;
+    str_list_t *basenames;
+    uint32_list_t *dirindexes;
+    uint32_list_t *filesizes;
+    uint32_list_t *filemodes;
+    uint32_list_t *filemtimes;
+    str_list_t *fileusernames;
+    str_list_t *filegroupnames;
+    uint32_list_t *filerdevs;
+    uint32_list_t *filedevices;
+    str_list_t *filedigests;
+    str_list_t *filelinktos;
+    uint32_list_t *fileinodes;
+    uint32_list_t *fileclass;
+    str_list_t *classdict;
+};
+
+/*
+ * Free all of the lists held in a struct file_metadata.  String lists go
+ * through list_free() and the integer lists through uint32_list_free().
+ * Safe to call with a NULL pointer.
  */
 static void
-free_string_array(char **array, uint32_t count)
+free_file_metadata(struct file_metadata *fmd)
 {
-    uint32_t i = 0;
-
-    if (array == NULL) {
+    if (fmd == NULL) {
         return;
     }
 
-    for (i = 0; i < count; i++) {
-        free(array[i]);
-        array[i] = NULL;
-    }
-
-    free(array);
-    array = NULL;
+    list_free(fmd->dirnames, free);
+    list_free(fmd->basenames, free);
+    list_free(fmd->fileusernames, free);
+    list_free(fmd->filegroupnames, free);
+    list_free(fmd->filedigests, free);
+    list_free(fmd->filelinktos, free);
+    list_free(fmd->classdict, free);
+    uint32_list_free(fmd->dirindexes);
+    uint32_list_free(fmd->filesizes);
+    uint32_list_free(fmd->filemodes);
+    uint32_list_free(fmd->filemtimes);
+    uint32_list_free(fmd->filerdevs);
+    uint32_list_free(fmd->filedevices);
+    uint32_list_free(fmd->fileinodes);
+    uint32_list_free(fmd->fileclass);
     return;
 }
 
@@ -57,45 +87,30 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint8_t *data = NULL;
     struct json_object *files = NULL;
     struct json_object *file = NULL;
-    char **dirnames = NULL;
-    uint32_t ndirnames = 0;
-    char **basenames = NULL;
-    uint32_t nbasenames = 0;
-    uint32_t *dirindexes = NULL;
-    uint32_t ndirindexes = 0;
-    uint32_t *filesizes = NULL;
-    uint32_t nfilesizes = 0;
-    uint16_t *filemodes = NULL;
-    uint32_t nfilemodes = 0;
-    uint32_t *filemtimes = NULL;
-    uint32_t nfilemtimes = 0;
-    char **fileusernames = NULL;
-    uint32_t nfileusernames = 0;
-    char **filegroupnames = NULL;
-    uint32_t nfilegroupnames = 0;
-    uint16_t *filerdevs = NULL;
-    uint32_t nfilerdevs = 0;
-    uint32_t *filedevices = NULL;
-    uint32_t nfiledevices = 0;
-    char **filedigests = NULL;
-    uint32_t nfiledigests = 0;
-    char **filelinktos = NULL;
-    uint32_t nfilelinktos = 0;
-    uint32_t *fileinodes = NULL;
-    uint32_t nfileinodes = 0;
-    uint32_t *fileclass = NULL;
-    uint32_t nfileclass = 0;
-    char **classdict = NULL;
-    uint32_t nclassdict = 0;
+    struct file_metadata fmd = { 0 };
     uint8_t *p = NULL;
-    uint32_t dirindex = 0;
-    uint32_t size_val = 0;
-    uint16_t mode_val = 0;
-    uint32_t mtime_val = 0;
-    uint16_t rdev_val = 0;
-    uint32_t device_val = 0;
-    uint32_t inode_val = 0;
-    uint32_t class_val = 0;
+    uint32_t val32 = 0;
+    uint16_t val16 = 0;
+    uint32_t ndirnames = 0;
+    const char *dirname = NULL;
+    const char *classname = NULL;
+    str_entry_t *basename = NULL;
+    str_entry_t *username = NULL;
+    str_entry_t *groupname = NULL;
+    str_entry_t *digest = NULL;
+    str_entry_t *linkto = NULL;
+    uint32_entry_t *dirindex = NULL;
+    uint32_entry_t *filesize = NULL;
+    uint32_entry_t *filemode = NULL;
+    uint32_entry_t *filemtime = NULL;
+    uint32_entry_t *filerdev = NULL;
+    uint32_entry_t *filedevice = NULL;
+    uint32_entry_t *fileinode = NULL;
+    uint32_entry_t *fileclass = NULL;
+    char mode_str[5];
+    char mtime_str[32];
+    time_t mtime = 0;
+    struct tm *tm_info = NULL;
     char *path = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -113,322 +128,281 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         data = hdrinfo->datastart + offset;
 
         if (tag == RPMTAG_DIRNAMES && datatype == RPM_STRING_ARRAY_TYPE) {
-            ndirnames = count;
-            dirnames = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                dirnames[j] = strdup((char *) p);
+                fmd.dirnames = list_add(fmd.dirnames, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_BASENAMES && datatype == RPM_STRING_ARRAY_TYPE) {
-            nbasenames = count;
-            basenames = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                basenames[j] = strdup((char *) p);
+                fmd.basenames = list_add(fmd.basenames, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_DIRINDEXES && datatype == RPM_INT32_TYPE) {
-            ndirindexes = count;
-            dirindexes = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&dirindex, p, sizeof(uint32_t));
-                dirindexes[j] = ntohl(dirindex);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.dirindexes = uint32_list_add(fmd.dirindexes, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_FILESIZES && datatype == RPM_INT32_TYPE) {
-            nfilesizes = count;
-            filesizes = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&size_val, p, sizeof(uint32_t));
-                filesizes[j] = ntohl(size_val);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filesizes = uint32_list_add(fmd.filesizes, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_FILEMODES && datatype == RPM_INT16_TYPE) {
-            nfilemodes = count;
-            filemodes = xalloc(count * sizeof(uint16_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&mode_val, p, sizeof(uint16_t));
-                filemodes[j] = ntohs(mode_val);
+                memcpy(&val16, p, sizeof(uint16_t));
+                fmd.filemodes = uint32_list_add(fmd.filemodes, ntohs(val16));
                 p += sizeof(uint16_t);
             }
         } else if (tag == RPMTAG_FILEMTIMES && datatype == RPM_INT32_TYPE) {
-            nfilemtimes = count;
-            filemtimes = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&mtime_val, p, sizeof(uint32_t));
-                filemtimes[j] = ntohl(mtime_val);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filemtimes = uint32_list_add(fmd.filemtimes, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_FILEUSERNAME && datatype == RPM_STRING_ARRAY_TYPE) {
-            nfileusernames = count;
-            fileusernames = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                fileusernames[j] = strdup((char *) p);
+                fmd.fileusernames = list_add(fmd.fileusernames, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_FILEGROUPNAME && datatype == RPM_STRING_ARRAY_TYPE) {
-            nfilegroupnames = count;
-            filegroupnames = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                filegroupnames[j] = strdup((char *) p);
+                fmd.filegroupnames = list_add(fmd.filegroupnames, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_FILERDEVS && datatype == RPM_INT16_TYPE) {
-            nfilerdevs = count;
-            filerdevs = xalloc(count * sizeof(uint16_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&rdev_val, p, sizeof(uint16_t));
-                filerdevs[j] = ntohs(rdev_val);
+                memcpy(&val16, p, sizeof(uint16_t));
+                fmd.filerdevs = uint32_list_add(fmd.filerdevs, ntohs(val16));
                 p += sizeof(uint16_t);
             }
         } else if (tag == RPMTAG_FILEDEVICES && datatype == RPM_INT32_TYPE) {
-            nfiledevices = count;
-            filedevices = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&device_val, p, sizeof(uint32_t));
-                filedevices[j] = ntohl(device_val);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filedevices = uint32_list_add(fmd.filedevices, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_FILEDIGESTS && datatype == RPM_STRING_ARRAY_TYPE) {
-            nfiledigests = count;
-            filedigests = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                filedigests[j] = strdup((char *) p);
+                fmd.filedigests = list_add(fmd.filedigests, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_FILELINKTOS && datatype == RPM_STRING_ARRAY_TYPE) {
-            nfilelinktos = count;
-            filelinktos = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                filelinktos[j] = strdup((char *) p);
+                fmd.filelinktos = list_add(fmd.filelinktos, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_FILEINODES && datatype == RPM_INT32_TYPE) {
-            nfileinodes = count;
-            fileinodes = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&inode_val, p, sizeof(uint32_t));
-                fileinodes[j] = ntohl(inode_val);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.fileinodes = uint32_list_add(fmd.fileinodes, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_FILECLASS && datatype == RPM_INT32_TYPE) {
-            nfileclass = count;
-            fileclass = xalloc(count * sizeof(uint32_t));
             p = data;
 
             for (j = 0; j < count; j++) {
-                memcpy(&class_val, p, sizeof(uint32_t));
-                fileclass[j] = ntohl(class_val);
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.fileclass = uint32_list_add(fmd.fileclass, ntohl(val32));
                 p += sizeof(uint32_t);
             }
         } else if (tag == RPMTAG_CLASSDICT && datatype == RPM_STRING_ARRAY_TYPE) {
-            nclassdict = count;
-            classdict = xalloc(count * sizeof(char *));
             p = data;
 
             for (j = 0; j < count; j++) {
-                classdict[j] = strdup((char *) p);
+                fmd.classdict = list_add(fmd.classdict, (char *) p);
                 p += strlen((char *) p) + 1;
             }
         }
     }
 
     /* No file list found */
-    if (dirnames == NULL || basenames == NULL || dirindexes == NULL) {
-        free_string_array(dirnames, ndirnames);
-        free_string_array(basenames, nbasenames);
-        free_string_array(fileusernames, nfileusernames);
-        free_string_array(filegroupnames, nfilegroupnames);
-        free_string_array(filedigests, nfiledigests);
-        free_string_array(filelinktos, nfilelinktos);
-        free_string_array(classdict, nclassdict);
-        free(dirindexes);
-        free(filesizes);
-        free(filemodes);
-        free(filemtimes);
-        free(filerdevs);
-        free(filedevices);
-        free(fileinodes);
-        free(fileclass);
+    if (fmd.dirnames == NULL || fmd.basenames == NULL || fmd.dirindexes == NULL) {
+        free_file_metadata(&fmd);
         return NULL;
     }
 
-    /* Verify arrays have consistent lengths */
-    if (nbasenames != ndirindexes) {
+    /* Verify lists have consistent lengths */
+    if (str_list_len(fmd.basenames) != uint32_list_len(fmd.dirindexes)) {
         warnx(_("*** file list arrays have mismatched lengths"));
-
-        free_string_array(dirnames, ndirnames);
-        free_string_array(basenames, nbasenames);
-        free_string_array(fileusernames, nfileusernames);
-        free_string_array(filegroupnames, nfilegroupnames);
-        free_string_array(filedigests, nfiledigests);
-        free_string_array(filelinktos, nfilelinktos);
-        free_string_array(classdict, nclassdict);
-        free(dirindexes);
-        free(filesizes);
-        free(filemodes);
-        free(filemtimes);
-        free(filerdevs);
-        free(filedevices);
-        free(fileinodes);
-        free(fileclass);
+        free_file_metadata(&fmd);
         return NULL;
     }
 
     /* Build the files array */
     files = json_object_new_array();
+    ndirnames = str_list_len(fmd.dirnames);
+    basename = first_str(fmd.basenames);
+    username = first_str(fmd.fileusernames);
+    groupname = first_str(fmd.filegroupnames);
+    digest = first_str(fmd.filedigests);
+    linkto = first_str(fmd.filelinktos);
+    dirindex = first_uint32(fmd.dirindexes);
+    filesize = first_uint32(fmd.filesizes);
+    filemode = first_uint32(fmd.filemodes);
+    filemtime = first_uint32(fmd.filemtimes);
+    filerdev = first_uint32(fmd.filerdevs);
+    filedevice = first_uint32(fmd.filedevices);
+    fileinode = first_uint32(fmd.fileinodes);
+    fileclass = first_uint32(fmd.fileclass);
 
-    for (j = 0; j < nbasenames; j++) {
+    while (basename != NULL && dirindex != NULL) {
         /* Verify dirindex is valid */
-        if (dirindexes[j] >= ndirnames) {
-            warnx(_("*** invalid dirindex %u (max %u)"), dirindexes[j], ndirnames - 1);
-            continue;
-        }
+        dirname = str_list_nth(fmd.dirnames, dirindex->value);
 
-        /* Combine dirname and basename */
-        xasprintf(&path, "%s%s", dirnames[dirindexes[j]], basenames[j]);
+        if (dirname == NULL) {
+            warnx(_("*** invalid dirindex %u (max %u)"), dirindex->value, ndirnames - 1);
+        } else {
+            /* Combine dirname and basename */
+            xasprintf(&path, "%s%s", dirname, basename->str);
 
-        /* Create file entry with path */
-        file = json_object_new_object();
-        json_object_object_add(file, "path", json_object_new_string(path));
+            /* Create file entry with path */
+            file = json_object_new_object();
+            json_object_object_add(file, "path", json_object_new_string(path));
 
-        /*
-         * Add size for regular files and symlinks.  RPM stores the
-         * length of a symlink's target string in FILESIZES, and the
-         * payload reader consumes that many bytes for the target, so
-         * the value must be preserved for symlinks too.
-         */
-        if (filesizes && filemodes && j < nfilesizes && j < nfilemodes) {
-            if (S_ISREG(filemodes[j]) || S_ISLNK(filemodes[j])) {
-                json_object_object_add(file, "size", json_object_new_int64(filesizes[j]));
+            /*
+             * Add size for regular files and symlinks.  RPM stores the
+             * length of a symlink's target string in FILESIZES, and the
+             * payload reader consumes that many bytes for the target, so
+             * the value must be preserved for symlinks too.
+             */
+            if (filesize != NULL && filemode != NULL) {
+                if (S_ISREG(filemode->value) || S_ISLNK(filemode->value)) {
+                    json_object_object_add(file, "size", json_object_new_int64(filesize->value));
+                }
             }
-        }
 
-        /* Add mode if available (as octal string of permission bits only) */
-        if (filemodes && j < nfilemodes) {
-            char mode_str[5];
-            snprintf(mode_str, sizeof(mode_str), "%04o", filemodes[j] & ALLPERMS);
-            json_object_object_add(file, "mode", json_object_new_string(mode_str));
-        }
-
-        /* Add mtime if available (as ISO 8601 timestamp) */
-        if (filemtimes && j < nfilemtimes) {
-            time_t mtime = (time_t) filemtimes[j];
-            struct tm *tm_info = gmtime(&mtime);
-            char mtime_str[32];
-
-            if (tm_info != NULL) {
-                strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
-                json_object_object_add(file, "mtime", json_object_new_string(mtime_str));
+            /* Add mode if available (as octal string of permission bits only) */
+            if (filemode != NULL) {
+                snprintf(mode_str, sizeof(mode_str), "%04o", filemode->value & ALLPERMS);
+                json_object_object_add(file, "mode", json_object_new_string(mode_str));
             }
-        }
 
-        /* Add user if available */
-        if (fileusernames && j < nfileusernames) {
-            json_object_object_add(file, "user", json_object_new_string(fileusernames[j]));
-        }
+            /* Add mtime if available (as ISO 8601 timestamp) */
+            if (filemtime != NULL) {
+                mtime = (time_t) filemtime->value;
+                tm_info = gmtime(&mtime);
 
-        /* Add group if available */
-        if (filegroupnames && j < nfilegroupnames) {
-            json_object_object_add(file, "group", json_object_new_string(filegroupnames[j]));
-        }
-
-        /* Add rdev if available (only for device nodes with non-zero values) */
-        if (filerdevs && filemodes && j < nfilerdevs && j < nfilemodes) {
-            if ((S_ISCHR(filemodes[j]) || S_ISBLK(filemodes[j])) && filerdevs[j] != 0) {
-                json_object_object_add(file, "rdev", json_object_new_int(filerdevs[j]));
+                if (tm_info != NULL) {
+                    strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+                    json_object_object_add(file, "mtime", json_object_new_string(mtime_str));
+                }
             }
+
+            /* Add user if available */
+            if (username != NULL) {
+                json_object_object_add(file, "user", json_object_new_string(username->str));
+            }
+
+            /* Add group if available */
+            if (groupname != NULL) {
+                json_object_object_add(file, "group", json_object_new_string(groupname->str));
+            }
+
+            /* Add rdev if available (only for device nodes with non-zero values) */
+            if (filerdev != NULL && filemode != NULL) {
+                if ((S_ISCHR(filemode->value) || S_ISBLK(filemode->value)) && filerdev->value != 0) {
+                    json_object_object_add(file, "rdev", json_object_new_int(filerdev->value));
+                }
+            }
+
+            /* Add device if available */
+            if (filedevice != NULL) {
+                json_object_object_add(file, "device", json_object_new_int64(filedevice->value));
+            }
+
+            /*
+             * Add digest for regular files that have one.  RPM stores an
+             * empty string for entries without a digest (directories,
+             * symlinks, device nodes, etc.), so only emit the key when the
+             * digest is non-empty.
+             */
+            if (digest != NULL && digest->str[0] != '\0') {
+                json_object_object_add(file, "digest", json_object_new_string(digest->str));
+            }
+
+            /*
+             * Add linkto for symbolic links.  RPM stores an empty string
+             * for entries that are not symlinks, so only emit the key when
+             * the target is non-empty.
+             */
+            if (linkto != NULL && linkto->str[0] != '\0') {
+                json_object_object_add(file, "linkto", json_object_new_string(linkto->str));
+            }
+
+            /*
+             * Add inode for every entry.  RPM assigns these numbers itself
+             * (starting at 1 and incrementing) to track hard links; files
+             * that share an inode number are hard links of one another.
+             */
+            if (fileinode != NULL) {
+                json_object_object_add(file, "inode", json_object_new_int(fileinode->value));
+            }
+
+            /*
+             * Add class for entries that have one.  FILECLASS holds an index
+             * into the CLASSDICT string array (libmagic-style type
+             * descriptions), so resolve the index to its string here.  Skip
+             * the key when the resolved class is an empty string.
+             */
+            if (fileclass != NULL) {
+                classname = str_list_nth(fmd.classdict, fileclass->value);
+
+                if (classname != NULL && classname[0] != '\0') {
+                    json_object_object_add(file, "class", json_object_new_string(classname));
+                }
+            }
+
+            json_object_array_add(files, file);
+
+            free(path);
+            path = NULL;
         }
 
-        /* Add device if available */
-        if (filedevices && j < nfiledevices) {
-            json_object_object_add(file, "device", json_object_new_int64(filedevices[j]));
-        }
-
-        /*
-         * Add digest for regular files that have one.  RPM stores an
-         * empty string for entries without a digest (directories,
-         * symlinks, device nodes, etc.), so only emit the key when the
-         * digest is non-empty.
-         */
-        if (filedigests && j < nfiledigests && filedigests[j][0] != '\0') {
-            json_object_object_add(file, "digest", json_object_new_string(filedigests[j]));
-        }
-
-        /*
-         * Add linkto for symbolic links.  RPM stores an empty string
-         * for entries that are not symlinks, so only emit the key when
-         * the target is non-empty.
-         */
-        if (filelinktos && j < nfilelinktos && filelinktos[j][0] != '\0') {
-            json_object_object_add(file, "linkto", json_object_new_string(filelinktos[j]));
-        }
-
-        /*
-         * Add inode for every entry.  RPM assigns these numbers itself
-         * (starting at 1 and incrementing) to track hard links; files
-         * that share an inode number are hard links of one another.
-         */
-        if (fileinodes && j < nfileinodes) {
-            json_object_object_add(file, "inode", json_object_new_int(fileinodes[j]));
-        }
-
-        /*
-         * Add class for entries that have one.  FILECLASS holds an index
-         * into the CLASSDICT string array (libmagic-style type
-         * descriptions), so resolve the index to its string here.  Skip
-         * the key when the resolved class is an empty string.
-         */
-        if (fileclass && classdict && j < nfileclass && fileclass[j] < nclassdict && classdict[fileclass[j]][0] != '\0') {
-            json_object_object_add(file, "class", json_object_new_string(classdict[fileclass[j]]));
-        }
-
-        json_object_array_add(files, file);
-
-        free(path);
+        basename = next_str(basename);
+        username = next_str(username);
+        groupname = next_str(groupname);
+        digest = next_str(digest);
+        linkto = next_str(linkto);
+        dirindex = next_uint32(dirindex);
+        filesize = next_uint32(filesize);
+        filemode = next_uint32(filemode);
+        filemtime = next_uint32(filemtime);
+        filerdev = next_uint32(filerdev);
+        filedevice = next_uint32(filedevice);
+        fileinode = next_uint32(fileinode);
+        fileclass = next_uint32(fileclass);
     }
 
     /* Cleanup */
-    free_string_array(dirnames, ndirnames);
-    free_string_array(basenames, nbasenames);
-    free_string_array(fileusernames, nfileusernames);
-    free_string_array(filegroupnames, nfilegroupnames);
-    free_string_array(filedigests, nfiledigests);
-    free_string_array(filelinktos, nfilelinktos);
-    free_string_array(classdict, nclassdict);
-    free(dirindexes);
-    free(filesizes);
-    free(filemodes);
-    free(filemtimes);
-    free(filerdevs);
-    free(filedevices);
-    free(fileinodes);
-    free(fileclass);
+    free_file_metadata(&fmd);
 
     return files;
 }

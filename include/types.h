@@ -86,6 +86,16 @@ typedef struct _str_entry_t {
 typedef TAILQ_HEAD(str_entry_s, _str_entry_t) str_list_t;
 
 /*
+ * List of uint32_t values.
+ */
+typedef struct _uint32_entry_t {
+    uint32_t value;
+    TAILQ_ENTRY(_uint32_entry_t) items;
+} uint32_entry_t;
+
+typedef TAILQ_HEAD(uint32_entry_s, _uint32_entry_t) uint32_list_t;
+
+/*
  * Header lists in the RPM metadata that contain per-entry values for
  * the RPM payload.  This is just a convenience grouping to hold all
  * of the metadata lists that will be used to construct libarchive

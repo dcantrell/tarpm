@@ -35,6 +35,15 @@ str_list_t *strsplit(const char *s, const char *delim);
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
 str_list_t *list_add(str_list_t *list, const char *s);
 char *list_to_string(const str_list_t *list, const char *delimiter);
+void uint32_list_free(uint32_list_t *list);
+uint32_list_t *uint32_list_add(uint32_list_t *list, const uint32_t value);
+uint32_t str_list_len(const str_list_t *list);
+uint32_t uint32_list_len(const uint32_list_t *list);
+const char *str_list_nth(const str_list_t *list, uint32_t index);
+str_entry_t *first_str(str_list_t *list);
+uint32_entry_t *first_uint32(uint32_list_t *list);
+str_entry_t *next_str(str_entry_t *entry);
+uint32_entry_t *next_uint32(uint32_entry_t *entry);
 
 /* xalloc.c */
 void *xcalloc(size_t n, size_t s);
