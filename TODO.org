@@ -30,19 +30,19 @@ Core functionality that still needs to happen:
         writing to the header.  Need a conversion function that can
         yeet between them.
         [*] Filerdevs
-        [ ] Filedigests
-        [ ] Filelinktos
+        [*] Filedigests
+        [*] Filelinktos
         [ ] Fileflags
         [*] Fileusername
         [*] Filegroupname
         [ ] Fileverifyflags
         [*] Filedevices
-        [ ] Fileinodes
-        [ ] Filelangs
-        [ ] Filecolors
-        [ ] Fileclass (strings from Classdict)
+        [*] Fileinodes
+        [*] Filelangs
+        [*] Filecolors
+        [*] Fileclass (strings from Classdict)
 
-    [ ] Filedigestalgo should become a symbolic string, but fall back
+    [*] Filedigestalgo should become a symbolic string, but fall back
         on an integer if we do not have a definition for that
         algorithm type.
 
@@ -79,6 +79,8 @@ Core functionality that still needs to happen:
 
 [ ] Man page needs to document all options and explain how the the
     program works.
+    [ ] Convert man page source from MarkDown to Asciidoc
+    [ ] Drop pandoc dependency so we can use asciidoc
 
 [ ] More test cases.
     [*] Unit tests
