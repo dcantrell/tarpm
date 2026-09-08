@@ -57,6 +57,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfiledigests = 0;
     char **filelinktos = NULL;
     uint32_t nfilelinktos = 0;
+    uint32_t *fileinodes = NULL;
+    uint32_t nfileinodes = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
@@ -64,6 +66,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t mtime_val = 0;
     uint16_t rdev_val = 0;
     uint32_t device_val = 0;
+    uint32_t inode_val = 0;
     char *path = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -194,6 +197,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 filelinktos[j] = strdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
+        } else if (tag == RPMTAG_FILEINODES && datatype == RPM_INT32_TYPE) {
+            nfileinodes = count;
+            fileinodes = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&inode_val, p, sizeof(uint32_t));
+                fileinodes[j] = ntohl(inode_val);
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -253,6 +266,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filemtimes);
         free(filerdevs);
         free(filedevices);
+        free(fileinodes);
         return NULL;
     }
 
@@ -310,6 +324,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filemtimes);
         free(filerdevs);
         free(filedevices);
+        free(fileinodes);
         return NULL;
     }
 
@@ -402,6 +417,15 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             json_object_object_add(file, "linkto", json_object_new_string(filelinktos[j]));
         }
 
+        /*
+         * Add inode for every entry.  RPM assigns these numbers itself
+         * (starting at 1 and incrementing) to track hard links; files
+         * that share an inode number are hard links of one another.
+         */
+        if (fileinodes && j < nfileinodes) {
+            json_object_object_add(file, "inode", json_object_new_int(fileinodes[j]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -458,6 +482,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     free(filemtimes);
     free(filerdevs);
     free(filedevices);
+    free(fileinodes);
 
     return files;
 }
@@ -485,6 +510,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *device_obj = NULL;
     struct json_object *digest_obj = NULL;
     struct json_object *linkto_obj = NULL;
+    struct json_object *inode_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -497,6 +523,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filedevices = NULL;
     struct json_object *filedigests = NULL;
     struct json_object *filelinktos = NULL;
+    struct json_object *fileinodes = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
@@ -519,6 +546,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     int perms = 0;
     int rdev = 0;
     int64_t device = 0;
+    int inode = 0;
     time_t mtime = 0;
     bool found = false;
 
@@ -552,6 +580,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filedevices = json_object_new_array();
     filedigests = json_object_new_array();
     filelinktos = json_object_new_array();
+    fileinodes = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -742,6 +771,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             json_object_array_add(filelinktos, json_object_new_string(""));
         }
 
+        /*
+         * Extract inode.  When the "inode" key is present its value is
+         * used verbatim, which preserves the hard link grouping recorded
+         * by RPM.  When absent, fall back to a sequential number (RPM
+         * numbers inodes starting at 1) so every entry maps to one.
+         */
+        if (json_object_object_get_ex(file, "inode", &inode_obj)) {
+            inode = json_object_get_int(inode_obj);
+        } else {
+            inode = (int) (i + 1);
+        }
+
+        json_object_array_add(fileinodes, json_object_new_int(inode));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -839,6 +882,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelinktos);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILEINODES tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEINODES)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileinodes);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -860,6 +910,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEDEVICES:
         case RPMTAG_FILEDIGESTS:
         case RPMTAG_FILELINKTOS:
+        case RPMTAG_FILEINODES:
             return true;
     }
 
