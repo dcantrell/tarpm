@@ -59,6 +59,10 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfilelinktos = 0;
     uint32_t *fileinodes = NULL;
     uint32_t nfileinodes = 0;
+    uint32_t *fileclass = NULL;
+    uint32_t nfileclass = 0;
+    char **classdict = NULL;
+    uint32_t nclassdict = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
@@ -67,6 +71,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint16_t rdev_val = 0;
     uint32_t device_val = 0;
     uint32_t inode_val = 0;
+    uint32_t class_val = 0;
     char *path = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -207,6 +212,25 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 fileinodes[j] = ntohl(inode_val);
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILECLASS && datatype == RPM_INT32_TYPE) {
+            nfileclass = count;
+            fileclass = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&class_val, p, sizeof(uint32_t));
+                fileclass[j] = ntohl(class_val);
+                p += sizeof(uint32_t);
+            }
+        } else if (tag == RPMTAG_CLASSDICT && datatype == RPM_STRING_ARRAY_TYPE) {
+            nclassdict = count;
+            classdict = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                classdict[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
         }
     }
 
@@ -260,6 +284,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             free(filelinktos);
         }
 
+        if (classdict) {
+            for (i = 0; i < nclassdict; i++) {
+                free(classdict[i]);
+            }
+
+            free(classdict);
+        }
+
         free(dirindexes);
         free(filesizes);
         free(filemodes);
@@ -267,6 +299,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filerdevs);
         free(filedevices);
         free(fileinodes);
+        free(fileclass);
         return NULL;
     }
 
@@ -318,6 +351,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             free(filelinktos);
         }
 
+        if (classdict) {
+            for (i = 0; i < nclassdict; i++) {
+                free(classdict[i]);
+            }
+
+            free(classdict);
+        }
+
         free(dirindexes);
         free(filesizes);
         free(filemodes);
@@ -325,6 +366,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filerdevs);
         free(filedevices);
         free(fileinodes);
+        free(fileclass);
         return NULL;
     }
 
@@ -426,6 +468,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             json_object_object_add(file, "inode", json_object_new_int(fileinodes[j]));
         }
 
+        /*
+         * Add class for entries that have one.  FILECLASS holds an index
+         * into the CLASSDICT string array (libmagic-style type
+         * descriptions), so resolve the index to its string here.  Skip
+         * the key when the resolved class is an empty string.
+         */
+        if (fileclass && classdict && j < nfileclass && fileclass[j] < nclassdict && classdict[fileclass[j]][0] != '\0') {
+            json_object_object_add(file, "class", json_object_new_string(classdict[fileclass[j]]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -476,6 +528,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filelinktos);
     }
 
+    if (classdict) {
+        for (i = 0; i < nclassdict; i++) {
+            free(classdict[i]);
+        }
+
+        free(classdict);
+    }
+
     free(dirindexes);
     free(filesizes);
     free(filemodes);
@@ -483,6 +543,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     free(filerdevs);
     free(filedevices);
     free(fileinodes);
+    free(fileclass);
 
     return files;
 }
@@ -511,6 +572,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *digest_obj = NULL;
     struct json_object *linkto_obj = NULL;
     struct json_object *inode_obj = NULL;
+    struct json_object *class_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -524,6 +586,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filedigests = NULL;
     struct json_object *filelinktos = NULL;
     struct json_object *fileinodes = NULL;
+    struct json_object *fileclass = NULL;
+    struct json_object *classdict = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
@@ -534,10 +598,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *group_str = NULL;
     const char *digest_str = NULL;
     const char *linkto_str = NULL;
+    const char *class_str = NULL;
     char *dirname_copy = NULL;
     const char *separator = NULL;
     char *file_path = NULL;
     char **unique_dirs = NULL;
+    char **unique_classes = NULL;
+    size_t nclasses = 0;
     struct stat sb;
     struct tm tm_info;
     int dirindex = 0;
@@ -547,8 +614,10 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     int rdev = 0;
     int64_t device = 0;
     int inode = 0;
+    int classindex = 0;
     time_t mtime = 0;
     bool found = false;
+    bool class_found = false;
 
     if (tags == NULL || files == NULL) {
         return;
@@ -564,8 +633,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         return;
     }
 
-    /* Allocate arrays for unique directory tracking */
+    /* Allocate arrays for unique directory and class tracking */
     unique_dirs = xcalloc(count, sizeof(char *));
+    unique_classes = xcalloc(count, sizeof(char *));
 
     /* Create the arrays */
     dirnames = json_object_new_array();
@@ -581,6 +651,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filedigests = json_object_new_array();
     filelinktos = json_object_new_array();
     fileinodes = json_object_new_array();
+    fileclass = json_object_new_array();
+    classdict = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -785,6 +857,37 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(fileinodes, json_object_new_int(inode));
 
+        /*
+         * Extract class and rebuild the CLASSDICT/FILECLASS pair the way
+         * librpm does: CLASSDICT holds the unique class strings in order
+         * of first appearance and FILECLASS holds each file's index into
+         * it.  Entries without a "class" key use an empty string.
+         */
+        class_str = "";
+
+        if (json_object_object_get_ex(file, "class", &class_obj)) {
+            class_str = json_object_get_string(class_obj);
+        }
+
+        classindex = -1;
+        class_found = false;
+
+        for (j = 0; j < nclasses; j++) {
+            if (strcmp(unique_classes[j], class_str) == 0) {
+                classindex = j;
+                class_found = true;
+                break;
+            }
+        }
+
+        if (!class_found) {
+            unique_classes[nclasses] = strdup(class_str);
+            classindex = nclasses;
+            nclasses++;
+        }
+
+        json_object_array_add(fileclass, json_object_new_int(classindex));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -798,6 +901,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     }
 
     free(unique_dirs);
+
+    /* Build the classdict array from unique_classes */
+    for (i = 0; i < nclasses; i++) {
+        json_object_array_add(classdict, json_object_new_string(unique_classes[i]));
+        free(unique_classes[i]);
+    }
+
+    free(unique_classes);
 
     /* Add RPMTAG_BASENAMES tag */
     tag = json_object_new_object();
@@ -889,6 +1000,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileinodes);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILECLASS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECLASS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileclass);
+    json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_CLASSDICT tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_CLASSDICT)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, classdict);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -911,6 +1036,8 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEDIGESTS:
         case RPMTAG_FILELINKTOS:
         case RPMTAG_FILEINODES:
+        case RPMTAG_FILECLASS:
+        case RPMTAG_CLASSDICT:
             return true;
     }
 
