@@ -15,6 +15,30 @@
 #include "tarpm.h"
 
 /*
+ * Free a NULL-terminated-agnostic array of strings.  Frees each of the
+ * "count" elements and then the array itself.  Safe to call repeatedly
+ * for different arrays and safe to call with a NULL array.
+ */
+static void
+free_string_array(char **array, uint32_t count)
+{
+    uint32_t i = 0;
+
+    if (array == NULL) {
+        return;
+    }
+
+    for (i = 0; i < count; i++) {
+        free(array[i]);
+        array[i] = NULL;
+    }
+
+    free(array);
+    array = NULL;
+    return;
+}
+
+/*
  * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
  * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
  * optionally "size" for regular files.
@@ -236,62 +260,13 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 
     /* No file list found */
     if (dirnames == NULL || basenames == NULL || dirindexes == NULL) {
-        if (dirnames) {
-            for (i = 0; i < ndirnames; i++) {
-                free(dirnames[i]);
-            }
-
-            free(dirnames);
-        }
-
-        if (basenames) {
-            for (i = 0; i < nbasenames; i++) {
-                free(basenames[i]);
-            }
-
-            free(basenames);
-        }
-
-        if (fileusernames) {
-            for (i = 0; i < nfileusernames; i++) {
-                free(fileusernames[i]);
-            }
-
-            free(fileusernames);
-        }
-
-        if (filegroupnames) {
-            for (i = 0; i < nfilegroupnames; i++) {
-                free(filegroupnames[i]);
-            }
-
-            free(filegroupnames);
-        }
-
-        if (filedigests) {
-            for (i = 0; i < nfiledigests; i++) {
-                free(filedigests[i]);
-            }
-
-            free(filedigests);
-        }
-
-        if (filelinktos) {
-            for (i = 0; i < nfilelinktos; i++) {
-                free(filelinktos[i]);
-            }
-
-            free(filelinktos);
-        }
-
-        if (classdict) {
-            for (i = 0; i < nclassdict; i++) {
-                free(classdict[i]);
-            }
-
-            free(classdict);
-        }
-
+        free_string_array(dirnames, ndirnames);
+        free_string_array(basenames, nbasenames);
+        free_string_array(fileusernames, nfileusernames);
+        free_string_array(filegroupnames, nfilegroupnames);
+        free_string_array(filedigests, nfiledigests);
+        free_string_array(filelinktos, nfilelinktos);
+        free_string_array(classdict, nclassdict);
         free(dirindexes);
         free(filesizes);
         free(filemodes);
@@ -307,58 +282,13 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     if (nbasenames != ndirindexes) {
         warnx(_("*** file list arrays have mismatched lengths"));
 
-        for (i = 0; i < ndirnames; i++) {
-            free(dirnames[i]);
-        }
-
-        free(dirnames);
-
-        for (i = 0; i < nbasenames; i++) {
-            free(basenames[i]);
-        }
-
-        free(basenames);
-
-        if (fileusernames) {
-            for (i = 0; i < nfileusernames; i++) {
-                free(fileusernames[i]);
-            }
-
-            free(fileusernames);
-        }
-
-        if (filegroupnames) {
-            for (i = 0; i < nfilegroupnames; i++) {
-                free(filegroupnames[i]);
-            }
-
-            free(filegroupnames);
-        }
-
-        if (filedigests) {
-            for (i = 0; i < nfiledigests; i++) {
-                free(filedigests[i]);
-            }
-
-            free(filedigests);
-        }
-
-        if (filelinktos) {
-            for (i = 0; i < nfilelinktos; i++) {
-                free(filelinktos[i]);
-            }
-
-            free(filelinktos);
-        }
-
-        if (classdict) {
-            for (i = 0; i < nclassdict; i++) {
-                free(classdict[i]);
-            }
-
-            free(classdict);
-        }
-
+        free_string_array(dirnames, ndirnames);
+        free_string_array(basenames, nbasenames);
+        free_string_array(fileusernames, nfileusernames);
+        free_string_array(filegroupnames, nfilegroupnames);
+        free_string_array(filedigests, nfiledigests);
+        free_string_array(filelinktos, nfilelinktos);
+        free_string_array(classdict, nclassdict);
         free(dirindexes);
         free(filesizes);
         free(filemodes);
@@ -484,58 +414,13 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     }
 
     /* Cleanup */
-    for (i = 0; i < ndirnames; i++) {
-        free(dirnames[i]);
-    }
-
-    free(dirnames);
-
-    for (i = 0; i < nbasenames; i++) {
-        free(basenames[i]);
-    }
-
-    free(basenames);
-
-    if (fileusernames) {
-        for (i = 0; i < nfileusernames; i++) {
-            free(fileusernames[i]);
-        }
-
-        free(fileusernames);
-    }
-
-    if (filegroupnames) {
-        for (i = 0; i < nfilegroupnames; i++) {
-            free(filegroupnames[i]);
-        }
-
-        free(filegroupnames);
-    }
-
-    if (filedigests) {
-        for (i = 0; i < nfiledigests; i++) {
-            free(filedigests[i]);
-        }
-
-        free(filedigests);
-    }
-
-    if (filelinktos) {
-        for (i = 0; i < nfilelinktos; i++) {
-            free(filelinktos[i]);
-        }
-
-        free(filelinktos);
-    }
-
-    if (classdict) {
-        for (i = 0; i < nclassdict; i++) {
-            free(classdict[i]);
-        }
-
-        free(classdict);
-    }
-
+    free_string_array(dirnames, ndirnames);
+    free_string_array(basenames, nbasenames);
+    free_string_array(fileusernames, nfileusernames);
+    free_string_array(filegroupnames, nfilegroupnames);
+    free_string_array(filedigests, nfiledigests);
+    free_string_array(filelinktos, nfilelinktos);
+    free_string_array(classdict, nclassdict);
     free(dirindexes);
     free(filesizes);
     free(filemodes);
