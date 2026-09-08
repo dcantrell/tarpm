@@ -55,6 +55,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t nfiledevices = 0;
     char **filedigests = NULL;
     uint32_t nfiledigests = 0;
+    char **filelinktos = NULL;
+    uint32_t nfilelinktos = 0;
     uint8_t *p = NULL;
     uint32_t dirindex = 0;
     uint32_t size_val = 0;
@@ -183,6 +185,15 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 filedigests[j] = strdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
+        } else if (tag == RPMTAG_FILELINKTOS && datatype == RPM_STRING_ARRAY_TYPE) {
+            nfilelinktos = count;
+            filelinktos = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                filelinktos[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
         }
     }
 
@@ -228,6 +239,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             free(filedigests);
         }
 
+        if (filelinktos) {
+            for (i = 0; i < nfilelinktos; i++) {
+                free(filelinktos[i]);
+            }
+
+            free(filelinktos);
+        }
+
         free(dirindexes);
         free(filesizes);
         free(filemodes);
@@ -244,17 +263,20 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         for (i = 0; i < ndirnames; i++) {
             free(dirnames[i]);
         }
+
         free(dirnames);
 
         for (i = 0; i < nbasenames; i++) {
             free(basenames[i]);
         }
+
         free(basenames);
 
         if (fileusernames) {
             for (i = 0; i < nfileusernames; i++) {
                 free(fileusernames[i]);
             }
+
             free(fileusernames);
         }
 
@@ -262,6 +284,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < nfilegroupnames; i++) {
                 free(filegroupnames[i]);
             }
+
             free(filegroupnames);
         }
 
@@ -269,7 +292,16 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             for (i = 0; i < nfiledigests; i++) {
                 free(filedigests[i]);
             }
+
             free(filedigests);
+        }
+
+        if (filelinktos) {
+            for (i = 0; i < nfilelinktos; i++) {
+                free(filelinktos[i]);
+            }
+
+            free(filelinktos);
         }
 
         free(dirindexes);
@@ -361,6 +393,15 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             json_object_object_add(file, "digest", json_object_new_string(filedigests[j]));
         }
 
+        /*
+         * Add linkto for symbolic links.  RPM stores an empty string
+         * for entries that are not symlinks, so only emit the key when
+         * the target is non-empty.
+         */
+        if (filelinktos && j < nfilelinktos && filelinktos[j][0] != '\0') {
+            json_object_object_add(file, "linkto", json_object_new_string(filelinktos[j]));
+        }
+
         json_object_array_add(files, file);
 
         free(path);
@@ -403,6 +444,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         free(filedigests);
     }
 
+    if (filelinktos) {
+        for (i = 0; i < nfilelinktos; i++) {
+            free(filelinktos[i]);
+        }
+
+        free(filelinktos);
+    }
+
     free(dirindexes);
     free(filesizes);
     free(filemodes);
@@ -435,6 +484,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *rdev_obj = NULL;
     struct json_object *device_obj = NULL;
     struct json_object *digest_obj = NULL;
+    struct json_object *linkto_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -446,6 +496,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filerdevs = NULL;
     struct json_object *filedevices = NULL;
     struct json_object *filedigests = NULL;
+    struct json_object *filelinktos = NULL;
     struct json_object *tag = NULL;
     const char *path = NULL;
     const char *basename = NULL;
@@ -455,6 +506,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *user_str = NULL;
     const char *group_str = NULL;
     const char *digest_str = NULL;
+    const char *linkto_str = NULL;
     char *dirname_copy = NULL;
     const char *separator = NULL;
     char *file_path = NULL;
@@ -499,6 +551,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filerdevs = json_object_new_array();
     filedevices = json_object_new_array();
     filedigests = json_object_new_array();
+    filelinktos = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -672,6 +725,23 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             json_object_array_add(filedigests, json_object_new_string(""));
         }
 
+        /*
+         * Extract linkto if available.  Entries without a "linkto" key
+         * (everything that is not a symlink) carry an empty string so
+         * the array stays parallel to the file list.
+         */
+        linkto_str = NULL;
+
+        if (json_object_object_get_ex(file, "linkto", &linkto_obj)) {
+            linkto_str = json_object_get_string(linkto_obj);
+        }
+
+        if (linkto_str != NULL) {
+            json_object_array_add(filelinktos, json_object_new_string(linkto_str));
+        } else {
+            json_object_array_add(filelinktos, json_object_new_string(""));
+        }
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -762,6 +832,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedigests);
     json_object_array_add(tags, tag);
+
+    /* Add RPMTAG_FILELINKTOS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILELINKTOS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelinktos);
+    json_object_array_add(tags, tag);
 }
 
 /*
@@ -782,6 +859,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILERDEVS:
         case RPMTAG_FILEDEVICES:
         case RPMTAG_FILEDIGESTS:
+        case RPMTAG_FILELINKTOS:
             return true;
     }
 
