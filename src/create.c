@@ -441,6 +441,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     struct hdr_file_lists hfl;
     struct json_object *tags = NULL;
     struct json_object *files = NULL;
+    struct json_object *dependencies = NULL;
     struct json_object *tags_with_files = NULL;
     struct json_object *entry = NULL;
     struct json_object *tagname = NULL;
@@ -492,8 +493,16 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             json_object_array_add(tags_with_files, json_object_get(json_object_array_get_idx(tags, i)));
         }
 
-        /* Add the file list tags to the copy */
-        add_file_list_tags(tags_with_files, files, input_dir, payload_subdir);
+        /*
+         * Add the file list tags to the copy.  The dependencies go in
+         * as well because the depends dictionary rebuilt there holds
+         * indexes in to them.
+         */
+        if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {
+            dependencies = NULL;
+        }
+
+        add_file_list_tags(tags_with_files, files, input_dir, payload_subdir, dependencies);
 
         /* Use the copy for processing */
         tags = tags_with_files;

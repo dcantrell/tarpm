@@ -60,6 +60,19 @@
 #define RPM_DEPENDENCY_FLAGS_DESC      "flags"
 #define RPM_DEPENDENCY_COMPARISON_DESC "comparison"
 #define RPM_DEPENDENCY_VERSION_DESC    "version"
+#define RPM_DEPENDENCY_TYPE_DESC       "type"
+
+/* how the depends dictionary packs a dependency type and index */
+/*
+ * See rpmfcGenerateDepends() in build/rpmfc.cc in the rpm source.
+ * The high byte of each value is the dependency type abbreviation and
+ * the remaining three bytes are an index in to that type's dependency
+ * array.  Note here that the tag names and code call it a dependency,
+ * but this is the provides information which is one part of all of
+ * the dependency information in a package.
+ */
+#define DEPENDS_DICT_TYPE_SHIFT        24
+#define DEPENDS_DICT_INDEX_MASK        0x00FFFFFF
 
 /* keys used by the entries in the "files" array */
 #define RPM_FILE_PATH_DESC             "path"
@@ -78,6 +91,7 @@
 #define RPM_FILE_COLORS_DESC           "colors"
 #define RPM_FILE_FLAGS_DESC            "flags"
 #define RPM_FILE_VERIFYFLAGS_DESC      "verifyflags"
+#define RPM_FILE_PROVIDES_DESC         "provides"
 
 /* values used by the entries in the "files" array */
 /*

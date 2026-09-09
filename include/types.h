@@ -170,6 +170,9 @@ struct dep_type {
     rpmTagVal name;
     rpmTagVal flags;
     rpmTagVal version;
+
+    /* how the depends dictionary names this type */
+    char abbrev;
 };
 
 /* Function pointers */

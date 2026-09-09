@@ -377,6 +377,7 @@ if cunit.found()
         [ 'test-files.c',
           'test-main.c',
           files_src,
+          deps_src,
           listfuncs_src,
           strfuncs_src,
           joinpath_src,

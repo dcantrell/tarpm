@@ -13,16 +13,21 @@
 
 #include "tarpm.h"
 
+/*
+ * The single character abbreviations in the last column are the ones
+ * the depends dictionary uses to name a dependency type.  They come
+ * from depTypes[] in lib/rpmds.cc in the rpm source.
+ */
 static const struct dep_type dep_types[] = {
-    { "provides",    RPMTAG_PROVIDENAME,    RPMTAG_PROVIDEFLAGS,    RPMTAG_PROVIDEVERSION    },
-    { "requires",    RPMTAG_REQUIRENAME,    RPMTAG_REQUIREFLAGS,    RPMTAG_REQUIREVERSION    },
-    { "conflicts",   RPMTAG_CONFLICTNAME,   RPMTAG_CONFLICTFLAGS,   RPMTAG_CONFLICTVERSION   },
-    { "obsoletes",   RPMTAG_OBSOLETENAME,   RPMTAG_OBSOLETEFLAGS,   RPMTAG_OBSOLETEVERSION   },
-    { "recommends",  RPMTAG_RECOMMENDNAME,  RPMTAG_RECOMMENDFLAGS,  RPMTAG_RECOMMENDVERSION  },
-    { "suggests",    RPMTAG_SUGGESTNAME,    RPMTAG_SUGGESTFLAGS,    RPMTAG_SUGGESTVERSION    },
-    { "supplements", RPMTAG_SUPPLEMENTNAME, RPMTAG_SUPPLEMENTFLAGS, RPMTAG_SUPPLEMENTVERSION },
-    { "enhances",    RPMTAG_ENHANCENAME,    RPMTAG_ENHANCEFLAGS,    RPMTAG_ENHANCEVERSION    },
-    { NULL, 0, 0, 0 }
+    { "provides",    RPMTAG_PROVIDENAME,    RPMTAG_PROVIDEFLAGS,    RPMTAG_PROVIDEVERSION,    'P' },
+    { "requires",    RPMTAG_REQUIRENAME,    RPMTAG_REQUIREFLAGS,    RPMTAG_REQUIREVERSION,    'R' },
+    { "conflicts",   RPMTAG_CONFLICTNAME,   RPMTAG_CONFLICTFLAGS,   RPMTAG_CONFLICTVERSION,   'C' },
+    { "obsoletes",   RPMTAG_OBSOLETENAME,   RPMTAG_OBSOLETEFLAGS,   RPMTAG_OBSOLETEVERSION,   'O' },
+    { "recommends",  RPMTAG_RECOMMENDNAME,  RPMTAG_RECOMMENDFLAGS,  RPMTAG_RECOMMENDVERSION,  'r' },
+    { "suggests",    RPMTAG_SUGGESTNAME,    RPMTAG_SUGGESTFLAGS,    RPMTAG_SUGGESTVERSION,    's' },
+    { "supplements", RPMTAG_SUPPLEMENTNAME, RPMTAG_SUPPLEMENTFLAGS, RPMTAG_SUPPLEMENTVERSION, 'S' },
+    { "enhances",    RPMTAG_ENHANCENAME,    RPMTAG_ENHANCEFLAGS,    RPMTAG_ENHANCEVERSION,    'e' },
+    { NULL, 0, 0, 0, '\0' }
 };
 
 /*
@@ -284,6 +289,157 @@ read_sense_flags(struct json_object *sense_flags)
     return flags;
 }
 
+/*
+ * Return the string value of a key in a dependency entry.  Keys that
+ * carry no value are left out of the entry entirely, so a missing key
+ * reads back as an empty string the same way it went in.
+ */
+static const char *
+dependency_string(struct json_object *entry, const char *key)
+{
+    struct json_object *obj = NULL;
+    const char *s = NULL;
+
+    if (entry == NULL || !json_object_object_get_ex(entry, key, &obj)) {
+        return "";
+    }
+
+    s = json_object_get_string(obj);
+
+    if (s == NULL) {
+        return "";
+    }
+
+    return s;
+}
+
+/*
+ * Combine the comparison operator and the sense flags of a dependency
+ * entry in to the single RPMSENSE flag word the header carries.
+ */
+static uint32_t
+dependency_entry_flags(struct json_object *entry)
+{
+    uint32_t flags = 0;
+    struct json_object *obj = NULL;
+
+    if (entry != NULL) {
+        if (json_object_object_get_ex(entry, RPM_DEPENDENCY_COMPARISON_DESC, &obj)) {
+            flags |= str_to_comparison(json_object_get_string(obj));
+        }
+
+        if (json_object_object_get_ex(entry, RPM_SENSE_FLAGS_DESC, &obj)) {
+            flags |= read_sense_flags(obj);
+        }
+    }
+
+    if (flags == 0) {
+        flags = RPMSENSE_ANY;
+    }
+
+    return flags;
+}
+
+/*
+ * Return the dependency type key for the given depends dictionary
+ * abbreviation, or NULL if it is not a type tarpm knows about.
+ */
+const char *
+dependency_type_key(const char abbrev)
+{
+    int i = 0;
+
+    for (i = 0; dep_types[i].key != NULL; i++) {
+        if (dep_types[i].abbrev == abbrev) {
+            return dep_types[i].key;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * Return the depends dictionary abbreviation for the given dependency
+ * type key, or a NUL byte if it is not a type tarpm knows about.
+ */
+char
+dependency_type_abbrev(const char *key)
+{
+    int i = 0;
+
+    if (key == NULL) {
+        return '\0';
+    }
+
+    for (i = 0; dep_types[i].key != NULL; i++) {
+        if (!strcmp(dep_types[i].key, key)) {
+            return dep_types[i].abbrev;
+        }
+    }
+
+    return '\0';
+}
+
+/*
+ * Find the entry in dependencies[key] that matches the given
+ * dependency entry and return its index.  The name, version, and flag
+ * word are everything the header records about a dependency, so
+ * entries that agree on all three are the same dependency.
+ * Returns -1 if there is no match.
+ */
+int
+dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry)
+{
+    size_t i = 0;
+    size_t count = 0;
+    uint32_t flags = 0;
+    const char *name = NULL;
+    const char *version = NULL;
+    struct json_object *deps = NULL;
+    struct json_object *candidate = NULL;
+
+    if (dependencies == NULL || key == NULL || entry == NULL) {
+        return -1;
+    }
+
+    if (!json_object_object_get_ex(dependencies, key, &deps)) {
+        return -1;
+    }
+
+    if (json_object_get_type(deps) != json_type_array) {
+        return -1;
+    }
+
+    name = dependency_string(entry, RPM_DEPENDENCY_NAME_DESC);
+    version = dependency_string(entry, RPM_DEPENDENCY_VERSION_DESC);
+    flags = dependency_entry_flags(entry);
+    count = json_object_array_length(deps);
+
+    for (i = 0; i < count; i++) {
+        candidate = json_object_array_get_idx(deps, i);
+
+        if (candidate == NULL) {
+            continue;
+        }
+
+        if (strcmp(name, dependency_string(candidate, RPM_DEPENDENCY_NAME_DESC))) {
+            continue;
+        }
+
+        if (strcmp(version, dependency_string(candidate, RPM_DEPENDENCY_VERSION_DESC))) {
+            continue;
+        }
+
+        if (flags != dependency_entry_flags(candidate)) {
+            continue;
+        }
+
+        return (int) i;
+    }
+
+    return -1;
+}
+
 /* Cleanup function called by generate_formatted_dependencies() */
 static void
 cleanup_deps(char **names, uint32_t nnames, uint32_t *flags_array, char **versions, uint32_t nversions)
@@ -488,8 +644,6 @@ add_dependency_type_tags(struct json_object *tags, struct json_object *deps, con
     struct json_object *versions = NULL;
     const char *s = NULL;
     uint32_t flag = 0;
-    uint32_t comparison_flags = 0;
-    uint32_t other_flags = 0;
     struct json_object *tag = NULL;
 
     if (tags == NULL || deps == NULL || dep == NULL) {
@@ -513,9 +667,6 @@ add_dependency_type_tags(struct json_object *tags, struct json_object *deps, con
 
     /* Process each dependency entry */
     for (i = 0; i < count; i++) {
-        comparison_flags = 0;
-        other_flags = 0;
-
         entry = json_object_array_get_idx(deps, i);
 
         if (entry == NULL) {
@@ -530,24 +681,8 @@ add_dependency_type_tags(struct json_object *tags, struct json_object *deps, con
             json_object_array_add(names, json_object_new_string(""));
         }
 
-        /* Get comparison (comparison operators) */
-        if (json_object_object_get_ex(entry, RPM_DEPENDENCY_COMPARISON_DESC, &obj)) {
-            s = json_object_get_string(obj);
-            comparison_flags = str_to_comparison(s);
-        }
-
-        /* Get sense_flags (other RPMSENSE flags) */
-        if (json_object_object_get_ex(entry, RPM_SENSE_FLAGS_DESC, &obj)) {
-            other_flags = read_sense_flags(obj);
-        }
-
-        /* Combine comparison and other flags */
-        flag = comparison_flags | other_flags;
-
-        if (flag == 0) {
-            flag = RPMSENSE_ANY;
-        }
-
+        /* Combine the comparison operators and the other RPMSENSE flags */
+        flag = dependency_entry_flags(entry);
         json_object_array_add(flags, json_object_new_int(flag));
 
         /* Get version */

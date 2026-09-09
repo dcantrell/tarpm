@@ -191,9 +191,9 @@ test_generate_files_null(void)
     memset(&hdr, 0, sizeof(hdr));
     memset(&hdrinfo, 0, sizeof(hdrinfo));
 
-    TARPM_ASSERT_PTR_NULL(generate_files(NULL, NULL));
-    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, NULL));
-    TARPM_ASSERT_PTR_NULL(generate_files(NULL, &hdrinfo));
+    TARPM_ASSERT_PTR_NULL(generate_files(NULL, NULL, NULL));
+    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, NULL, NULL));
+    TARPM_ASSERT_PTR_NULL(generate_files(NULL, &hdrinfo, NULL));
 
     return;
 }
@@ -212,7 +212,7 @@ test_generate_files_no_file_list(void)
     /* drop the basenames entry so the required tags are incomplete */
     set_entry(&entries[1], RPMTAG_NAME, RPM_STRING_TYPE, DIRNAMES_OFFSET, 1);
 
-    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, &hdrinfo));
+    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, &hdrinfo, NULL));
 
     return;
 }
@@ -231,7 +231,7 @@ test_generate_files_mismatched_lengths(void)
     /* two basenames but only one dirindex */
     set_entry(&entries[2], RPMTAG_DIRINDEXES, RPM_INT32_TYPE, DIRINDEXES_OFFSET, 1);
 
-    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, &hdrinfo));
+    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, &hdrinfo, NULL));
 
     return;
 }
@@ -254,7 +254,7 @@ test_generate_files_valid(void)
 
     build_header(&hdr, &hdrinfo, entries, data);
 
-    files = generate_files(&hdr, &hdrinfo);
+    files = generate_files(&hdr, &hdrinfo, NULL);
     TARPM_ASSERT_PTR_NOT_NULL(files);
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
 
@@ -322,16 +322,16 @@ test_add_file_list_tags_null(void)
     struct json_object *files = NULL;
 
     /* all NULL should not crash */
-    add_file_list_tags(NULL, NULL, NULL, NULL);
+    add_file_list_tags(NULL, NULL, NULL, NULL, NULL);
 
     /* NULL files should add no tags */
     tags = json_object_new_array();
-    add_file_list_tags(tags, NULL, NULL, NULL);
+    add_file_list_tags(tags, NULL, NULL, NULL, NULL);
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
 
     /* NULL tags should not crash */
     files = json_object_new_array();
-    add_file_list_tags(NULL, files, NULL, NULL);
+    add_file_list_tags(NULL, files, NULL, NULL, NULL);
 
     json_object_put(tags);
     json_object_put(files);
@@ -349,7 +349,7 @@ test_add_file_list_tags_empty(void)
     tags = json_object_new_array();
     files = json_object_new_array();
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* an empty files array should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -370,7 +370,7 @@ test_add_file_list_tags_invalid_type(void)
     tags = json_object_new_array();
     files = json_object_new_string("not an array");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* an invalid type should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -401,7 +401,7 @@ test_add_file_list_tags_file_list(void)
     file = add_file(files, "/usr/share/man/man1/ls.1");
     json_object_object_add(file, "linkto", json_object_new_string("/usr/bin/ls"));
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* all nineteen file list tags should be present */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 19);
@@ -454,6 +454,11 @@ test_add_file_list_tags_file_list(void)
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), 1);
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), 2);
 
+    /* no file generated a dependency, so the dictionary tags are left off */
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_DEPENDSDICT)));
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSX)));
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSN)));
+
     json_object_put(tags);
     json_object_put(files);
 
@@ -480,7 +485,7 @@ test_add_file_list_tags_class(void)
 
     add_file(files, "/usr/share/doc");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* the class dictionary holds each unique class once */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_CLASSDICT));
@@ -533,7 +538,7 @@ test_add_file_list_tags_langs(void)
     /* a file with no languages at all */
     add_file(files, "/usr/bin/ls");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* languages are joined with a "|" and missing ones are empty strings */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELANGS));
@@ -590,7 +595,7 @@ test_add_file_list_tags_colors(void)
     /* an entry with no color at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* names turn back in to bits and missing colors are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILECOLORS));
@@ -652,7 +657,7 @@ test_add_file_list_tags_flags(void)
     /* an entry with no flags at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* names turn back in to bits and missing flags are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEFLAGS));
@@ -721,7 +726,7 @@ test_add_file_list_tags_verifyflags(void)
     /* an entry that verifies nothing */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
 
     /* names turn back in to bits and missing verify flags are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEVERIFYFLAGS));
@@ -735,6 +740,119 @@ test_add_file_list_tags_verifyflags(void)
 
     json_object_put(tags);
     json_object_put(files);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_provides() below that builds a
+ * single dependency entry carrying one sense flag.
+ */
+static struct json_object *
+add_dependency(struct json_object *deps, const char *name, const char *sense_flag)
+{
+    struct json_object *entry = NULL;
+    struct json_object *sense_flags = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "name", json_object_new_string(name));
+
+    sense_flags = json_object_new_array();
+    json_object_array_add(sense_flags, json_object_new_string(sense_flag));
+    json_object_object_add(entry, "sense_flags", sense_flags);
+
+    json_object_array_add(deps, entry);
+
+    return entry;
+}
+
+/*
+ * Helper for test_add_file_list_tags_provides() below that adds one
+ * entry to a file's "provides" array.  The entry names its dependency
+ * type and repeats the dependency it points at.
+ */
+static void
+add_provides(struct json_object *provides, const char *type, const char *name, const char *sense_flag)
+{
+    struct json_object *entry = NULL;
+
+    entry = add_dependency(provides, name, sense_flag);
+    json_object_object_add(entry, "type", json_object_new_string(type));
+
+    return;
+}
+
+/* Test add_file_list_tags() with provides values */
+void
+test_add_file_list_tags_provides(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *dependencies = NULL;
+    struct json_object *deps = NULL;
+    struct json_object *provides = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    dependencies = json_object_new_object();
+
+    /* the package provides one soname */
+    deps = json_object_new_array();
+    add_dependency(deps, "libfoo.so.1()(64bit)", "find-provides");
+    json_object_object_add(dependencies, "provides", deps);
+
+    /* and requires two of them */
+    deps = json_object_new_array();
+    add_dependency(deps, "libc.so.6()(64bit)", "find-requires");
+    add_dependency(deps, "libm.so.6()(64bit)", "find-requires");
+    json_object_object_add(dependencies, "requires", deps);
+
+    /*
+     * A file that generated all three, with the types interleaved the
+     * way the dependency generators leave them.
+     */
+    file = add_file(files, "/usr/lib64/libfoo.so.1");
+    provides = json_object_new_array();
+    add_provides(provides, "requires", "libc.so.6()(64bit)", "find-requires");
+    add_provides(provides, "provides", "libfoo.so.1()(64bit)", "find-provides");
+    add_provides(provides, "requires", "libm.so.6()(64bit)", "find-requires");
+    json_object_object_add(file, "provides", provides);
+
+    /* a file that generated nothing */
+    add_file(files, "/usr/share/doc/foo/README");
+
+    add_file_list_tags(tags, files, NULL, NULL, dependencies);
+
+    /*
+     * Every provides entry becomes one dictionary value holding the
+     * type abbreviation and the index of the dependency it matched,
+     * and the order of the file's list is kept.
+     */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_DEPENDSDICT));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 0x52000000);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0x50000000);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 0x52000001);
+
+    /* the first file owns the whole dictionary and the second none of it */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSX));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 2);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSN));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 2);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0);
+
+    json_object_put(tags);
+    json_object_put(files);
+    json_object_put(dependencies);
 
     return;
 }
@@ -762,6 +880,9 @@ test_is_file_list_tag_file_list_tags(void)
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILECOLORS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEFLAGS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEVERIFYFLAGS));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_DEPENDSDICT));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEDEPENDSX));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEDEPENDSN));
 
     return;
 }
@@ -808,6 +929,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with flag values", test_add_file_list_tags_flags) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with verify flag values", test_add_file_list_tags_verifyflags) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with provides values", test_add_file_list_tags_provides) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

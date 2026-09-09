@@ -555,8 +555,12 @@ read_header(const int fd, const char *dest_dir)
         json_object_object_add(header, RPM_DEPENDENCIES_DESC, dependencies);
     }
 
-    /* build the files array if file list tags are present */
-    files = generate_files(rawhdr, hdrinfo);
+    /*
+     * Build the files array if file list tags are present.  This has
+     * to come after the dependencies because the depends dictionary
+     * carried by each file is expressed in terms of them.
+     */
+    files = generate_files(rawhdr, hdrinfo, dependencies);
 
     if (files != NULL) {
         json_object_object_add(header, RPM_FILES_DESC, files);
@@ -686,8 +690,12 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
             need_free_tags = true;
         }
 
-        /* Add the file list tags to the copy */
-        add_file_list_tags(tags_copy, files, input_dir, payload_subdir);
+        /*
+         * Add the file list tags to the copy.  The dependencies go in
+         * as well because the depends dictionary rebuilt here holds
+         * indexes in to them.
+         */
+        add_file_list_tags(tags_copy, files, input_dir, payload_subdir, dependencies);
     }
 
     /* number of header index entries (excluding read-only tags) */

@@ -40,6 +40,7 @@ uint32_list_t *uint32_list_add(uint32_list_t *list, const uint32_t value);
 uint32_t str_list_len(const str_list_t *list);
 uint32_t uint32_list_len(const uint32_list_t *list);
 const char *str_list_nth(const str_list_t *list, uint32_t index);
+bool uint32_list_nth(const uint32_list_t *list, uint32_t index, uint32_t *value);
 str_entry_t *first_str(str_list_t *list);
 uint32_entry_t *first_uint32(uint32_list_t *list);
 str_entry_t *next_str(str_entry_t *entry);
@@ -79,10 +80,13 @@ bool is_changelog_tag(rpmTagVal tag);
 struct json_object *generate_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
 void add_dependency_tags(struct json_object *tags, struct json_object *dependencies);
 bool is_dependency_tag(rpmTagVal tag);
+const char *dependency_type_key(const char abbrev);
+char dependency_type_abbrev(const char *key);
+int dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry);
 
 /* files.c */
-struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
-void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir);
+struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
+void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies);
 bool is_file_list_tag(rpmTagVal tag);
 
 /* joinpath.c */

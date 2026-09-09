@@ -43,6 +43,16 @@ struct file_metadata {
     uint32_list_t *filecolors;
     uint32_list_t *fileflags;
     uint32_list_t *fileverifyflags;
+    uint32_list_t *filedependsx;
+    uint32_list_t *filedependsn;
+
+    /*
+     * The one list here that is not per-file.  DEPENDSDICT is a single
+     * array shared by every file; FILEDEPENDSX and FILEDEPENDSN give
+     * the start and length of each file's slice of it.  Track it here
+     * since it is part of file metadata.
+     */
+    uint32_list_t *dependsdict;
 };
 
 /*
@@ -134,6 +144,9 @@ free_file_metadata(struct file_metadata *fmd)
     uint32_list_free(fmd->filecolors);
     uint32_list_free(fmd->fileflags);
     uint32_list_free(fmd->fileverifyflags);
+    uint32_list_free(fmd->filedependsx);
+    uint32_list_free(fmd->filedependsn);
+    uint32_list_free(fmd->dependsdict);
     return;
 }
 
@@ -404,13 +417,92 @@ verifyflag_value(struct json_object *names)
 }
 
 /*
+ * Convert one file's slice of the depends dictionary in to an array
+ * of the dependencies that file generated.  Each dictionary value
+ * names a dependency type in its high byte and an index in to that
+ * type's array in the "dependencies" object in the rest, so every
+ * value resolves to exactly one dependency.  The resolved dependency
+ * is copied verbatim and given a "type" key naming the array it came
+ * from.
+ *
+ * The order of the slice is kept as-is because rpm records these in
+ * whatever order the dependency generators produced them, which means
+ * the types can interleave and the same dependency can appear more
+ * than once.  Reproducing the tag on create needs that order back.
+ *
+ * Returns NULL when the slice is empty or nothing in it resolves,
+ * which callers use to omit the key.
+ */
+static struct json_object *
+file_dependencies(struct json_object *dependencies, const uint32_list_t *dependsdict, uint32_t start, uint32_t count)
+{
+    uint32_t i = 0;
+    uint32_t value = 0;
+    uint32_t index = 0;
+    char abbrev = '\0';
+    const char *type = NULL;
+    struct json_object *deps = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *ref = NULL;
+    struct json_object *refs = NULL;
+
+    if (dependencies == NULL || dependsdict == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < count; i++) {
+        if (!uint32_list_nth(dependsdict, start + i, &value)) {
+            warnx(_("*** depends dictionary index %u is out of range"), start + i);
+            continue;
+        }
+
+        abbrev = (char) ((value >> DEPENDS_DICT_TYPE_SHIFT) & 0xFF);
+        index = value & DEPENDS_DICT_INDEX_MASK;
+        type = dependency_type_key(abbrev);
+
+        if (type == NULL) {
+            warnx(_("*** unknown dependency type '%c' in the depends dictionary"), abbrev);
+            continue;
+        }
+
+        if (!json_object_object_get_ex(dependencies, type, &deps)) {
+            warnx(_("*** no %s dependencies for the depends dictionary"), type);
+            continue;
+        }
+
+        entry = json_object_array_get_idx(deps, index);
+
+        if (entry == NULL) {
+            warnx(_("*** %s dependency %u is out of range"), type, index);
+            continue;
+        }
+
+        /* copy the dependency, naming the array it came from first */
+        ref = json_object_new_object();
+        json_object_object_add(ref, RPM_DEPENDENCY_TYPE_DESC, json_object_new_string(type));
+
+        json_object_object_foreach(entry, depkey, depval) {
+            json_object_object_add(ref, depkey, json_object_get(depval));
+        }
+
+        if (refs == NULL) {
+            refs = json_object_new_array();
+        }
+
+        json_object_array_add(refs, ref);
+    }
+
+    return refs;
+}
+
+/*
  * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
  * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
  * optionally "size" for regular files.
  * Returns NULL if the required tags are not found.
  */
 struct json_object *
-generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
+generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies)
 {
     uint32_t i = 0;
     uint32_t j = 0;
@@ -441,6 +533,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     struct json_object *colors_array = NULL;
     struct json_object *flags_array = NULL;
     struct json_object *verifyflags_array = NULL;
+    struct json_object *provides_array = NULL;
     uint32_entry_t *dirindex = NULL;
     uint32_entry_t *filesize = NULL;
     uint32_entry_t *filemode = NULL;
@@ -452,6 +545,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_entry_t *filecolor = NULL;
     uint32_entry_t *fileflag = NULL;
     uint32_entry_t *fileverifyflag = NULL;
+    uint32_entry_t *filedependsx = NULL;
+    uint32_entry_t *filedependsn = NULL;
     char mode_str[5];
     char mtime_str[32];
     time_t mtime = 0;
@@ -616,6 +711,30 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 fmd.fileverifyflags = uint32_list_add(fmd.fileverifyflags, ntohl(val32));
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILEDEPENDSX && datatype == RPM_INT32_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filedependsx = uint32_list_add(fmd.filedependsx, ntohl(val32));
+                p += sizeof(uint32_t);
+            }
+        } else if (tag == RPMTAG_FILEDEPENDSN && datatype == RPM_INT32_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.filedependsn = uint32_list_add(fmd.filedependsn, ntohl(val32));
+                p += sizeof(uint32_t);
+            }
+        } else if (tag == RPMTAG_DEPENDSDICT && datatype == RPM_INT32_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.dependsdict = uint32_list_add(fmd.dependsdict, ntohl(val32));
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -652,6 +771,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     filecolor = first_uint32(fmd.filecolors);
     fileflag = first_uint32(fmd.fileflags);
     fileverifyflag = first_uint32(fmd.fileverifyflags);
+    filedependsx = first_uint32(fmd.filedependsx);
+    filedependsn = first_uint32(fmd.filedependsn);
 
     while (basename != NULL && dirindex != NULL) {
         /* Verify dirindex is valid */
@@ -829,6 +950,23 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 }
             }
 
+            /*
+             * Add provides for entries that generated dependencies.
+             * FILEDEPENDSX and FILEDEPENDSN hold the start and the
+             * length of this file's slice of the depends dictionary,
+             * so resolve that slice to the dependencies it names here.
+             * Entries that generated nothing carry a length of zero,
+             * so the key is left off for them.
+             */
+            if (filedependsx != NULL && filedependsn != NULL && filedependsn->value > 0) {
+                provides_array = file_dependencies(dependencies, fmd.dependsdict, filedependsx->value, filedependsn->value);
+
+                if (provides_array != NULL) {
+                    json_object_object_add(file, RPM_FILE_PROVIDES_DESC, provides_array);
+                    provides_array = NULL;
+                }
+            }
+
             json_object_array_add(files, file);
 
             free(path);
@@ -852,6 +990,8 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         filecolor = next_uint32(filecolor);
         fileflag = next_uint32(fileflag);
         fileverifyflag = next_uint32(fileverifyflag);
+        filedependsx = next_uint32(filedependsx);
+        filedependsn = next_uint32(filedependsn);
     }
 
     /* Cleanup */
@@ -866,7 +1006,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
  * to the provided tags array.
  */
 void
-add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir)
+add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies)
 {
     size_t i = 0;
     size_t j = 0;
@@ -889,6 +1029,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *colors_obj = NULL;
     struct json_object *flags_obj = NULL;
     struct json_object *verifyflags_obj = NULL;
+    struct json_object *provides_obj = NULL;
+    struct json_object *type_obj = NULL;
+    struct json_object *ref = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -908,6 +1051,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filecolors = NULL;
     struct json_object *fileflags = NULL;
     struct json_object *fileverifyflags = NULL;
+    struct json_object *filedependsx = NULL;
+    struct json_object *filedependsn = NULL;
+    struct json_object *dependsdict = NULL;
     struct json_object *tag = NULL;
     str_list_t *langs = NULL;
     char *langs_str = NULL;
@@ -922,12 +1068,18 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *digest_str = NULL;
     const char *linkto_str = NULL;
     const char *class_str = NULL;
+    const char *type_str = NULL;
     char *dirname_copy = NULL;
     const char *separator = NULL;
     char *file_path = NULL;
     char **unique_dirs = NULL;
     char **unique_classes = NULL;
     size_t nclasses = 0;
+    size_t nprovides = 0;
+    size_t ndepends = 0;
+    size_t dependsstart = 0;
+    int depindex = 0;
+    char abbrev = '\0';
     struct stat sb;
     struct tm tm_info;
     int dirindex = 0;
@@ -983,6 +1135,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filecolors = json_object_new_array();
     fileflags = json_object_new_array();
     fileverifyflags = json_object_new_array();
+    filedependsx = json_object_new_array();
+    filedependsn = json_object_new_array();
+    dependsdict = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -1289,6 +1444,57 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(fileverifyflags, json_object_new_int64(verifyflags));
 
+        /*
+         * Extract provides if available.  The "provides" value is the
+         * ordered list of dependencies this file generated, which RPM
+         * keeps as a slice of the depends dictionary.  Each entry
+         * becomes one dictionary value naming its type and its index
+         * in the matching "dependencies" array, and the file records
+         * where its slice starts and how long it is.  Entries without
+         * a "provides" key get a length of zero, and rpmbuild writes a
+         * zero start for those too.
+         */
+        dependsstart = json_object_array_length(dependsdict);
+        ndepends = 0;
+
+        if (json_object_object_get_ex(file, RPM_FILE_PROVIDES_DESC, &provides_obj) && json_object_get_type(provides_obj) == json_type_array) {
+            nprovides = json_object_array_length(provides_obj);
+
+            for (j = 0; j < nprovides; j++) {
+                ref = json_object_array_get_idx(provides_obj, j);
+
+                if (!json_object_object_get_ex(ref, RPM_DEPENDENCY_TYPE_DESC, &type_obj)) {
+                    warnx(_("*** missing dependency type in the provides of %s"), path);
+                    continue;
+                }
+
+                type_str = json_object_get_string(type_obj);
+                abbrev = dependency_type_abbrev(type_str);
+
+                if (abbrev == '\0') {
+                    warnx(_("*** unknown dependency type %s in the provides of %s"), type_str, path);
+                    continue;
+                }
+
+                depindex = dependency_index(dependencies, type_str, ref);
+
+                if (depindex < 0) {
+                    warnx(_("*** no matching %s dependency for the provides of %s"), type_str, path);
+                    continue;
+                }
+
+                json_object_array_add(dependsdict, json_object_new_int64((((uint32_t) abbrev) << DEPENDS_DICT_TYPE_SHIFT) | ((uint32_t) depindex & DEPENDS_DICT_INDEX_MASK)));
+                ndepends++;
+            }
+        }
+
+        if (ndepends == 0) {
+            dependsstart = 0;
+        }
+
+        json_object_array_add(filedependsx, json_object_new_int64(dependsstart));
+        json_object_array_add(filedependsn, json_object_new_int64(ndepends));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -1444,6 +1650,40 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileverifyflags);
     json_object_array_add(tags, tag);
 
+    /*
+     * Add the RPMTAG_DEPENDSDICT, RPMTAG_FILEDEPENDSX, and
+     * RPMTAG_FILEDEPENDSN tags.  rpmbuild only writes these three when
+     * at least one file generated a dependency, so do the same and
+     * drop them when the dictionary came out empty.  Source RPMs are
+     * the common case for that.
+     */
+    if (json_object_array_length(dependsdict) > 0) {
+        /* Add RPMTAG_DEPENDSDICT tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DEPENDSDICT)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dependsdict);
+        json_object_array_add(tags, tag);
+
+        /* Add RPMTAG_FILEDEPENDSX tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEPENDSX)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedependsx);
+        json_object_array_add(tags, tag);
+
+        /* Add RPMTAG_FILEDEPENDSN tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEPENDSN)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedependsn);
+        json_object_array_add(tags, tag);
+    } else {
+        json_object_put(dependsdict);
+        json_object_put(filedependsx);
+        json_object_put(filedependsn);
+    }
+
     return;
 }
 
@@ -1473,6 +1713,9 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILECOLORS:
         case RPMTAG_FILEFLAGS:
         case RPMTAG_FILEVERIFYFLAGS:
+        case RPMTAG_DEPENDSDICT:
+        case RPMTAG_FILEDEPENDSX:
+        case RPMTAG_FILEDEPENDSN:
             return true;
     }
 
