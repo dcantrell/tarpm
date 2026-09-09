@@ -20,6 +20,7 @@
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
+#include <rpm/rpmfiles.h>
 #include <archive.h>
 #include <archive_entry.h>
 #include <openssl/evp.h>
@@ -445,6 +446,25 @@ cleanup:
 }
 
 /*
+ * A %ghost file is carried in the file list of the header, but
+ * rpmbuild never writes it in to the payload.  Returns true if the
+ * file at the given index is a ghost.
+ */
+static bool
+is_ghost_file(const struct hdr_file_lists *hfl, const size_t i)
+{
+    uint32_t flags = 0;
+
+    if (hfl == NULL || hfl->fileflags == NULL) {
+        return false;
+    }
+
+    flags = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileflags, i));
+
+    return (flags & RPMFILE_GHOST) ? true : false;
+}
+
+/*
  * Helper for create_rpm() that writes the payload data to a temporary
  * file.  Returns an open file descriptor that can then be used later
  * when putting together the final RPM.  Caller must close the file
@@ -494,6 +514,9 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     const char *dname = NULL;
     const char *bname = NULL;
     bool found = false;
+    size_t *order = NULL;
+    size_t ordered = 0;
+    size_t n = 0;
 
     if (header == NULL || payload_subdir == NULL) {
         return -1;
@@ -563,6 +586,8 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
                     hfl.filelinktos = value;
                 } else if (tagnum == RPMTAG_FILEINODES) {
                     hfl.fileinodes = value;
+                } else if (tagnum == RPMTAG_FILEFLAGS) {
+                    hfl.fileflags = value;
                 }
             }
         }
@@ -619,6 +644,14 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     if (tag != NULL && !strcmp(tag, "zstd")) {
         use_zstd = true;
         archive_write_add_filter_none(payload);
+
+        /*
+         * The cpio stream handed to zstd is not block padded, so do
+         * not let libarchive pad out the final block.
+         */
+        if (archive_write_set_bytes_in_last_block(payload, 1) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+        }
 
         /* get the compression level */
         level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
@@ -755,6 +788,11 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             continue;
         }
 
+        /* ghost files never make it in to the payload */
+        if (is_ghost_file(&hfl, i)) {
+            continue;
+        }
+
         found = false;
 
         /* have we seen this inode? */
@@ -795,8 +833,59 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
         }
     }
 
-    /* Write each file from the header to the payload */
+    /*
+     * rpmbuild writes all of the files that are not part of a hardlink
+     * group first and then appends each hardlink group, with the
+     * groups themselves in the order they first appear in the file
+     * list.  Work out that order before writing anything.
+     */
+    order = xcalloc(numfiles, sizeof(size_t));
+
     for (i = 0; i < numfiles; i++) {
+        if (is_ghost_file(&hfl, i)) {
+            continue;
+        }
+
+        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
+        found = false;
+
+        if (S_ISREG(mode)) {
+            for (j = 0; j < hardlink_count; j++) {
+                if (hardlink_inodes[j] == inode && hardlink_nlinks[j] > 1) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            order[ordered++] = i;
+        }
+    }
+
+    for (j = 0; j < hardlink_count; j++) {
+        if (hardlink_nlinks[j] < 2) {
+            continue;
+        }
+
+        for (i = 0; i < numfiles; i++) {
+            if (is_ghost_file(&hfl, i)) {
+                continue;
+            }
+
+            inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+            mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
+
+            if (S_ISREG(mode) && inode == hardlink_inodes[j]) {
+                order[ordered++] = i;
+            }
+        }
+    }
+
+    /* Write each file from the header to the payload */
+    for (n = 0; n < ordered; n++) {
+        i = order[n];
         dirindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
         params.dirname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dirindex));
         params.basename = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
@@ -819,14 +908,15 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             params.gid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filegids, i));
         }
 
-        /* check if this is a hardlink */
-        params.inode = 0;
-        params.nlink = 0;
+        /*
+         * every payload entry carries the inode number from the
+         * header, but only regular files can be hardlinks
+         */
+        params.inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+        params.nlink = 1;
         params.hardlink = NULL;
 
         if (S_ISREG(params.mode)) {
-            params.inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
-
             /* find the first occurrence of this inode */
             for (j = 0; j < hardlink_count; j++) {
                 if (hardlink_inodes[j] == params.inode) {
@@ -875,6 +965,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
 
     free(hardlink_inodes);
     free(hardlink_nlinks);
+    free(order);
 
     /* when using zstd, close pipe and wait for compression child */
     if (use_zstd) {
@@ -963,14 +1054,16 @@ write_payload(FILE *rpm, int fd)
  * already been compressed in to payloadfd, so read it back through
  * libarchive's decompression filters to recover the cpio stream.
  * Returns the digest as an allocated hex string or NULL on failure.
- * Caller must free the returned string.
+ * Caller must free the returned string.  If size is not NULL, the
+ * number of uncompressed payload bytes is stored there.
  */
 static char *
-uncompressed_payload_digest(const int payloadfd)
+uncompressed_payload_digest(const int payloadfd, uint64_t *size)
 {
     unsigned int i = 0;
     unsigned int digestlen = 0;
     ssize_t len = 0;
+    uint64_t total = 0;
     char *r = NULL;
     struct archive *raw = NULL;
     struct archive_entry *entry = NULL;
@@ -1014,6 +1107,8 @@ uncompressed_payload_digest(const int payloadfd)
             warn("EVP_DigestUpdate");
             goto cleanup_uncompressed_payload_digest;
         }
+
+        total += len;
     }
 
     if (len < 0) {
@@ -1032,6 +1127,10 @@ uncompressed_payload_digest(const int payloadfd)
         sprintf(&r[i * 2], "%02x", (unsigned int) digest[i]);
     }
 
+    if (size != NULL) {
+        *size = total;
+    }
+
 cleanup_uncompressed_payload_digest:
     EVP_MD_CTX_free(ctx);
     archive_read_free(raw);
@@ -1040,20 +1139,61 @@ cleanup_uncompressed_payload_digest:
 }
 
 /*
- * Update the payload digest in the header.  Computes the digest of the
- * uncompressed payload.  Returns non-zero on failure.
+ * Replace the first element of the string array value of the named
+ * header tag with the given digest string.  Tags that the package does
+ * not carry are left alone.  Returns non-zero on failure.
+ */
+static int
+set_payload_digest(struct json_object *tags, const rpmTagVal tagnum, const char *digest)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *tag = NULL;
+    struct json_object *value = NULL;
+
+    if (tags == NULL || digest == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
+            continue;
+        }
+
+        if (rpmTagGetValue(json_object_get_string(tag)) != tagnum) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+            return -1;
+        }
+
+        if (json_object_get_type(value) != json_type_array || json_object_array_length(value) < 1) {
+            return -1;
+        }
+
+        json_object_array_put_idx(value, 0, json_object_new_string(digest));
+        break;
+    }
+
+    return 0;
+}
+
+/*
+ * Update the payload digests in the header.  RPMTAG_PAYLOADSHA256 is
+ * the digest of the payload as it is written in to the RPM, which is
+ * the compressed payload, and RPMTAG_PAYLOADSHA256ALT is the digest of
+ * the uncompressed payload.  Returns non-zero on failure.
  */
 static int
 update_header_digests(struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
 {
+    int i = 0;
     char *buf = NULL;
+    unsigned char *digest = NULL;
     struct json_object *tags = NULL;
-#ifdef _USE_RPMTAG_5097
-    struct json_object *entry = NULL;
-    struct json_object *tag = NULL;
-    struct json_object *value = NULL;
-    size_t j = 0;
-#endif
 
     if (header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
         return -1;
@@ -1065,35 +1205,47 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
         return -1;
     }
 
-    /* compute the SHA-256 digest of the uncompressed payload */
-    buf = uncompressed_payload_digest(payloadfd);
+    /* compute the SHA-256 digest of the compressed payload */
+    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, hdr, hdrinfo, header, payloadfd);
 
-    if (buf == NULL) {
-        warnx(_("*** failed to compute SHA-256 ALT digest"));
+    if (digest == NULL) {
+        warnx(_("*** failed to compute the payload SHA-256 digest"));
         return -1;
     }
 
-#ifdef _USE_RPMTAG_5097
-    /* find and update the payload digest tag */
-    for (j = 0; j < json_object_array_length(tags); j++) {
-        entry = json_object_array_get_idx(tags, j);
+    buf = xcalloc((SHA256_DIGEST_LENGTH * 2) + 1, sizeof(char));
 
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
-            if (rpmTagGetValue(json_object_get_string(tag)) == 5097) {
-                if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
-                    /* Update the first element of the array */
-                    if (json_object_get_type(value) == json_type_array && json_object_array_length(value) > 0) {
-                        json_object_array_put_idx(value, 0, json_object_new_string(buf));
-                    }
-                }
-
-                break;
-            }
-        }
+    for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
     }
-#endif
+
+    free(digest);
+
+    if (set_payload_digest(tags, 5092, buf) != 0) {
+        warnx(_("*** failed to update the payload SHA-256 digest"));
+        free(buf);
+        return -1;
+    }
 
     free(buf);
+
+#ifdef _USE_RPMTAG_5097
+    /* compute the SHA-256 digest of the uncompressed payload */
+    buf = uncompressed_payload_digest(payloadfd, NULL);
+
+    if (buf == NULL) {
+        warnx(_("*** failed to compute the payload SHA-256 ALT digest"));
+        return -1;
+    }
+
+    if (set_payload_digest(tags, 5097, buf) != 0) {
+        warnx(_("*** failed to update the payload SHA-256 ALT digest"));
+        free(buf);
+        return -1;
+    }
+
+    free(buf);
+#endif
 
     return 0;
 }
@@ -1112,6 +1264,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     struct json_object *tags = NULL;
     off_t payload_off = 0;
     uint64_t payloadsize = 0;
+    uint64_t archivesize = 0;
     uint64_t totalsize = 0;
     uint64_t hdrsize = 0;
     uint64_t nentries = 0;
@@ -1168,8 +1321,19 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
     free(buf);
 
-    /* update Payloadsize tag (compressed payload size) */
-    xasprintf(&buf, "%lu", payloadsize);
+    /*
+     * update Payloadsize tag; this is the size of the uncompressed
+     * payload, not the size of what is written in to the RPM
+     */
+    buf = uncompressed_payload_digest(payloadfd, &archivesize);
+
+    if (buf == NULL) {
+        warnx(_("*** failed to measure the uncompressed payload"));
+        return -1;
+    }
+
+    free(buf);
+    xasprintf(&buf, "%lu", archivesize);
 
     if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), buf) != 0) {
         warnx(_("*** failed to update Payloadsize in signature"));

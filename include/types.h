@@ -113,6 +113,7 @@ struct hdr_file_lists {
     struct json_object *filemtimes;
     struct json_object *filelinktos;
     struct json_object *fileinodes;
+    struct json_object *fileflags;
 };
 
 /*
