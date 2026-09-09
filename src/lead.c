@@ -87,16 +87,11 @@ create_lead(struct json_object *header)
 {
     struct rpmlead *lead = NULL;
     struct json_object *obj = NULL;
-    struct json_object *entry = NULL;
-    struct json_object *key = NULL;
     const char *n = NULL;
     const char *e = NULL;
     const char *v = NULL;
     const char *r = NULL;
-    const char *name = NULL;
     char *nevr = NULL;
-    size_t i = 0;
-    bool is_source = false;
 
     if (header == NULL) {
         return NULL;
@@ -129,20 +124,7 @@ create_lead(struct json_object *header)
      * are looking at a source package which is type 1 in the lead,
      * otherwise binary packages are type 0.
      */
-    for (i = 0; i < json_object_array_length(obj); i++) {
-        entry = json_object_array_get_idx(obj, i);
-
-        if (json_object_object_get_ex(entry, RPM_LEAD_NAME, &key) == 1) {
-            name = json_object_get_string(key);
-
-            if (strcmp(name, "Sourcepackage") == 0) {
-                is_source = true;
-                break;
-            }
-        }
-    }
-
-    if (is_source) {
+    if (get_tag_value(obj, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
         lead->type = htons(1);
     } else {
         lead->type = htons(0);

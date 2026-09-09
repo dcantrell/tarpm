@@ -89,7 +89,8 @@ test_create_lead(void)
 
     /* test source package */
     entry = json_object_new_object();
-    json_object_object_add(entry, "name", json_object_new_string("Sourcepackage"));
+    json_object_object_add(entry, "tag", json_object_new_string("Sourcepackage"));
+    json_object_object_add(entry, "value", json_object_new_int(1));
     json_object_array_add(tags, entry);
 
     lead = create_lead(header);
