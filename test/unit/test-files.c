@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <arpa/inet.h>
 #include <rpm/rpmtag.h>
+#include <rpm/rpmfiles.h>
 #include <json.h>
 #include <CUnit/Basic.h>
 #include "tarpm.h"
@@ -24,6 +25,7 @@
  *     0100755, 0100755                 filemodes   ( 4 bytes)
  *     "en|de\0\0"                      filelangs   ( 7 bytes)
  *     2, 0                             filecolors  ( 8 bytes)
+ *     1, 0                             fileflags   ( 8 bytes)
  */
 #define DIRNAMES_OFFSET    0
 #define BASENAMES_OFFSET   10
@@ -32,8 +34,9 @@
 #define FILEMODES_OFFSET   33
 #define FILELANGS_OFFSET   37
 #define FILECOLORS_OFFSET  44
-#define DATA_SIZE          52
-#define NUM_ENTRIES        7
+#define FILEFLAGS_OFFSET   52
+#define DATA_SIZE          60
+#define NUM_ENTRIES        8
 
 int
 init_test_files(void)
@@ -101,6 +104,12 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
     val32 = htonl(0);
     memcpy(data + FILECOLORS_OFFSET + sizeof(val32), &val32, sizeof(val32));
 
+    /* fileflags (the second entry has no flags) */
+    val32 = htonl(RPMFILE_CONFIG);
+    memcpy(data + FILEFLAGS_OFFSET, &val32, sizeof(val32));
+    val32 = htonl(0);
+    memcpy(data + FILEFLAGS_OFFSET + sizeof(val32), &val32, sizeof(val32));
+
     set_entry(&entries[0], RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, DIRNAMES_OFFSET, 1);
     set_entry(&entries[1], RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE, BASENAMES_OFFSET, 2);
     set_entry(&entries[2], RPMTAG_DIRINDEXES, RPM_INT32_TYPE, DIRINDEXES_OFFSET, 2);
@@ -108,6 +117,7 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
     set_entry(&entries[4], RPMTAG_FILEMODES, RPM_INT16_TYPE, FILEMODES_OFFSET, 2);
     set_entry(&entries[5], RPMTAG_FILELANGS, RPM_STRING_ARRAY_TYPE, FILELANGS_OFFSET, 2);
     set_entry(&entries[6], RPMTAG_FILECOLORS, RPM_INT32_TYPE, FILECOLORS_OFFSET, 2);
+    set_entry(&entries[7], RPMTAG_FILEFLAGS, RPM_INT32_TYPE, FILEFLAGS_OFFSET, 2);
 
     hdr->nentries = NUM_ENTRIES;
     hdrinfo->estart = entries;
@@ -225,6 +235,7 @@ test_generate_files_valid(void)
     struct json_object *value = NULL;
     struct json_object *langs = NULL;
     struct json_object *colors = NULL;
+    struct json_object *flags = NULL;
 
     build_header(&hdr, &hdrinfo, entries, data);
 
@@ -250,6 +261,11 @@ test_generate_files_valid(void)
     TARPM_ASSERT_EQUAL(json_object_array_length(colors), 1);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(colors, 0)), "Elf64");
 
+    /* the first file is a %config file */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "flags", &flags));
+    TARPM_ASSERT_EQUAL(json_object_array_length(flags), 1);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(flags, 0)), "config");
+
     /* the second file has an empty language string, so no langs key */
     file = json_object_array_get_idx(files, 1);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "path", &value));
@@ -260,6 +276,9 @@ test_generate_files_valid(void)
 
     /* the second file has no color, so no colors key */
     TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "colors", &colors));
+
+    /* the second file has no flags, so no flags key */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "flags", &flags));
 
     json_object_put(files);
 
@@ -355,8 +374,8 @@ test_add_file_list_tags_file_list(void)
 
     add_file_list_tags(tags, files, NULL, NULL);
 
-    /* all seventeen file list tags should be present */
-    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 17);
+    /* all eighteen file list tags should be present */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 18);
 
     /* basenames come from the last path component */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_BASENAMES));
@@ -560,6 +579,68 @@ test_add_file_list_tags_colors(void)
     return;
 }
 
+/* Test add_file_list_tags() with flag values */
+void
+test_add_file_list_tags_flags(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *flags = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a %config file */
+    file = add_file(files, "/etc/ls.conf");
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("config"));
+    json_object_object_add(file, "flags", flags);
+
+    /* a %config(noreplace) file */
+    file = add_file(files, "/etc/cat.conf");
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("config"));
+    json_object_array_add(flags, json_object_new_string("noreplace"));
+    json_object_object_add(file, "flags", flags);
+
+    /* a %ghost %config(missingok noreplace) file */
+    file = add_file(files, "/etc/mv.conf");
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("config"));
+    json_object_array_add(flags, json_object_new_string("missingok"));
+    json_object_array_add(flags, json_object_new_string("noreplace"));
+    json_object_array_add(flags, json_object_new_string("ghost"));
+    json_object_object_add(file, "flags", flags);
+
+    /* an entry with a flag that has no name */
+    file = add_file(files, "/usr/bin/cp");
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("512"));
+    json_object_object_add(file, "flags", flags);
+
+    /* an entry with no flags at all */
+    add_file(files, "/usr/share/man/man1/ls.1");
+
+    add_file_list_tags(tags, files, NULL, NULL);
+
+    /* names turn back in to bits and missing flags are zero */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEFLAGS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 17);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 89);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 512);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
 /* Test is_file_list_tag() with file list tags */
 void
 test_is_file_list_tag_file_list_tags(void)
@@ -581,6 +662,7 @@ test_is_file_list_tag_file_list_tags(void)
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_CLASSDICT));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILELANGS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILECOLORS));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEFLAGS));
 
     return;
 }
@@ -596,7 +678,7 @@ test_is_file_list_tag_other_tags(void)
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_CHANGELOGTIME));
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_PROVIDENAME));
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_REQUIRENAME));
-    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_FILEFLAGS));
+    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_FILEVERIFYFLAGS));
 
     return;
 }
@@ -625,6 +707,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with flag values", test_add_file_list_tags_flags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

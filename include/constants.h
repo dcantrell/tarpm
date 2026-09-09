@@ -76,8 +76,13 @@
 #define RPM_FILE_CLASS_DESC            "class"
 #define RPM_FILE_LANGS_DESC            "langs"
 #define RPM_FILE_COLORS_DESC           "colors"
+#define RPM_FILE_FLAGS_DESC            "flags"
 
 /* values used by the entries in the "files" array */
+/*
+ * These values were learned from the rpm source code and seem to be
+ * good defaults, probably.
+ */
 #define RPM_FILE_DEFAULT_USER          "root"
 #define RPM_FILE_DEFAULT_GROUP         "root"
 #define RPM_FILE_CURRENT_DIRECTORY     "./"
@@ -85,9 +90,27 @@
 #define RPM_FILE_MODE_FORMAT           "%04o"
 #define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"
 
-/* names used for the file color bits in the "files" array */
+/* names used for the file color bits in the "files" array   */
+/* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
 #define RPM_FILE_COLOR_ELF32           "Elf32"
 #define RPM_FILE_COLOR_ELF64           "Elf64"
+
+/* names used for the file flag bits in the "files" array */
+/*
+ * From enum rpmfileAttrs_e in include/rpm/rpmfiles.h in the rpm
+ * source; not public API.  New things may show up in rpm!
+ */
+#define RPM_FILE_FLAG_CONFIG           "config"
+#define RPM_FILE_FLAG_DOC              "doc"
+#define RPM_FILE_FLAG_ICON             "icon"
+#define RPM_FILE_FLAG_MISSINGOK        "missingok"
+#define RPM_FILE_FLAG_NOREPLACE        "noreplace"
+#define RPM_FILE_FLAG_SPECFILE         "specfile"
+#define RPM_FILE_FLAG_GHOST            "ghost"
+#define RPM_FILE_FLAG_LICENSE          "license"
+#define RPM_FILE_FLAG_README           "readme"
+#define RPM_FILE_FLAG_PUBKEY           "pubkey"
+#define RPM_FILE_FLAG_ARTIFACT         "artifact"
 
 /* comparison operator string constants */
 #define COMPARISON_LE                  "<="
@@ -97,9 +120,19 @@
 #define COMPARISON_EQ                  "="
 
 /* general purpose string constants */
+/*
+ * NOTE: This is a marker for tarpm users only and has no bearing on
+ * data in an RPM header.  It goes in the JSON output and is meant to
+ * tell the tarpm user that what they are looking at is read-only and
+ * is not changeable by them.
+ */
 #define RPM_METADATA_READ_ONLY         "read-only"
 
 /* sense flag string constants */
+/*
+ * See enum rpmsenseFlags_e include/rpm/rpmds.h in the rpm source?
+ * Good luck.
+ */
 #define RPM_SENSE_FLAGS_DESC           "sense_flags"
 #define SENSE_FLAG_PRE                 "pre"
 #define SENSE_FLAG_POST                "post"
