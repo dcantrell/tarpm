@@ -42,6 +42,7 @@ struct file_metadata {
     str_list_t *filelangs;
     uint32_list_t *filecolors;
     uint32_list_t *fileflags;
+    uint32_list_t *fileverifyflags;
 };
 
 /*
@@ -66,6 +67,39 @@ static const struct file_flag_name file_flag_names[] = {
     { RPMFILE_README, RPM_FILE_FLAG_README },
     { RPMFILE_PUBKEY, RPM_FILE_FLAG_PUBKEY },
     { RPMFILE_ARTIFACT, RPM_FILE_FLAG_ARTIFACT },
+    { 0, NULL }
+};
+
+/*
+ * Maps a single RPMVERIFY_* bit to the name it carries in the "files"
+ * array.  The names come from the enum constant names from
+ * rpmVerifyAttrs_e with the RPMVERIFY_ prefix trimmed and lowercased.
+ * This is also close to how it would appear in a spec file, just
+ * without the '%' prefix.
+ *
+ * Only bits 0 through 8 appear here because those are the only ones a
+ * spec file can specify; they are what %verify() accepts.  The higher
+ * bits rpmVerifyAttrs_e defines are used internally by rpm and are
+ * never read back out of this tag.  They are in the stored value
+ * though: rpmbuild defaults every file to RPMVERIFY_ALL, which is ~0,
+ * and writes %verify(not ...) as the complement of the listed bits,
+ * so a file that verifies everything carries 0xffffffff rather than
+ * an explicit list of the attributes it wants checked.  Fun.
+ *
+ * RPMVERIFY_MD5 is left out here because it is an obsolete spelling
+ * of RPMVERIFY_FILEDIGEST and shares the same bit; it is still
+ * accepted when reading.
+ */
+static const struct file_flag_name file_verify_names[] = {
+    { RPMVERIFY_FILEDIGEST, RPM_FILE_VERIFY_FILEDIGEST },
+    { RPMVERIFY_FILESIZE, RPM_FILE_VERIFY_FILESIZE },
+    { RPMVERIFY_LINKTO, RPM_FILE_VERIFY_LINKTO },
+    { RPMVERIFY_USER, RPM_FILE_VERIFY_USER },
+    { RPMVERIFY_GROUP, RPM_FILE_VERIFY_GROUP },
+    { RPMVERIFY_MTIME, RPM_FILE_VERIFY_MTIME },
+    { RPMVERIFY_MODE, RPM_FILE_VERIFY_MODE },
+    { RPMVERIFY_RDEV, RPM_FILE_VERIFY_RDEV },
+    { RPMVERIFY_CAPS, RPM_FILE_VERIFY_CAPS },
     { 0, NULL }
 };
 
@@ -99,6 +133,7 @@ free_file_metadata(struct file_metadata *fmd)
     uint32_list_free(fmd->fileclass);
     uint32_list_free(fmd->filecolors);
     uint32_list_free(fmd->fileflags);
+    uint32_list_free(fmd->fileverifyflags);
     return;
 }
 
@@ -288,6 +323,87 @@ flag_value(struct json_object *names)
 }
 
 /*
+ * Convert a FILEVERIFYFLAGS value in to an array of verify flag name
+ * strings.  The names come from the rpmVerifyAttrs_e constants with
+ * the RPMVERIFY_ prefix trimmed and lowercased.  Only the named bits
+ * are reported; anything above them is dropped rather than carried
+ * along as a number, so what lands in header.json is the list of
+ * attributes rpm will actually check.  Returns NULL when none of the
+ * named bits are set, which callers use to omit the key.
+ */
+static struct json_object *
+verifyflag_names(uint32_t verifyflags)
+{
+    const struct file_flag_name *ffn = NULL;
+    struct json_object *names = NULL;
+
+    for (ffn = file_verify_names; ffn->name != NULL; ffn++) {
+        if (verifyflags & ffn->bit) {
+            if (names == NULL) {
+                names = json_object_new_array();
+            }
+
+            json_object_array_add(names, json_object_new_string(ffn->name));
+        }
+    }
+
+    return names;
+}
+
+/*
+ * Convert an array of verify flag name strings back in to a
+ * FILEVERIFYFLAGS value.  Only the names verifyflag_names() emits are
+ * understood, plus "md5" as the obsolete spelling of "filedigest".
+ * Returns zero for a missing or empty array.
+ */
+static uint32_t
+verifyflag_value(struct json_object *names)
+{
+    size_t i = 0;
+    size_t len = 0;
+    uint32_t verifyflags = 0;
+    const char *s = NULL;
+    const struct file_flag_name *ffn = NULL;
+    bool found = false;
+
+    if (names == NULL || json_object_get_type(names) != json_type_array) {
+        return 0;
+    }
+
+    len = json_object_array_length(names);
+
+    for (i = 0; i < len; i++) {
+        s = json_object_get_string(json_object_array_get_idx(names, i));
+
+        if (s == NULL) {
+            continue;
+        }
+
+        /* the obsolete spelling of RPMVERIFY_FILEDIGEST */
+        if (!strcmp(s, RPM_FILE_VERIFY_MD5)) {
+            verifyflags |= RPMVERIFY_MD5;
+            continue;
+        }
+
+        found = false;
+
+        for (ffn = file_verify_names; ffn->name != NULL; ffn++) {
+            if (!strcmp(s, ffn->name)) {
+                verifyflags |= ffn->bit;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            warnx(_("*** unknown file verify flag: %s"), s);
+        }
+    }
+
+    return verifyflags;
+}
+
+/*
  * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
  * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
  * optionally "size" for regular files.
@@ -324,6 +440,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     struct json_object *langs_array = NULL;
     struct json_object *colors_array = NULL;
     struct json_object *flags_array = NULL;
+    struct json_object *verifyflags_array = NULL;
     uint32_entry_t *dirindex = NULL;
     uint32_entry_t *filesize = NULL;
     uint32_entry_t *filemode = NULL;
@@ -334,6 +451,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_entry_t *fileclass = NULL;
     uint32_entry_t *filecolor = NULL;
     uint32_entry_t *fileflag = NULL;
+    uint32_entry_t *fileverifyflag = NULL;
     char mode_str[5];
     char mtime_str[32];
     time_t mtime = 0;
@@ -490,6 +608,14 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 fmd.fileflags = uint32_list_add(fmd.fileflags, ntohl(val32));
                 p += sizeof(uint32_t);
             }
+        } else if (tag == RPMTAG_FILEVERIFYFLAGS && datatype == RPM_INT32_TYPE) {
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&val32, p, sizeof(uint32_t));
+                fmd.fileverifyflags = uint32_list_add(fmd.fileverifyflags, ntohl(val32));
+                p += sizeof(uint32_t);
+            }
         }
     }
 
@@ -525,6 +651,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     fileclass = first_uint32(fmd.fileclass);
     filecolor = first_uint32(fmd.filecolors);
     fileflag = first_uint32(fmd.fileflags);
+    fileverifyflag = first_uint32(fmd.fileverifyflags);
 
     while (basename != NULL && dirindex != NULL) {
         /* Verify dirindex is valid */
@@ -686,6 +813,22 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 }
             }
 
+            /*
+             * Add verifyflags for entries that carry one.  RPM records
+             * the %verify() settings of a file as a bitfield, so turn
+             * that in to an array of names here.  Entries that verify
+             * nothing carry a zero, which verifyflag_names() reports as
+             * NULL so the key is left off.
+             */
+            if (fileverifyflag != NULL) {
+                verifyflags_array = verifyflag_names(fileverifyflag->value);
+
+                if (verifyflags_array != NULL) {
+                    json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags_array);
+                    verifyflags_array = NULL;
+                }
+            }
+
             json_object_array_add(files, file);
 
             free(path);
@@ -708,6 +851,7 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         fileclass = next_uint32(fileclass);
         filecolor = next_uint32(filecolor);
         fileflag = next_uint32(fileflag);
+        fileverifyflag = next_uint32(fileverifyflag);
     }
 
     /* Cleanup */
@@ -744,6 +888,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *langs_obj = NULL;
     struct json_object *colors_obj = NULL;
     struct json_object *flags_obj = NULL;
+    struct json_object *verifyflags_obj = NULL;
     struct json_object *dirnames = NULL;
     struct json_object *basenames = NULL;
     struct json_object *dirindexes = NULL;
@@ -762,6 +907,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *filelangs = NULL;
     struct json_object *filecolors = NULL;
     struct json_object *fileflags = NULL;
+    struct json_object *fileverifyflags = NULL;
     struct json_object *tag = NULL;
     str_list_t *langs = NULL;
     char *langs_str = NULL;
@@ -794,6 +940,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     int classindex = 0;
     uint32_t color = 0;
     uint32_t flags = 0;
+    uint32_t verifyflags = 0;
     time_t mtime = 0;
     bool found = false;
     bool class_found = false;
@@ -835,6 +982,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     filelangs = json_object_new_array();
     filecolors = json_object_new_array();
     fileflags = json_object_new_array();
+    fileverifyflags = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
@@ -1127,6 +1275,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         json_object_array_add(fileflags, json_object_new_int64(flags));
 
+        /*
+         * Extract verifyflags if available.  The "verifyflags" value is
+         * an array of verify flag names which RPM stores as a bitfield.
+         * Entries without a "verifyflags" key carry a zero so the array
+         * stays parallel to the file list.
+         */
+        verifyflags = 0;
+
+        if (json_object_object_get_ex(file, RPM_FILE_VERIFYFLAGS_DESC, &verifyflags_obj)) {
+            verifyflags = verifyflag_value(verifyflags_obj);
+        }
+
+        json_object_array_add(fileverifyflags, json_object_new_int64(verifyflags));
+
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
@@ -1275,6 +1437,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileflags);
     json_object_array_add(tags, tag);
 
+    /* Add RPMTAG_FILEVERIFYFLAGS tag */
+    tag = json_object_new_object();
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEVERIFYFLAGS)));
+    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileverifyflags);
+    json_object_array_add(tags, tag);
+
     return;
 }
 
@@ -1303,6 +1472,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILELANGS:
         case RPMTAG_FILECOLORS:
         case RPMTAG_FILEFLAGS:
+        case RPMTAG_FILEVERIFYFLAGS:
             return true;
     }
 

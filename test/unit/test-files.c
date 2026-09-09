@@ -26,6 +26,7 @@
  *     "en|de\0\0"                      filelangs   ( 7 bytes)
  *     2, 0                             filecolors  ( 8 bytes)
  *     1, 0                             fileflags   ( 8 bytes)
+ *     0xffffffff, 0                    fileverify  ( 8 bytes)
  */
 #define DIRNAMES_OFFSET    0
 #define BASENAMES_OFFSET   10
@@ -35,8 +36,9 @@
 #define FILELANGS_OFFSET   37
 #define FILECOLORS_OFFSET  44
 #define FILEFLAGS_OFFSET   52
-#define DATA_SIZE          60
-#define NUM_ENTRIES        8
+#define FILEVERIFY_OFFSET  60
+#define DATA_SIZE          68
+#define NUM_ENTRIES        9
 
 int
 init_test_files(void)
@@ -110,6 +112,17 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
     val32 = htonl(0);
     memcpy(data + FILEFLAGS_OFFSET + sizeof(val32), &val32, sizeof(val32));
 
+    /*
+     * fileverifyflags (the second entry verifies nothing).  The first
+     * entry is what rpmbuild writes for %verify(not md5 mtime), which
+     * is the complement of the named bits and so carries the bits rpm
+     * keeps for itself; those are expected to be normalized away.
+     */
+    val32 = htonl(RPMVERIFY_ALL & ~(RPMVERIFY_FILEDIGEST | RPMVERIFY_MTIME));
+    memcpy(data + FILEVERIFY_OFFSET, &val32, sizeof(val32));
+    val32 = htonl(0);
+    memcpy(data + FILEVERIFY_OFFSET + sizeof(val32), &val32, sizeof(val32));
+
     set_entry(&entries[0], RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, DIRNAMES_OFFSET, 1);
     set_entry(&entries[1], RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE, BASENAMES_OFFSET, 2);
     set_entry(&entries[2], RPMTAG_DIRINDEXES, RPM_INT32_TYPE, DIRINDEXES_OFFSET, 2);
@@ -118,6 +131,7 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
     set_entry(&entries[5], RPMTAG_FILELANGS, RPM_STRING_ARRAY_TYPE, FILELANGS_OFFSET, 2);
     set_entry(&entries[6], RPMTAG_FILECOLORS, RPM_INT32_TYPE, FILECOLORS_OFFSET, 2);
     set_entry(&entries[7], RPMTAG_FILEFLAGS, RPM_INT32_TYPE, FILEFLAGS_OFFSET, 2);
+    set_entry(&entries[8], RPMTAG_FILEVERIFYFLAGS, RPM_INT32_TYPE, FILEVERIFY_OFFSET, 2);
 
     hdr->nentries = NUM_ENTRIES;
     hdrinfo->estart = entries;
@@ -236,6 +250,7 @@ test_generate_files_valid(void)
     struct json_object *langs = NULL;
     struct json_object *colors = NULL;
     struct json_object *flags = NULL;
+    struct json_object *verifyflags = NULL;
 
     build_header(&hdr, &hdrinfo, entries, data);
 
@@ -266,6 +281,17 @@ test_generate_files_valid(void)
     TARPM_ASSERT_EQUAL(json_object_array_length(flags), 1);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(flags, 0)), "config");
 
+    /* the first file verifies its digest and mtime */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "verifyflags", &verifyflags));
+    TARPM_ASSERT_EQUAL(json_object_array_length(verifyflags), 7);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 0)), "filesize");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 1)), "linkto");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 2)), "user");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 3)), "group");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 4)), "mode");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 5)), "rdev");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(verifyflags, 6)), "caps");
+
     /* the second file has an empty language string, so no langs key */
     file = json_object_array_get_idx(files, 1);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "path", &value));
@@ -279,6 +305,9 @@ test_generate_files_valid(void)
 
     /* the second file has no flags, so no flags key */
     TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "flags", &flags));
+
+    /* the second file verifies nothing, so no verifyflags key */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "verifyflags", &verifyflags));
 
     json_object_put(files);
 
@@ -374,8 +403,8 @@ test_add_file_list_tags_file_list(void)
 
     add_file_list_tags(tags, files, NULL, NULL);
 
-    /* all eighteen file list tags should be present */
-    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 18);
+    /* all nineteen file list tags should be present */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 19);
 
     /* basenames come from the last path component */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_BASENAMES));
@@ -641,6 +670,75 @@ test_add_file_list_tags_flags(void)
     return;
 }
 
+/* Test add_file_list_tags() with verify flag values */
+void
+test_add_file_list_tags_verifyflags(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *verifyflags = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a file that verifies its digest only */
+    file = add_file(files, "/usr/bin/ls");
+    verifyflags = json_object_new_array();
+    json_object_array_add(verifyflags, json_object_new_string("filedigest"));
+    json_object_object_add(file, "verifyflags", verifyflags);
+
+    /* the obsolete spelling maps on to the same bit */
+    file = add_file(files, "/usr/bin/cat");
+    verifyflags = json_object_new_array();
+    json_object_array_add(verifyflags, json_object_new_string("md5"));
+    json_object_object_add(file, "verifyflags", verifyflags);
+
+    /* a file that verifies several attributes */
+    file = add_file(files, "/usr/bin/mv");
+    verifyflags = json_object_new_array();
+    json_object_array_add(verifyflags, json_object_new_string("filesize"));
+    json_object_array_add(verifyflags, json_object_new_string("user"));
+    json_object_array_add(verifyflags, json_object_new_string("group"));
+    json_object_array_add(verifyflags, json_object_new_string("mode"));
+    json_object_object_add(file, "verifyflags", verifyflags);
+
+    /* a file that verifies everything */
+    file = add_file(files, "/usr/bin/cp");
+    verifyflags = json_object_new_array();
+    json_object_array_add(verifyflags, json_object_new_string("filedigest"));
+    json_object_array_add(verifyflags, json_object_new_string("filesize"));
+    json_object_array_add(verifyflags, json_object_new_string("linkto"));
+    json_object_array_add(verifyflags, json_object_new_string("user"));
+    json_object_array_add(verifyflags, json_object_new_string("group"));
+    json_object_array_add(verifyflags, json_object_new_string("mtime"));
+    json_object_array_add(verifyflags, json_object_new_string("mode"));
+    json_object_array_add(verifyflags, json_object_new_string("rdev"));
+    json_object_array_add(verifyflags, json_object_new_string("caps"));
+    json_object_object_add(file, "verifyflags", verifyflags);
+
+    /* an entry that verifies nothing */
+    add_file(files, "/usr/share/man/man1/ls.1");
+
+    add_file_list_tags(tags, files, NULL, NULL);
+
+    /* names turn back in to bits and missing verify flags are zero */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEVERIFYFLAGS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 90);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 511);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
 /* Test is_file_list_tag() with file list tags */
 void
 test_is_file_list_tag_file_list_tags(void)
@@ -663,6 +761,7 @@ test_is_file_list_tag_file_list_tags(void)
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILELANGS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILECOLORS));
     TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEFLAGS));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILEVERIFYFLAGS));
 
     return;
 }
@@ -678,7 +777,7 @@ test_is_file_list_tag_other_tags(void)
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_CHANGELOGTIME));
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_PROVIDENAME));
     TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_REQUIRENAME));
-    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_FILEVERIFYFLAGS));
+    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_FILECAPS));
 
     return;
 }
@@ -708,6 +807,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with flag values", test_add_file_list_tags_flags) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with verify flag values", test_add_file_list_tags_verifyflags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

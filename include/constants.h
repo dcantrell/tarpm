@@ -77,6 +77,7 @@
 #define RPM_FILE_LANGS_DESC            "langs"
 #define RPM_FILE_COLORS_DESC           "colors"
 #define RPM_FILE_FLAGS_DESC            "flags"
+#define RPM_FILE_VERIFYFLAGS_DESC      "verifyflags"
 
 /* values used by the entries in the "files" array */
 /*
@@ -111,6 +112,18 @@
 #define RPM_FILE_FLAG_README           "readme"
 #define RPM_FILE_FLAG_PUBKEY           "pubkey"
 #define RPM_FILE_FLAG_ARTIFACT         "artifact"
+
+/* names used for the file verify flag bits in the "files" array */
+#define RPM_FILE_VERIFY_FILEDIGEST     "filedigest"
+#define RPM_FILE_VERIFY_MD5            "md5"
+#define RPM_FILE_VERIFY_FILESIZE       "filesize"
+#define RPM_FILE_VERIFY_LINKTO         "linkto"
+#define RPM_FILE_VERIFY_USER           "user"
+#define RPM_FILE_VERIFY_GROUP          "group"
+#define RPM_FILE_VERIFY_MTIME          "mtime"
+#define RPM_FILE_VERIFY_MODE           "mode"
+#define RPM_FILE_VERIFY_RDEV           "rdev"
+#define RPM_FILE_VERIFY_CAPS           "caps"
 
 /* comparison operator string constants */
 #define COMPARISON_LE                  "<="
