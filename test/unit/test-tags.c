@@ -288,6 +288,51 @@ test_set_tag_value(void)
     return;
 }
 
+void
+test_strbuildtime(void)
+{
+    char *s = NULL;
+
+    /* the epoch itself */
+    s = strbuildtime(0);
+    TARPM_ASSERT_PTR_NOT_NULL(s);
+    TARPM_ASSERT_TRUE(strcmp(s, "1970-01-01T00:00:00Z") == 0);
+    free(s);
+
+    /* a real build time */
+    s = strbuildtime(1753056000);
+    TARPM_ASSERT_PTR_NOT_NULL(s);
+    TARPM_ASSERT_TRUE(strcmp(s, "2025-07-21T00:00:00Z") == 0);
+    free(s);
+
+    /* the last build time an unsigned 32 bit value can hold */
+    s = strbuildtime(4294967295U);
+    TARPM_ASSERT_PTR_NOT_NULL(s);
+    TARPM_ASSERT_TRUE(strcmp(s, "2106-02-07T06:28:15Z") == 0);
+    free(s);
+
+    return;
+}
+
+void
+test_buildtime_value(void)
+{
+    /* timestamps come back as the value they were written from */
+    TARPM_ASSERT_EQUAL(buildtime_value("1970-01-01T00:00:00Z"), 0);
+    TARPM_ASSERT_EQUAL(buildtime_value("2025-07-21T00:00:00Z"), 1753056000);
+    TARPM_ASSERT_EQUAL(buildtime_value("2106-02-07T06:28:15Z"), 4294967295U);
+
+    /* a bare number is read as the value itself */
+    TARPM_ASSERT_EQUAL(buildtime_value("1753056000"), 1753056000);
+
+    /* anything else is zero */
+    TARPM_ASSERT_EQUAL(buildtime_value(NULL), 0);
+    TARPM_ASSERT_EQUAL(buildtime_value(""), 0);
+    TARPM_ASSERT_EQUAL(buildtime_value("not a timestamp"), 0);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -306,7 +351,9 @@ get_suite(void)
         CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL ||
         CU_add_test(pSuite, "test get_tag_number()", test_get_tag_number) == NULL ||
         CU_add_test(pSuite, "test get_tag_value()", test_get_tag_value) == NULL ||
-        CU_add_test(pSuite, "test set_tag_value()", test_set_tag_value) == NULL) {
+        CU_add_test(pSuite, "test set_tag_value()", test_set_tag_value) == NULL ||
+        CU_add_test(pSuite, "test strbuildtime()", test_strbuildtime) == NULL ||
+        CU_add_test(pSuite, "test buildtime_value()", test_buildtime_value) == NULL) {
         return NULL;
     }
 

@@ -29,12 +29,14 @@ get_entry_type(struct json_object *entry)
     }
 
     /*
-     * The file digest algorithm is written by name in header.json, so
-     * it carries the string type there, but it is an int32 in the
-     * header itself.
+     * The file digest algorithm is written by name and the build time
+     * as a timestamp in header.json, so both carry the string type
+     * there, but both are an int32 in the header itself.
      */
-    if (type == RPM_STRING_TYPE && json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key) && !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO))) {
-        type = RPM_INT32_TYPE;
+    if (type == RPM_STRING_TYPE && json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key)) {
+        if (!strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO)) || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_BUILDTIME))) {
+            type = RPM_INT32_TYPE;
+        }
     }
 
     return type;
@@ -385,6 +387,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                         if (v->entry->tag == RPMTAG_FILEDIGESTALGO && json_object_get_type(key) == json_type_string) {
                             /* the digest algorithm is recorded by name */
                             i32 = htonl(digest_algo(json_object_get_string(key)));
+                        } else if (v->entry->tag == RPMTAG_BUILDTIME && json_object_get_type(key) == json_type_string) {
+                            /* the build time is recorded as a timestamp */
+                            i32 = htonl(buildtime_value(json_object_get_string(key)));
                         } else {
                             i32 = htonl((uint32_t) json_object_get_int64(key));
                         }

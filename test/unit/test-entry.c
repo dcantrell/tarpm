@@ -102,11 +102,11 @@ test_add_entry_value_null(void)
     memset(buffer, 0, sizeof(buffer));
 
     /* a NULL array entry should not crash */
-    add_entry_value(NULL, RPMTAG_NAME, buffer, 0, RPM_STRING_TYPE, 1, NULL);
+    add_entry_value(NULL, RPMTAG_NAME, buffer, 0, RPM_STRING_TYPE, 1, NULL, false);
 
     /* a NULL buffer should not add anything */
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, NULL, 0, RPM_STRING_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, NULL, 0, RPM_STRING_TYPE, 1, NULL, false);
     TARPM_ASSERT_FALSE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, NULL));
     json_object_put(arrayentry);
 
@@ -127,7 +127,7 @@ test_add_entry_value_scalars(void)
 
     /* a null type carries no data */
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_NULL_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_NULL_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "(null)");
     json_object_put(arrayentry);
@@ -135,7 +135,7 @@ test_add_entry_value_scalars(void)
     /* a single character */
     buffer[0] = 'x';
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_CHAR_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_CHAR_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "x");
     json_object_put(arrayentry);
@@ -143,7 +143,7 @@ test_add_entry_value_scalars(void)
     /* an eight bit integer */
     buffer[0] = 47;
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT8_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT8_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_get_int(value), 47);
     json_object_put(arrayentry);
@@ -152,7 +152,7 @@ test_add_entry_value_scalars(void)
     val16 = htons(4700);
     memcpy(buffer, &val16, sizeof(val16));
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT16_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT16_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_get_int(value), 4700);
     json_object_put(arrayentry);
@@ -161,7 +161,7 @@ test_add_entry_value_scalars(void)
     val32 = htonl(470000);
     memcpy(buffer, &val32, sizeof(val32));
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT32_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_get_int(value), 470000);
     json_object_put(arrayentry);
@@ -170,7 +170,7 @@ test_add_entry_value_scalars(void)
     val64 = htobe64(47000000000ULL);
     memcpy(buffer, &val64, sizeof(val64));
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT64_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT64_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_get_int64(value), 47000000000LL);
     json_object_put(arrayentry);
@@ -197,7 +197,7 @@ test_add_entry_value_int_arrays(void)
     memcpy(buffer + (2 * sizeof(val32)), &val32, sizeof(val32));
 
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_FILESIZES, buffer, 0, RPM_INT32_TYPE, 3, NULL);
+    add_entry_value(arrayentry, RPMTAG_FILESIZES, buffer, 0, RPM_INT32_TYPE, 3, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_array_length(value), 3);
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(value, 0)), 1);
@@ -220,7 +220,7 @@ test_add_entry_value_strings(void)
     /* a single string for a tag that is not written out to a file */
     memcpy(buffer, "testpkg", 8);
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_STRING_TYPE, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_STRING_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "testpkg");
     json_object_put(arrayentry);
@@ -229,7 +229,7 @@ test_add_entry_value_strings(void)
     memset(buffer, 0, sizeof(buffer));
     memcpy(buffer, "foo\0bar\0baz", 12);
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_BASENAMES, buffer, 0, RPM_STRING_ARRAY_TYPE, 3, NULL);
+    add_entry_value(arrayentry, RPMTAG_BASENAMES, buffer, 0, RPM_STRING_ARRAY_TYPE, 3, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_EQUAL(json_object_array_length(value), 3);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 0)), "foo");
@@ -257,7 +257,7 @@ test_add_entry_value_binary(void)
     buffer[3] = 0x03;
 
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_SIGMD5, buffer, 0, RPM_BIN_TYPE, sizeof(buffer), NULL);
+    add_entry_value(arrayentry, RPMTAG_SIGMD5, buffer, 0, RPM_BIN_TYPE, sizeof(buffer), NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
 
     /* the encoded value should decode back to the original bytes */
@@ -283,9 +283,37 @@ test_add_entry_value_unknown(void)
 
     /* an unrecognized data type is noted as unknown */
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, 47, 1, NULL);
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, 47, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "(unknown)");
+    json_object_put(arrayentry);
+
+    return;
+}
+
+void
+test_add_entry_value_buildtime(void)
+{
+    struct json_object *arrayentry = NULL;
+    struct json_object *value = NULL;
+    uint8_t buffer[4];
+    uint32_t val32 = 0;
+
+    val32 = htonl(1753056000);
+    memcpy(buffer, &val32, sizeof(val32));
+
+    /* the build time is written out as a timestamp */
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_BUILDTIME, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "2025-07-21T00:00:00Z");
+    json_object_put(arrayentry);
+
+    /* a signature header tag sharing the number stays a number */
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_BUILDTIME, buffer, 0, RPM_INT32_TYPE, 1, NULL, true);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 1753056000);
     json_object_put(arrayentry);
 
     return;
@@ -311,7 +339,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_entry_value() with integer arrays", test_add_entry_value_int_arrays) == NULL ||
         CU_add_test(pSuite, "test add_entry_value() with strings", test_add_entry_value_strings) == NULL ||
         CU_add_test(pSuite, "test add_entry_value() with a binary blob", test_add_entry_value_binary) == NULL ||
-        CU_add_test(pSuite, "test add_entry_value() with an unknown type", test_add_entry_value_unknown) == NULL) {
+        CU_add_test(pSuite, "test add_entry_value() with an unknown type", test_add_entry_value_unknown) == NULL ||
+        CU_add_test(pSuite, "test add_entry_value() with a build time", test_add_entry_value_buildtime) == NULL) {
         return NULL;
     }
 

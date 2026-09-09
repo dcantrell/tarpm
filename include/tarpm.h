@@ -103,6 +103,8 @@ int write_json_file(struct json_object *data, const char *output_dir, const char
 const char *strtagtype(rpmTagType type);
 char *strdigestalgo(uint32_t algo);
 uint32_t digest_algo(const char *name);
+char *strbuildtime(uint32_t buildtime);
+uint32_t buildtime_value(const char *timestamp);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
@@ -121,7 +123,7 @@ void reset_librpm(void);
 /* entry.c */
 bool is_file_tag(rpmTagVal tag);
 char *get_tag_filename(rpmTagVal tag, const char *ending);
-void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir);
+void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature);
 
 /* xread.c */
 bool xread(int fd, void *buf, size_t count);

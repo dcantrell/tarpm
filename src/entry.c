@@ -131,7 +131,7 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
 }
 
 void
-add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir)
+add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature)
 {
     uint32_t i = 0;
     uint8_t *data = NULL;
@@ -192,11 +192,18 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);
         }
     } else if (datatype == RPM_INT32_TYPE) {
-        if (tag == RPMTAG_FILEDIGESTALGO && count == 1) {
+        if (!signature && tag == RPMTAG_FILEDIGESTALGO && count == 1) {
             /* record the digest algorithm by name rather than by number */
             memcpy(&dt.i32, data, sizeof(dt.i32));
             dt.i32 = (int32_t) ntohl(dt.i32);
             s = strdigestalgo((uint32_t) dt.i32);
+            json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
+            free(s);
+        } else if (!signature && tag == RPMTAG_BUILDTIME && count == 1) {
+            /* record the build time as a timestamp rather than a number */
+            memcpy(&dt.i32, data, sizeof(dt.i32));
+            dt.i32 = (int32_t) ntohl(dt.i32);
+            s = strbuildtime((uint32_t) dt.i32);
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
             free(s);
         } else if (count == 1) {

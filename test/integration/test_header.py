@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import calendar
 import json
 import socket
 import os
 import platform
 import rpm
+import time
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
 
@@ -66,8 +68,14 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "i18n string")
                         self.assertTrue(tag["file"] == "description.txt")
                     elif t == "Buildtime":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) > 0)
+                        # recorded as an ISO 8601 timestamp in UTC
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(
+                            calendar.timegm(
+                                time.strptime(tag["value"], "%Y-%m-%dT%H:%M:%SZ")
+                            )
+                            > 0
+                        )
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == socket.gethostname())
@@ -322,8 +330,14 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "i18n string")
                         self.assertTrue(tag["file"] == "description.txt")
                     elif t == "Buildtime":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) > 0)
+                        # recorded as an ISO 8601 timestamp in UTC
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(
+                            calendar.timegm(
+                                time.strptime(tag["value"], "%Y-%m-%dT%H:%M:%SZ")
+                            )
+                            > 0
+                        )
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == socket.gethostname())

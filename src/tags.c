@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
 #include <rpm/rpmpgp.h>
@@ -174,6 +175,73 @@ digest_algo(const char *name)
 
     if (errno != 0 || end == name || *end != '\0') {
         warnx(_("*** unknown file digest algorithm: %s"), name);
+        return 0;
+    }
+
+    return (uint32_t) value;
+}
+
+/*
+ * Convert a build time to an ISO 8601 timestamp in UTC, which is how
+ * header.json records it.  Values that will not convert are returned
+ * as the number itself in string form.  Caller must free the string
+ * returned.
+ */
+char *
+strbuildtime(uint32_t buildtime)
+{
+    time_t t = 0;
+    struct tm tm_info;
+    char buf[64];
+    char *s = NULL;
+
+    t = (time_t) buildtime;
+    memset(&tm_info, 0, sizeof(tm_info));
+    memset(buf, 0, sizeof(buf));
+
+    if (gmtime_r(&t, &tm_info) == NULL || strftime(buf, sizeof(buf), RPM_BUILDTIME_FORMAT, &tm_info) == 0) {
+        /* no timestamp for this value, so use the number */
+        xasprintf(&s, "%u", buildtime);
+        return s;
+    }
+
+    s = strdup(buf);
+
+    if (s == NULL) {
+        err(EXIT_FAILURE, "strdup");
+    }
+
+    return s;
+}
+
+/*
+ * Convert an ISO 8601 timestamp back to a build time.  Strings that
+ * are not timestamps are read as a number, which is how
+ * strbuildtime() writes out values it could not convert.  Returns
+ * zero if the string is neither.
+ */
+uint32_t
+buildtime_value(const char *timestamp)
+{
+    struct tm tm_info;
+    char *end = NULL;
+    unsigned long value = 0;
+
+    if (timestamp == NULL) {
+        return 0;
+    }
+
+    memset(&tm_info, 0, sizeof(tm_info));
+
+    if (strptime(timestamp, RPM_BUILDTIME_FORMAT, &tm_info) != NULL) {
+        return (uint32_t) timegm(&tm_info);
+    }
+
+    errno = 0;
+    value = strtoul(timestamp, &end, 10);
+
+    if (errno != 0 || end == timestamp || *end != '\0') {
+        warnx(_("*** unknown build time: %s"), timestamp);
         return 0;
     }
 
