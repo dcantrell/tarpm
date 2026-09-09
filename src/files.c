@@ -367,7 +367,11 @@ verifyflag_names(uint32_t verifyflags)
  * Convert an array of verify flag name strings back in to a
  * FILEVERIFYFLAGS value.  Only the names verifyflag_names() emits are
  * understood, plus "md5" as the obsolete spelling of "filedigest".
- * Returns zero for a missing or empty array.
+ * rpmbuild starts every file at RPMVERIFY_ALL and clears the bits the
+ * spec file asked it to skip, so the value is built the same way here:
+ * every bit outside the named ones stays set and the named bits the
+ * array does not list are cleared.  A missing or empty array means
+ * none of the named attributes are verified.
  */
 static uint32_t
 verifyflag_value(struct json_object *names)
@@ -375,15 +379,18 @@ verifyflag_value(struct json_object *names)
     size_t i = 0;
     size_t len = 0;
     uint32_t verifyflags = 0;
+    uint32_t named = 0;
     const char *s = NULL;
     const struct file_flag_name *ffn = NULL;
     bool found = false;
 
-    if (names == NULL || json_object_get_type(names) != json_type_array) {
-        return 0;
+    for (ffn = file_verify_names; ffn->name != NULL; ffn++) {
+        named |= ffn->bit;
     }
 
-    len = json_object_array_length(names);
+    if (names != NULL && json_object_get_type(names) == json_type_array) {
+        len = json_object_array_length(names);
+    }
 
     for (i = 0; i < len; i++) {
         s = json_object_get_string(json_object_array_get_idx(names, i));
@@ -413,7 +420,7 @@ verifyflag_value(struct json_object *names)
         }
     }
 
-    return verifyflags;
+    return verifyflags | ~named;
 }
 
 /*
@@ -1444,14 +1451,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         /*
          * Extract verifyflags if available.  The "verifyflags" value is
          * an array of verify flag names which RPM stores as a bitfield.
-         * Entries without a "verifyflags" key carry a zero so the array
+         * Entries without a "verifyflags" key verify none of the named
+         * attributes, which verifyflag_value() handles, so the array
          * stays parallel to the file list.
          */
-        verifyflags = 0;
-
-        if (json_object_object_get_ex(file, RPM_FILE_VERIFYFLAGS_DESC, &verifyflags_obj)) {
-            verifyflags = verifyflag_value(verifyflags_obj);
-        }
+        verifyflags_obj = NULL;
+        json_object_object_get_ex(file, RPM_FILE_VERIFYFLAGS_DESC, &verifyflags_obj);
+        verifyflags = verifyflag_value(verifyflags_obj);
 
         json_object_array_add(fileverifyflags, json_object_new_int64(verifyflags));
 

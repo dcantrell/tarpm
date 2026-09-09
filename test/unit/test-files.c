@@ -728,15 +728,20 @@ test_add_file_list_tags_verifyflags(void)
 
     add_file_list_tags(tags, files, NULL, NULL, NULL);
 
-    /* names turn back in to bits and missing verify flags are zero */
+    /*
+     * Names turn back in to bits the way rpmbuild writes them, which is
+     * RPMVERIFY_ALL with the named bits that are absent cleared.  The
+     * nine named bits are the low nine, so everything above 0x1ff stays
+     * set and an entry with no verify flags at all is 0xfffffe00.
+     */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEVERIFYFLAGS));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
-    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1);
-    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 1);
-    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 90);
-    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 511);
-    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 0xfffffe01);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0xfffffe01);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 0xfffffe5a);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 0xffffffff);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0xfffffe00);
 
     json_object_put(tags);
     json_object_put(files);

@@ -584,6 +584,75 @@ read_header(const int fd, const char *dest_dir)
 }
 
 /*
+ * rpm writes the header index entries sorted by tag number and lays
+ * the data area out in that same order.  See headerSort() and
+ * headerExport() in lib/header.cc in the rpm source.  Reorder the tags
+ * array in place to match so the header tarpm builds is laid out the
+ * way rpm would have written it.
+ */
+static void
+sort_header_tags(struct json_object *tags, bool is_signature)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t len = 0;
+    size_t pick = 0;
+    size_t *order = NULL;
+    rpmTagVal *tagnums = NULL;
+    struct json_object **entries = NULL;
+
+    if (tags == NULL) {
+        return;
+    }
+
+    len = json_object_array_length(tags);
+
+    if (len < 2) {
+        return;
+    }
+
+    order = xcalloc(len, sizeof(*order));
+    tagnums = xcalloc(len, sizeof(*tagnums));
+    entries = xcalloc(len, sizeof(*entries));
+
+    for (i = 0; i < len; i++) {
+        tagnums[i] = get_tag_number(json_object_array_get_idx(tags, i), is_signature);
+        order[i] = i;
+    }
+
+    /* insertion sort so entries carrying the same tag keep their order */
+    for (i = 1; i < len; i++) {
+        pick = order[i];
+        j = i;
+
+        while (j > 0 && tagnums[order[j - 1]] > tagnums[pick]) {
+            order[j] = order[j - 1];
+            j--;
+        }
+
+        order[j] = pick;
+    }
+
+    /*
+     * Take a reference on everything first because writing back in to
+     * the array releases the reference the array already holds.
+     */
+    for (i = 0; i < len; i++) {
+        entries[i] = json_object_get(json_object_array_get_idx(tags, order[i]));
+    }
+
+    for (i = 0; i < len; i++) {
+        json_object_array_put_idx(tags, i, entries[i]);
+    }
+
+    free(order);
+    free(tagnums);
+    free(entries);
+
+    return;
+}
+
+/*
  * Create a new header data structure for later writing to an RPM
  * output file.  Headers begin with the magic number, number of
  * records, and the size of the storage area.  The storage area is a
@@ -641,55 +710,32 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         return -1;
     }
 
+    /*
+     * Work on a mutable copy of the tags array; the generated tags get
+     * appended to it and it gets sorted below, neither of which should
+     * be visible to the caller.
+     */
+    tags_copy = json_object_new_array();
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
+    }
+
+    tags = tags_copy;
+    need_free_tags = true;
+
     /* Check if there's a changelog array that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_CHANGELOG_DESC, &changelog)) {
-        /* Create a mutable copy of the tags array */
-        tags_copy = json_object_new_array();
-
-        for (i = 0; i < json_object_array_length(tags); i++) {
-            json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
-        }
-
-        /* Add the changelog tags to the copy */
         add_changelog_tags(tags_copy, changelog);
-
-        /* Use the copy for processing */
-        tags = tags_copy;
-        need_free_tags = true;
     }
 
     /* Check if there's a dependencies object that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_DEPENDENCIES_DESC, &dependencies)) {
-        /* Create a mutable copy if we haven't already */
-        if (!need_free_tags) {
-            tags_copy = json_object_new_array();
-
-            for (i = 0; i < json_object_array_length(tags); i++) {
-                json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
-            }
-
-            tags = tags_copy;
-            need_free_tags = true;
-        }
-
-        /* Add the dependency tags to the copy */
         add_dependency_tags(tags_copy, dependencies);
     }
 
     /* Check if there's a files array that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_FILES_DESC, &files)) {
-        /* Create a mutable copy if we haven't already */
-        if (!need_free_tags) {
-            tags_copy = json_object_new_array();
-
-            for (i = 0; i < json_object_array_length(tags); i++) {
-                json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
-            }
-
-            tags = tags_copy;
-            need_free_tags = true;
-        }
-
         /*
          * Add the file list tags to the copy.  The dependencies go in
          * as well because the depends dictionary rebuilt here holds
@@ -697,6 +743,9 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
          */
         add_file_list_tags(tags_copy, files, input_dir, payload_subdir, dependencies);
     }
+
+    /* lay the header out the way rpm would have written it */
+    sort_header_tags(tags_copy, is_signature);
 
     /* number of header index entries (excluding read-only tags) */
     s->nentries = 0;
