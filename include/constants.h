@@ -100,7 +100,6 @@
  */
 #define RPM_FILE_DEFAULT_USER          "root"
 #define RPM_FILE_DEFAULT_GROUP         "root"
-#define RPM_FILE_CURRENT_DIRECTORY     "./"
 #define RPM_FILE_LANG_SEPARATOR        "|"
 #define RPM_FILE_MODE_FORMAT           "%04o"
 #define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"

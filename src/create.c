@@ -22,6 +22,7 @@
 #include <rpm/rpmbase64.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <openssl/evp.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <zstd.h>
@@ -148,6 +149,32 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 }
 
 /*
+ * Build the name a file carries in the cpio payload.  Binary packages
+ * prefix every path with "./".  Source RPMs have no directory prefix
+ * at all; rpmbuild writes their bare filenames.  Caller must free the
+ * returned string.
+ */
+static char *
+payload_path(const char *dirname, const char *basename)
+{
+    char *path = NULL;
+
+    if (dirname == NULL || basename == NULL) {
+        return NULL;
+    }
+
+    if (dirname[0] == '\0') {
+        path = strdup(basename);
+    } else if (dirname[0] == '/') {
+        xasprintf(&path, ".%s%s", dirname, basename);
+    } else {
+        xasprintf(&path, "./%s%s", dirname, basename);
+    }
+
+    return path;
+}
+
+/*
  * Helper function used to build the RPM payload.  We use libarchive,
  * but the payload has to follow the metadata in the header rather
  * than walking the filesystem tree.
@@ -176,10 +203,7 @@ add_file_to_payload(const char *input_dir, const struct file_params *params)
     /* start a new entry */
     entry = archive_entry_new();
 
-    /*
-     * the path in the cpio payload needs to begin with "./"
-     */
-    xasprintf(&full_path, ".%s", relative_path);
+    full_path = payload_path(params->dirname, params->basename);
     archive_entry_set_pathname(entry, full_path);
 
     /* set file type and related metadata */
@@ -747,11 +771,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
                 dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
                 bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
 
-                if (dname[0] == '/') {
-                    xasprintf(&path, ".%s%s", dname, bname);
-                } else {
-                    xasprintf(&path, "./%s%s", dname, bname);
-                }
+                path = payload_path(dname, bname);
 
                 /* replace the old path */
                 free(hardlink_paths[j]);
@@ -766,11 +786,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
             bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
 
-            if (dname[0] == '/') {
-                xasprintf(&path, ".%s%s", dname, bname);
-            } else {
-                xasprintf(&path, "./%s%s", dname, bname);
-            }
+            path = payload_path(dname, bname);
 
             hardlink_paths[hardlink_count] = path;
             hardlink_inodes[hardlink_count] = inode;
@@ -817,11 +833,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
                     params.nlink = hardlink_nlinks[j];
 
                     /* build current file path */
-                    if (params.dirname[0] == '/') {
-                        xasprintf(&current_path, ".%s%s", params.dirname, params.basename);
-                    } else {
-                        xasprintf(&current_path, "./%s%s", params.dirname, params.basename);
-                    }
+                    current_path = payload_path(params.dirname, params.basename);
 
                     /* set hardlink target */
                     if (strcmp(current_path, hardlink_paths[j]) != 0) {
@@ -946,14 +958,94 @@ write_payload(FILE *rpm, int fd)
 }
 
 /*
- * Update the payload digest in the header. Computes payload-only digest
- * that is stored in the signature header.  Returns non-zero on failure.
+ * Compute the SHA-256 digest of the uncompressed payload, which is
+ * what RPM records in RPMTAG_PAYLOADSHA256ALT.  The payload has
+ * already been compressed in to payloadfd, so read it back through
+ * libarchive's decompression filters to recover the cpio stream.
+ * Returns the digest as an allocated hex string or NULL on failure.
+ * Caller must free the returned string.
+ */
+static char *
+uncompressed_payload_digest(const int payloadfd)
+{
+    unsigned int i = 0;
+    unsigned int digestlen = 0;
+    ssize_t len = 0;
+    char *r = NULL;
+    struct archive *raw = NULL;
+    struct archive_entry *entry = NULL;
+    EVP_MD_CTX *ctx = NULL;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    char buf[BUFSIZ];
+
+    if (payloadfd == -1) {
+        return NULL;
+    }
+
+    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
+        warn("lseek");
+        return NULL;
+    }
+
+    raw = archive_read_new();
+    archive_read_support_filter_all(raw);
+    archive_read_support_format_raw(raw);
+
+    if (archive_read_open_fd(raw, payloadfd, BUFSIZ) != ARCHIVE_OK) {
+        warnx("archive_read_open_fd: %s", archive_error_string(raw));
+        archive_read_free(raw);
+        return NULL;
+    }
+
+    ctx = EVP_MD_CTX_new();
+
+    if (ctx == NULL || EVP_DigestInit(ctx, EVP_sha256()) == 0) {
+        warn("EVP_DigestInit");
+        goto cleanup_uncompressed_payload_digest;
+    }
+
+    if (archive_read_next_header(raw, &entry) != ARCHIVE_OK) {
+        warnx("archive_read_next_header: %s", archive_error_string(raw));
+        goto cleanup_uncompressed_payload_digest;
+    }
+
+    while ((len = archive_read_data(raw, buf, sizeof(buf))) > 0) {
+        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
+            warn("EVP_DigestUpdate");
+            goto cleanup_uncompressed_payload_digest;
+        }
+    }
+
+    if (len < 0) {
+        warnx("archive_read_data: %s", archive_error_string(raw));
+        goto cleanup_uncompressed_payload_digest;
+    }
+
+    if (EVP_DigestFinal_ex(ctx, digest, &digestlen) == 0) {
+        warn("EVP_DigestFinal_ex");
+        goto cleanup_uncompressed_payload_digest;
+    }
+
+    r = xcalloc((digestlen * 2) + 1, sizeof(char));
+
+    for (i = 0; i < digestlen; ++i) {
+        sprintf(&r[i * 2], "%02x", (unsigned int) digest[i]);
+    }
+
+cleanup_uncompressed_payload_digest:
+    EVP_MD_CTX_free(ctx);
+    archive_read_free(raw);
+
+    return r;
+}
+
+/*
+ * Update the payload digest in the header.  Computes the digest of the
+ * uncompressed payload.  Returns non-zero on failure.
  */
 static int
 update_header_digests(struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
 {
-    int i = 0;
-    unsigned char *digest = NULL;
     char *buf = NULL;
     struct json_object *tags = NULL;
 #ifdef _USE_RPMTAG_5097
@@ -973,18 +1065,12 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
         return -1;
     }
 
-    /* compute SHA-256 PAYLOAD digest (payload only) */
-    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, hdr, hdrinfo, header, payloadfd);
+    /* compute the SHA-256 digest of the uncompressed payload */
+    buf = uncompressed_payload_digest(payloadfd);
 
-    if (digest == NULL) {
+    if (buf == NULL) {
         warnx(_("*** failed to compute SHA-256 ALT digest"));
         return -1;
-    }
-
-    buf = xcalloc(SHA256_DIGEST_LENGTH * 2 + 1, sizeof(char));
-
-    for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
     }
 
 #ifdef _USE_RPMTAG_5097
@@ -1007,7 +1093,6 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
     }
 #endif
 
-    free(digest);
     free(buf);
 
     return 0;

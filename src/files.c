@@ -1096,6 +1096,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     time_t mtime = 0;
     bool found = false;
     bool class_found = false;
+    bool source_package = false;
 
     if (tags == NULL || files == NULL) {
         return;
@@ -1110,6 +1111,12 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     if (count == 0) {
         return;
     }
+
+    /*
+     * rpmbuild only classifies the files of binary packages, so a
+     * source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags.
+     */
+    source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
 
     /* Allocate arrays for unique directory and class tracking */
     unique_dirs = xcalloc(count, sizeof(char *));
@@ -1153,8 +1160,12 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         separator = strrchr(path, '/');
 
         if (separator == NULL) {
-            /* No directory separator, use current directory */
-            dirname = RPM_FILE_CURRENT_DIRECTORY;
+            /*
+             * No directory separator.  Source RPMs are stored this way;
+             * they carry a single empty dirname and the bare filenames
+             * as the basenames.
+             */
+            dirname = "";
             basename = path;
         } else {
             /* Split into dirname and basename */
@@ -1608,19 +1619,24 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileinodes);
     json_object_array_add(tags, tag);
 
-    /* Add RPMTAG_FILECLASS tag */
-    tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECLASS)));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileclass);
-    json_object_array_add(tags, tag);
+    if (source_package) {
+        json_object_put(fileclass);
+        json_object_put(classdict);
+    } else {
+        /* Add RPMTAG_FILECLASS tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECLASS)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileclass);
+        json_object_array_add(tags, tag);
 
-    /* Add RPMTAG_CLASSDICT tag */
-    tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_CLASSDICT)));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, classdict);
-    json_object_array_add(tags, tag);
+        /* Add RPMTAG_CLASSDICT tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_CLASSDICT)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, classdict);
+        json_object_array_add(tags, tag);
+    }
 
     /* Add RPMTAG_FILELANGS tag */
     tag = json_object_new_object();
@@ -1629,12 +1645,16 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelangs);
     json_object_array_add(tags, tag);
 
-    /* Add RPMTAG_FILECOLORS tag */
-    tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECOLORS)));
-    json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filecolors);
-    json_object_array_add(tags, tag);
+    if (source_package) {
+        json_object_put(filecolors);
+    } else {
+        /* Add RPMTAG_FILECOLORS tag */
+        tag = json_object_new_object();
+        json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECOLORS)));
+        json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filecolors);
+        json_object_array_add(tags, tag);
+    }
 
     /* Add RPMTAG_FILEFLAGS tag */
     tag = json_object_new_object();
