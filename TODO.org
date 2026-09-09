@@ -25,25 +25,34 @@ Core functionality that still needs to happen:
     [*] Output needs to look like 'tar -tvf' on example.tar
 
 [ ] Restructure how metadata is written to the JSON files
-    [ ] All of the file lists should combine together so it's easier
+    [*] All of the file lists should combine together so it's easier
         to read for users.  But these then need to be broken out for
         writing to the header.  Need a conversion function that can
         yeet between them.
         [*] Filerdevs
         [*] Filedigests
         [*] Filelinktos
-        [ ] Fileflags
+        [*] Fileflags
         [*] Fileusername
         [*] Filegroupname
-        [ ] Fileverifyflags
+        [*] Fileverifyflags
         [*] Filedevices
         [*] Fileinodes
         [*] Filelangs
         [*] Filecolors
         [*] Fileclass (strings from Classdict)
 
+    [*] The other dependency arrays
+        [*] Dependsdict
+        [*] Filedependsn
+        [*] Filedependsx
+
     [*] Filedigestalgo should become a symbolic string, but fall back
         on an integer if we do not have a definition for that
+        algorithm type.
+
+    [ ] Payloadsha256algo should become a symbolic string, but fall
+        back on an integer if we do not have a definition for that
         algorithm type.
 
     [*] The changelog should be combined back together in a similar
