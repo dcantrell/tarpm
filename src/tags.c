@@ -8,31 +8,37 @@
 #include <string.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
-#include <rpm/rpmcrypto.h>
+#include <rpm/rpmpgp.h>
 
 #include "tarpm.h"
 
 /*
- * Known file digest algorithms.  The names are the RPM_HASH_*
- * constants from librpm (include/rpm/rpmcrypto.h) turned in to
- * human-readable strings.
+ * Known file digest algorithms.  The names are the PGPHASHALGO_*
+ * constants from librpm (include/rpm/rpmpgp.h) turned in to
+ * human-readable strings.  We would use the RPM_HASH_* constants from
+ * rpmcrypto.h, but those duplicate the rpmpgp.h values and are not
+ * available on older releases of rpm which we still want to support.
  */
 static struct {
     uint32_t algo;
     const char *name;
 } digest_algos[] = {
-    { RPM_HASH_MD5, "md5" },
-    { RPM_HASH_SHA1, "sha1" },
-    { RPM_HASH_RIPEMD160, "ripemd160" },
-    { RPM_HASH_MD2, "md2" },
-    { RPM_HASH_TIGER192, "tiger192" },
-    { RPM_HASH_HAVAL_5_160, "haval-5-160" },
-    { RPM_HASH_SHA256, "sha256" },
-    { RPM_HASH_SHA384, "sha384" },
-    { RPM_HASH_SHA512, "sha512" },
-    { RPM_HASH_SHA224, "sha224" },
-    { RPM_HASH_SHA3_256, "sha3-256" },
-    { RPM_HASH_SHA3_512, "sha3-512" },
+    { PGPHASHALGO_MD5, "md5" },
+    { PGPHASHALGO_SHA1, "sha1" },
+    { PGPHASHALGO_RIPEMD160, "ripemd160" },
+    { PGPHASHALGO_MD2, "md2" },
+    { PGPHASHALGO_TIGER192, "tiger192" },
+    { PGPHASHALGO_HAVAL_5_160, "haval-5-160" },
+    { PGPHASHALGO_SHA256, "sha256" },
+    { PGPHASHALGO_SHA384, "sha384" },
+    { PGPHASHALGO_SHA512, "sha512" },
+    { PGPHASHALGO_SHA224, "sha224" },
+#ifdef PGPHASHALGO_SHA3_256
+    { PGPHASHALGO_SHA3_256, "sha3-256" },
+#endif
+#ifdef PGPHASHALGO_SHA3_512
+    { PGPHASHALGO_SHA3_512, "sha3-512" },
+#endif
     { 0, NULL }
 };
 
