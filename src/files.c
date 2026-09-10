@@ -1098,6 +1098,37 @@ cleanup_mkfiledigest:
 }
 
 /*
+ * Returns true if the file an entry in the "files" array describes is
+ * gone from the payload tree.  %ghost files are never carried in the
+ * payload, so those are always reported as present; anything else that
+ * is not there was removed from the unpacked package and should not go
+ * in to the header.  Entries are also reported as present when there is
+ * no payload tree to look in.
+ */
+static bool
+missing_from_payload(struct json_object *file, const char *path, const char *input_dir, const char *payload_subdir)
+{
+    char *file_path = NULL;
+    bool missing = false;
+    struct json_object *flags_obj = NULL;
+    struct stat sb;
+
+    if (file == NULL || path == NULL || input_dir == NULL || payload_subdir == NULL) {
+        return false;
+    }
+
+    if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags_obj) && (flag_value(flags_obj) & RPMFILE_GHOST)) {
+        return false;
+    }
+
+    file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+    missing = (lstat(file_path, &sb) != 0);
+    free(file_path);
+
+    return missing;
+}
+
+/*
  * Reconstruct the file list tag entries from the files array.
  * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
  * to the provided tags array.
@@ -1174,6 +1205,10 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     char *file_path = NULL;
     char **unique_dirs = NULL;
     char **unique_classes = NULL;
+    int *unique_inodes = NULL;
+    int *mapped_inodes = NULL;
+    size_t ninodes = 0;
+    size_t nkept = 0;
     size_t nclasses = 0;
     size_t nprovides = 0;
     size_t ndepends = 0;
@@ -1232,9 +1267,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         digestalgo = digest_algo(digestalgo_str);
     }
 
-    /* Allocate arrays for unique directory and class tracking */
+    /* Allocate arrays for unique directory, class and inode tracking */
     unique_dirs = xcalloc(count, sizeof(char *));
     unique_classes = xcalloc(count, sizeof(char *));
+    unique_inodes = xcalloc(count, sizeof(int));
+    mapped_inodes = xcalloc(count, sizeof(int));
 
     /* Create the arrays */
     dirnames = json_object_new_array();
@@ -1269,6 +1306,15 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         path = json_object_get_string(path_obj);
+
+        /*
+         * Files that have been removed from the payload tree since the
+         * package was unpacked do not go in to the header.
+         */
+        if (missing_from_payload(file, path, input_dir, payload_subdir)) {
+            warnx(_("*** %s is not in the payload, leaving it out of the file list"), path);
+            continue;
+        }
 
         /* Find the last separator to split dirname and basename */
         separator = strrchr(path, '/');
@@ -1477,15 +1523,33 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         /*
-         * Extract inode.  When the "inode" key is present its value is
-         * used verbatim, which preserves the hard link grouping recorded
-         * by RPM.  When absent, fall back to a sequential number (RPM
-         * numbers inodes starting at 1) so every entry maps to one.
+         * Assign the inode.  RPM numbers these itself: an entry gets
+         * its one based position in the file list, and entries that are
+         * hard links of one another all carry the number the first of
+         * them got.  Numbering here rather than carrying the value in
+         * header.json over keeps the numbers right when entries have
+         * been left out, so the "inode" key is only read to tell which
+         * entries were hard links of one another.
          */
+        inode = (int) (nkept + 1);
+
         if (json_object_object_get_ex(file, RPM_FILE_INODE_DESC, &inode_obj)) {
-            inode = json_object_get_int(inode_obj);
-        } else {
-            inode = (int) (i + 1);
+            found = false;
+
+            for (j = 0; j < ninodes; j++) {
+                if (unique_inodes[j] == json_object_get_int(inode_obj)) {
+                    inode = mapped_inodes[j];
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                /* the first entry of a hard link group names the group */
+                unique_inodes[ninodes] = json_object_get_int(inode_obj);
+                mapped_inodes[ninodes] = inode;
+                ninodes++;
+            }
         }
 
         json_object_array_add(fileinodes, json_object_new_int(inode));
@@ -1646,7 +1710,12 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             free(dirname_copy);
             dirname_copy = NULL;
         }
+
+        nkept++;
     }
+
+    free(unique_inodes);
+    free(mapped_inodes);
 
     /* Build the dirnames array from unique_dirs */
     for (i = 0; i < ndirs; i++) {

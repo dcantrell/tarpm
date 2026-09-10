@@ -339,7 +339,7 @@ test_add_entry_value_digestalgo(void)
     json_object_put(arrayentry);
 
     arrayentry = json_object_new_object();
-    add_entry_value(arrayentry, RPMTAG_PAYLOADSHA256ALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
+    add_entry_value(arrayentry, RPMTAG_PAYLOAD_DIGEST_ALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "sha256");
     json_object_put(arrayentry);

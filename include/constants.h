@@ -42,6 +42,13 @@
 #define RPM_LEAD_OS                    "os"
 #define RPM_LEAD_SIGTYPE               "signature type"
 
+/*
+ * The payload digest algorithm tag.  rpm spells this
+ * RPMTAG_PAYLOADDIGESTALGO before 6.0.0 and RPMTAG_PAYLOADSHA256ALGO
+ * from 6.0.0 on, but it's 5093 either way.
+ */
+#define RPMTAG_PAYLOAD_DIGEST_ALGO     5093
+
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
 #define RPM_SIGNATURE_RESERVED_DESC    "reserved"

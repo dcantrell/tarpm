@@ -51,6 +51,7 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
 {
     struct json_object *entry = NULL;
     rpmSigTag tag = 0;
+    rpmTagVal htag = 0;
     rpmTagType datatype = 0;
     const char *tname = NULL;
     char *tagname = NULL;
@@ -87,7 +88,9 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
      * a timestamp in header.json, so those are strings there even
      * though all of them are int32 in the header itself.
      */
-    if (!signature && (((rpmTagVal) tag) == RPMTAG_FILEDIGESTALGO || ((rpmTagVal) tag) == RPMTAG_PAYLOADSHA256ALGO || ((rpmTagVal) tag) == RPMTAG_BUILDTIME) && datatype == RPM_INT32_TYPE) {
+    htag = (rpmTagVal) tag;
+
+    if (!signature && (htag == RPMTAG_FILEDIGESTALGO || htag == RPMTAG_PAYLOAD_DIGEST_ALGO || htag == RPMTAG_BUILDTIME) && datatype == RPM_INT32_TYPE) {
         datatype = RPM_STRING_TYPE;
     }
 

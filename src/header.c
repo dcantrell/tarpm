@@ -34,7 +34,9 @@ get_entry_type(struct json_object *entry)
      * there, but all of them are an int32 in the header itself.
      */
     if (type == RPM_STRING_TYPE && json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key)) {
-        if (!strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO)) || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_PAYLOADSHA256ALGO)) || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_BUILDTIME))) {
+        if (!strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO))
+            || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_PAYLOAD_DIGEST_ALGO))
+            || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_BUILDTIME))) {
             type = RPM_INT32_TYPE;
         }
     }
@@ -384,7 +386,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                     } else {
                         v->entry->count = 1;
 
-                        if ((v->entry->tag == RPMTAG_FILEDIGESTALGO || v->entry->tag == RPMTAG_PAYLOADSHA256ALGO) && json_object_get_type(key) == json_type_string) {
+                        if ((v->entry->tag == RPMTAG_FILEDIGESTALGO || v->entry->tag == RPMTAG_PAYLOAD_DIGEST_ALGO) && json_object_get_type(key) == json_type_string) {
                             /* the digest algorithm is recorded by name */
                             i32 = htonl(digest_algo(json_object_get_string(key)));
                         } else if (v->entry->tag == RPMTAG_BUILDTIME && json_object_get_type(key) == json_type_string) {
