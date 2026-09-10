@@ -1,7 +1,7 @@
 Core functionality that still needs to happen:
 
 [ ] Create mode
-    [ ] Regenerate digests for payload members.  Each file needs to
+    [*] Regenerate digests for payload members.  Each file needs to
         have a freshly computed message digest in the header data.
         This can be done with an nftw() callback that updates the
         header data in JSON format before it writes to the file.
@@ -11,14 +11,21 @@ Core functionality that still needs to happen:
     [ ] Files added to the payload subdirectory should have header
         entries created if they do not exist in the JSON metadata.
 
-    [ ] Files removed from the payload subdirectory should have header
+    [*] Files removed from the payload subdirectory should have header
         entries removed if they do not exist in the JSON metadata.
 
     [ ] File metadata in the payload subdirectory should be updated
         based on what actually exists (but not everything).
         [ ] Size
         [ ] Type (regular file, devnode, link)
-        [ ] Digests
+        [ ] Linkto
+        [*] Digests
+        [ ] Class
+
+    [ ] Missing metadata should be picked up from the system:
+        [ ] mtime
+        [ ] User?
+        [ ] Group?
 
 [*] List mode
     [*] Need a strmode() function
@@ -51,7 +58,7 @@ Core functionality that still needs to happen:
         on an integer if we do not have a definition for that
         algorithm type.
 
-    [ ] Payloadsha256algo should become a symbolic string, but fall
+    [*] Payloadsha256algo should become a symbolic string, but fall
         back on an integer if we do not have a definition for that
         algorithm type.
 
