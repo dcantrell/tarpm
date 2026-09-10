@@ -192,7 +192,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, sa);
         }
     } else if (datatype == RPM_INT32_TYPE) {
-        if (!signature && tag == RPMTAG_FILEDIGESTALGO && count == 1) {
+        if (!signature && (tag == RPMTAG_FILEDIGESTALGO || tag == RPMTAG_PAYLOADSHA256ALGO) && count == 1) {
             /* record the digest algorithm by name rather than by number */
             memcpy(&dt.i32, data, sizeof(dt.i32));
             dt.i32 = (int32_t) ntohl(dt.i32);

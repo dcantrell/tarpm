@@ -172,8 +172,9 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
                     elif t == "Payloadsha256algo":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 8)
+                        # recorded by name, the same as Filedigestalgo
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == "sha256")
                     elif t == "Payloadsha256alt":
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
@@ -419,8 +420,9 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
                     elif t == "Payloadsha256algo":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 8)
+                        # recorded by name, the same as Filedigestalgo
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == "sha256")
                     elif t == "Payloadsha256alt":
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)

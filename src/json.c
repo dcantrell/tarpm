@@ -83,11 +83,11 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tagname));
 
     /*
-     * The file digest algorithm is recorded by name and the build time
-     * as a timestamp in header.json, so those are strings there even
-     * though both are int32 in the header itself.
+     * The digest algorithms are recorded by name and the build time as
+     * a timestamp in header.json, so those are strings there even
+     * though all of them are int32 in the header itself.
      */
-    if (!signature && (((rpmTagVal) tag) == RPMTAG_FILEDIGESTALGO || ((rpmTagVal) tag) == RPMTAG_BUILDTIME) && datatype == RPM_INT32_TYPE) {
+    if (!signature && (((rpmTagVal) tag) == RPMTAG_FILEDIGESTALGO || ((rpmTagVal) tag) == RPMTAG_PAYLOADSHA256ALGO || ((rpmTagVal) tag) == RPMTAG_BUILDTIME) && datatype == RPM_INT32_TYPE) {
         datatype = RPM_STRING_TYPE;
     }
 
