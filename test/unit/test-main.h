@@ -55,10 +55,21 @@ CU_BOOL TARPM_assert_impl(CU_BOOL, unsigned int, const char *, const char *, ...
     TARPM_assert_impl(_x OP _y, __LINE__, __FILE__, "Assertion '%s' failed: %s == %p, %s == %p", #X" "#OP" "#Y, #X, _x, #Y, _y);\
 }
 
+/*
+ * A NULL string is reported as a failed assertion rather than crashing
+ * in strcmp(), which is what a test asserting on a value that never got
+ * created ends up doing.  NULL is only equal to NULL.
+ */
 #define _TARPM_ASSERT_STR(X, OP, Y) {\
     const char *_x = (X);\
     const char *_y = (Y);\
-    TARPM_assert_impl(strcmp(_x, _y) OP 0, __LINE__, __FILE__, "Assertion '%s' failed: %s == \"%s\", %s == \"%s\"", #X" "#OP" "#Y, #X, _x, #Y, _y);\
+    int _r = 0;\
+    if (_x == NULL || _y == NULL) {\
+        _r = (_x == _y) ? 0 : 1;\
+    } else {\
+        _r = strcmp(_x, _y);\
+    }\
+    TARPM_assert_impl(_r OP 0, __LINE__, __FILE__, "Assertion '%s' failed: %s == \"%s\", %s == \"%s\"", #X" "#OP" "#Y, #X, (_x == NULL) ? "(null)" : _x, #Y, (_y == NULL) ? "(null)" : _y);\
 }
 
 #define TARPM_ASSERT_EQUAL(actual, expected)               _TARPM_ASSERT_INT(expected, ==, actual)
