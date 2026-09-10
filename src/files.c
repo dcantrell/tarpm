@@ -13,6 +13,8 @@
 #include <rpm/header.h>
 #include <rpm/rpmfc.h>
 #include <rpm/rpmfiles.h>
+#include <rpm/rpmpgp.h>
+#include <openssl/evp.h>
 #include <json.h>
 
 #include "tarpm.h"
@@ -1008,6 +1010,94 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
 }
 
 /*
+ * Compute the digest of a file in the package payload tree the same
+ * way RPM does.  Use the digest algorithm defined in
+ * RPMTAG_FILEDIGESTALGO, but fall back to MD5 like rpm does.  Returns
+ * NULL if the file cannot be read or if the algorithm is not one
+ * OpenSSL provides.  Caller must free the string returned.
+ */
+static char *
+mkfiledigest(const char *path, const uint32_t algo)
+{
+    unsigned int i = 0;
+    size_t len = 0;
+    unsigned int digest_sz = 0;
+    char *name = NULL;
+    char *r = NULL;
+    unsigned char buf[BUFSIZ];
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    const EVP_MD *md = NULL;
+    EVP_MD_CTX *ctx = NULL;
+    FILE *fp = NULL;
+
+    if (path == NULL) {
+        return NULL;
+    }
+
+    /* the algorithm names tarpm uses are the ones OpenSSL knows */
+    name = strdigestalgo(algo);
+    md = EVP_get_digestbyname(name);
+
+    if (md == NULL) {
+        warnx(_("*** unsupported file digest algorithm: %s"), name);
+        free(name);
+        return NULL;
+    }
+
+    free(name);
+    fp = fopen(path, "rb");
+
+    if (fp == NULL) {
+        warn("fopen");
+        return NULL;
+    }
+
+    ctx = EVP_MD_CTX_new();
+
+    if (ctx == NULL) {
+        warn("EVP_MD_CTX_new");
+        goto cleanup_mkfiledigest;
+    }
+
+    if (EVP_DigestInit(ctx, md) == 0) {
+        warn("EVP_DigestInit");
+        goto cleanup_mkfiledigest;
+    }
+
+    len = fread(buf, 1, sizeof(buf), fp);
+
+    while (len > 0) {
+        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
+            warn("EVP_DigestUpdate");
+            goto cleanup_mkfiledigest;
+        }
+
+        len = fread(buf, 1, sizeof(buf), fp);
+    }
+
+    if (ferror(fp)) {
+        warn("fread");
+        goto cleanup_mkfiledigest;
+    }
+
+    if (EVP_DigestFinal(ctx, digest, &digest_sz) == 0) {
+        warn("EVP_DigestFinal");
+        goto cleanup_mkfiledigest;
+    }
+
+    r = xalloc((digest_sz * 2) + 1);
+
+    for (i = 0; i < digest_sz; i++) {
+        snprintf(r + (i * 2), 3, "%02x", digest[i]);
+    }
+
+cleanup_mkfiledigest:
+    EVP_MD_CTX_free(ctx);
+    fclose(fp);
+    return r;
+}
+
+/*
  * Reconstruct the file list tag entries from the files array.
  * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
  * to the provided tags array.
@@ -1073,6 +1163,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *user_str = NULL;
     const char *group_str = NULL;
     const char *digest_str = NULL;
+    const char *digestalgo_str = NULL;
+    char *computed_digest = NULL;
+    uint32_t digestalgo = 0;
     const char *linkto_str = NULL;
     const char *class_str = NULL;
     const char *type_str = NULL;
@@ -1124,6 +1217,20 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
      * source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags.
      */
     source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
+
+    /*
+     * The file digests are recomputed from the actual contents of the
+     * payload, so the algorithm the header names for them is needed
+     * up front.  rpm defaults to MD5 for packages missing the
+     * RPMTAG_FILEDIGESTALGO tag.
+     */
+    digestalgo_str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+
+    if (digestalgo_str == NULL) {
+        digestalgo = PGPHASHALGO_MD5;
+    } else {
+        digestalgo = digest_algo(digestalgo_str);
+    }
 
     /* Allocate arrays for unique directory and class tracking */
     unique_dirs = xcalloc(count, sizeof(char *));
@@ -1318,9 +1425,30 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * string so the array stays parallel to the file list.
          */
         digest_str = NULL;
+        computed_digest = NULL;
 
         if (json_object_object_get_ex(file, RPM_FILE_DIGEST_DESC, &digest_obj)) {
             digest_str = json_object_get_string(digest_obj);
+        }
+
+        /*
+         * Entries carrying a digest get it recomputed from the file in
+         * the payload so an edited payload lands a correct digest in
+         * the header.  The digest header.json recorded is kept if
+         * there is no regular file in the payload to read.
+         */
+        if (digest_str != NULL && digest_str[0] != '\0' && digestalgo != 0 && input_dir != NULL && payload_subdir != NULL) {
+            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+
+            if (lstat(file_path, &sb) == 0 && S_ISREG(sb.st_mode)) {
+                computed_digest = mkfiledigest(file_path, digestalgo);
+
+                if (computed_digest != NULL) {
+                    digest_str = computed_digest;
+                }
+            }
+
+            free(file_path);
         }
 
         if (digest_str != NULL) {
@@ -1328,6 +1456,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         } else {
             json_object_array_add(filedigests, json_object_new_string(""));
         }
+
+        free(computed_digest);
 
         /*
          * Extract linkto if available.  Entries without a "linkto" key
