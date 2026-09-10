@@ -563,6 +563,121 @@ test_is_dependency_tag_non_dependency_tags(void)
     return;
 }
 
+/* Test dependency_type_key with the depends dictionary abbreviations */
+void
+test_dependency_type_key(void)
+{
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('P'), "provides");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('R'), "requires");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('C'), "conflicts");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('O'), "obsoletes");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('r'), "recommends");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('s'), "suggests");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('S'), "supplements");
+    TARPM_ASSERT_STRING_EQUAL(dependency_type_key('e'), "enhances");
+
+    /* abbreviations tarpm does not know about have no key */
+    TARPM_ASSERT_TRUE(dependency_type_key('\0') == NULL);
+    TARPM_ASSERT_TRUE(dependency_type_key('x') == NULL);
+
+    return;
+}
+
+/* Test dependency_type_abbrev with the dependency type keys */
+void
+test_dependency_type_abbrev(void)
+{
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("provides"), 'P');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("requires"), 'R');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("conflicts"), 'C');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("obsoletes"), 'O');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("recommends"), 'r');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("suggests"), 's');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("supplements"), 'S');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("enhances"), 'e');
+
+    /* keys tarpm does not know about have no abbreviation */
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev(NULL), '\0');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev(""), '\0');
+    TARPM_ASSERT_EQUAL(dependency_type_abbrev("vaporware"), '\0');
+
+    return;
+}
+
+/*
+ * Helper for test_dependency_index() below that builds a single
+ * dependency entry.  A NULL comparison or version leaves that key off.
+ */
+static struct json_object *
+add_dependency(struct json_object *deps, const char *name, const char *comparison, const char *version)
+{
+    struct json_object *entry = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_DEPENDENCY_NAME_DESC, json_object_new_string(name));
+
+    if (comparison != NULL) {
+        json_object_object_add(entry, RPM_DEPENDENCY_COMPARISON_DESC, json_object_new_string(comparison));
+    }
+
+    if (version != NULL) {
+        json_object_object_add(entry, RPM_DEPENDENCY_VERSION_DESC, json_object_new_string(version));
+    }
+
+    if (deps != NULL) {
+        json_object_array_add(deps, entry);
+    }
+
+    return entry;
+}
+
+/* Test dependency_index with a dependency dictionary */
+void
+test_dependency_index(void)
+{
+    struct json_object *dependencies = NULL;
+    struct json_object *provides = NULL;
+    struct json_object *entry = NULL;
+
+    dependencies = json_object_new_object();
+    provides = json_object_new_array();
+
+    add_dependency(provides, "libc.so.6", NULL, NULL);
+    add_dependency(provides, "glibc", "=", "2.43");
+    add_dependency(provides, "glibc", "<", "2.43");
+
+    json_object_object_add(dependencies, "provides", provides);
+
+    /* NULL input has no match */
+    TARPM_ASSERT_EQUAL(dependency_index(NULL, "provides", NULL), -1);
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, NULL, NULL), -1);
+
+    /* a type the dictionary does not carry has no match */
+    entry = add_dependency(NULL, "glibc", "=", "2.43");
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "requires", entry), -1);
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "provides", entry), 1);
+    json_object_put(entry);
+
+    /* a bare name matches the entry with no version */
+    entry = add_dependency(NULL, "libc.so.6", NULL, NULL);
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "provides", entry), 0);
+    json_object_put(entry);
+
+    /* the comparison is part of what makes a dependency unique */
+    entry = add_dependency(NULL, "glibc", "<", "2.43");
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "provides", entry), 2);
+    json_object_put(entry);
+
+    /* a dependency the dictionary does not carry has no match */
+    entry = add_dependency(NULL, "glibc", "=", "2.44");
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "provides", entry), -1);
+    json_object_put(entry);
+
+    json_object_put(dependencies);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -590,7 +705,10 @@ get_suite(void)
         CU_add_test(pSuite, "test add_dependency_tags() with obsoletes", test_add_dependency_tags_obsoletes) == NULL ||
         CU_add_test(pSuite, "test add_dependency_tags() with recommends", test_add_dependency_tags_recommends) == NULL ||
         CU_add_test(pSuite, "test is_dependency_tag() with dependency tags", test_is_dependency_tag_dependency_tags) == NULL ||
-        CU_add_test(pSuite, "test is_dependency_tag() with non-dependency tags", test_is_dependency_tag_non_dependency_tags) == NULL) {
+        CU_add_test(pSuite, "test is_dependency_tag() with non-dependency tags", test_is_dependency_tag_non_dependency_tags) == NULL ||
+        CU_add_test(pSuite, "test dependency_type_key()", test_dependency_type_key) == NULL ||
+        CU_add_test(pSuite, "test dependency_type_abbrev()", test_dependency_type_abbrev) == NULL ||
+        CU_add_test(pSuite, "test dependency_index()", test_dependency_index) == NULL) {
         return NULL;
     }
 

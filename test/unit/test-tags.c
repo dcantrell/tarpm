@@ -5,6 +5,7 @@
 
 #include <CUnit/Basic.h>
 #include <rpm/rpmtag.h>
+#include <rpm/rpmpgp.h>
 #include "tarpm.h"
 
 #include "test-main.h"
@@ -289,6 +290,60 @@ test_set_tag_value(void)
 }
 
 void
+test_strdigestalgo(void)
+{
+    char *s = NULL;
+
+    /* algorithms tarpm knows about come back by name */
+    s = strdigestalgo(PGPHASHALGO_MD5);
+    TARPM_ASSERT_STRING_EQUAL(s, "md5");
+    free(s);
+
+    s = strdigestalgo(PGPHASHALGO_SHA1);
+    TARPM_ASSERT_STRING_EQUAL(s, "sha1");
+    free(s);
+
+    s = strdigestalgo(PGPHASHALGO_SHA256);
+    TARPM_ASSERT_STRING_EQUAL(s, "sha256");
+    free(s);
+
+    s = strdigestalgo(PGPHASHALGO_SHA512);
+    TARPM_ASSERT_STRING_EQUAL(s, "sha512");
+    free(s);
+
+    /* anything else comes back as the number itself */
+    s = strdigestalgo(0);
+    TARPM_ASSERT_STRING_EQUAL(s, "0");
+    free(s);
+
+    s = strdigestalgo(47);
+    TARPM_ASSERT_STRING_EQUAL(s, "47");
+    free(s);
+
+    return;
+}
+
+void
+test_digest_algo(void)
+{
+    /* names come back as the algorithm they were written from */
+    TARPM_ASSERT_EQUAL(digest_algo("md5"), PGPHASHALGO_MD5);
+    TARPM_ASSERT_EQUAL(digest_algo("sha1"), PGPHASHALGO_SHA1);
+    TARPM_ASSERT_EQUAL(digest_algo("sha256"), PGPHASHALGO_SHA256);
+    TARPM_ASSERT_EQUAL(digest_algo("sha512"), PGPHASHALGO_SHA512);
+
+    /* a bare number is read as the algorithm itself */
+    TARPM_ASSERT_EQUAL(digest_algo("47"), 47);
+
+    /* anything else is zero */
+    TARPM_ASSERT_EQUAL(digest_algo(NULL), 0);
+    TARPM_ASSERT_EQUAL(digest_algo(""), 0);
+    TARPM_ASSERT_EQUAL(digest_algo("not an algorithm"), 0);
+
+    return;
+}
+
+void
 test_strbuildtime(void)
 {
     char *s = NULL;
@@ -352,6 +407,8 @@ get_suite(void)
         CU_add_test(pSuite, "test get_tag_number()", test_get_tag_number) == NULL ||
         CU_add_test(pSuite, "test get_tag_value()", test_get_tag_value) == NULL ||
         CU_add_test(pSuite, "test set_tag_value()", test_set_tag_value) == NULL ||
+        CU_add_test(pSuite, "test strdigestalgo()", test_strdigestalgo) == NULL ||
+        CU_add_test(pSuite, "test digest_algo()", test_digest_algo) == NULL ||
         CU_add_test(pSuite, "test strbuildtime()", test_strbuildtime) == NULL ||
         CU_add_test(pSuite, "test buildtime_value()", test_buildtime_value) == NULL) {
         return NULL;

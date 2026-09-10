@@ -8,6 +8,7 @@
 #include <endian.h>
 #include <arpa/inet.h>
 #include <rpm/rpmtag.h>
+#include <rpm/rpmpgp.h>
 #include <rpm/rpmbase64.h>
 #include <json.h>
 #include <CUnit/Basic.h>
@@ -319,6 +320,50 @@ test_add_entry_value_buildtime(void)
     return;
 }
 
+void
+test_add_entry_value_digestalgo(void)
+{
+    struct json_object *arrayentry = NULL;
+    struct json_object *value = NULL;
+    uint8_t buffer[4];
+    uint32_t val32 = 0;
+
+    val32 = htonl(PGPHASHALGO_SHA256);
+    memcpy(buffer, &val32, sizeof(val32));
+
+    /* both digest algorithm tags are written out by name */
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_FILEDIGESTALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "sha256");
+    json_object_put(arrayentry);
+
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_PAYLOADSHA256ALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "sha256");
+    json_object_put(arrayentry);
+
+    /* an algorithm with no name is written out as the number in string form */
+    val32 = htonl(47);
+    memcpy(buffer, &val32, sizeof(val32));
+
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_FILEDIGESTALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, false);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "47");
+    json_object_put(arrayentry);
+
+    /* a signature header tag sharing the number stays a number */
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_FILEDIGESTALGO, buffer, 0, RPM_INT32_TYPE, 1, NULL, true);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 47);
+    json_object_put(arrayentry);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -340,7 +385,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_entry_value() with strings", test_add_entry_value_strings) == NULL ||
         CU_add_test(pSuite, "test add_entry_value() with a binary blob", test_add_entry_value_binary) == NULL ||
         CU_add_test(pSuite, "test add_entry_value() with an unknown type", test_add_entry_value_unknown) == NULL ||
-        CU_add_test(pSuite, "test add_entry_value() with a build time", test_add_entry_value_buildtime) == NULL) {
+        CU_add_test(pSuite, "test add_entry_value() with a build time", test_add_entry_value_buildtime) == NULL ||
+        CU_add_test(pSuite, "test add_entry_value() with a digest algorithm", test_add_entry_value_digestalgo) == NULL) {
         return NULL;
     }
 

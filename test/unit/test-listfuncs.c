@@ -188,6 +188,38 @@ test_str_list_nth(void)
 }
 
 void
+test_uint32_list_nth(void)
+{
+    uint32_list_t *list = NULL;
+    uint32_t value = 0;
+
+    /* a NULL list and a NULL result have nothing to return */
+    TARPM_ASSERT_FALSE(uint32_list_nth(NULL, 0, &value));
+
+    list = uint32_list_add(list, 42);
+    list = uint32_list_add(list, 47);
+    list = uint32_list_add(list, 0);
+
+    TARPM_ASSERT_FALSE(uint32_list_nth(list, 0, NULL));
+
+    TARPM_ASSERT_TRUE(uint32_list_nth(list, 0, &value));
+    TARPM_ASSERT_EQUAL(value, 42);
+
+    TARPM_ASSERT_TRUE(uint32_list_nth(list, 1, &value));
+    TARPM_ASSERT_EQUAL(value, 47);
+
+    TARPM_ASSERT_TRUE(uint32_list_nth(list, 2, &value));
+    TARPM_ASSERT_EQUAL(value, 0);
+
+    /* an index past the end of the list returns nothing */
+    TARPM_ASSERT_FALSE(uint32_list_nth(list, 3, &value));
+
+    uint32_list_free(list);
+
+    return;
+}
+
+void
 test_first_str_and_next_str(void)
 {
     str_list_t *list = NULL;
@@ -268,6 +300,7 @@ get_suite(void)
         CU_add_test(pSuite, "test str_list_len()", test_str_list_len) == NULL ||
         CU_add_test(pSuite, "test uint32_list_len()", test_uint32_list_len) == NULL ||
         CU_add_test(pSuite, "test str_list_nth()", test_str_list_nth) == NULL ||
+        CU_add_test(pSuite, "test uint32_list_nth()", test_uint32_list_nth) == NULL ||
         CU_add_test(pSuite, "test first_str() and next_str()", test_first_str_and_next_str) == NULL ||
         CU_add_test(pSuite, "test first_uint32() and next_uint32()", test_first_uint32_and_next_uint32) == NULL) {
         return NULL;
