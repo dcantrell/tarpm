@@ -446,3 +446,81 @@ class TestRoundTripTagsWrittenByName(RoundTrip, TestUnpackRPM):
         )
         self.assertEqual(query_rpm(recreated, "%{FILEDIGESTALGO}\n"), ["8"])
         self.assertIdentical(original, recreated)
+
+
+class TagFile(RoundTrip):
+    """
+    Class for the tests covering the files a file backed tag keeps its
+    value in.  Sizing the header and writing it are two passes over
+    the same tags and both have to measure it the same way. If the
+    sizes do not match, the header allocates more bytes than its index
+    entries describe and rpm will not load it.
+    """
+
+    def tagfile(self, extract_dir):
+        """Return the path to the file holding the Description value"""
+        return os.path.join(extract_dir, "description.txt")
+
+    def create_fails(self, extract_dir):
+        """Assert tarpm refuses to create an RPM and writes nothing"""
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+
+        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
+        self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
+        self.assertFalse(os.path.exists(pkg), "A package was written anyway")
+
+        return err
+
+
+class TestCreateEmptyTagFile(TagFile, TestUnpackRPM):
+    """An emptied file backed tag becomes an empty value, not a broken header"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+
+        f = open(self.tagfile(extract_dir), "wb")
+        f.close()
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(query_rpm(recreated, "<%{DESCRIPTION}>\n"), ["<>"])
+        self.assertVerifies(recreated)
+
+
+class TestCreateRejectsMissingTagFile(TagFile, TestUnpackRPM):
+    """A file backed tag naming a file that is gone is an error, not a warning"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        os.unlink(self.tagfile(extract_dir))
+
+        self.assertTrue("description.txt" in self.create_fails(extract_dir))
+
+
+class TestCreateRejectsNulInTagFile(TagFile, TestUnpackRPM):
+    """A file backed tag value carrying a NUL is an error, not a broken header"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+
+        f = open(self.tagfile(extract_dir), "wb")
+        f.write(b"ab\0cdefg")
+        f.close()
+
+        self.assertTrue("NUL" in self.create_fails(extract_dir))
