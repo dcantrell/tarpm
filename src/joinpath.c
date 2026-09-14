@@ -49,11 +49,31 @@ char *joinpath(const char *path, ...)
     char *tmp = NULL;
     char *near = NULL;
     char *far = NULL;
-    size_t s = PATH_MAX + 1;
+    str_list_t *list = NULL;
+    str_entry_t *entry = NULL;
+    size_t s = 0;
 
     if (path == NULL) {
         return NULL;
     }
+
+    /* initial buffer length */
+    s = strlen(path) + 2;
+
+    /* collect the strings we were given */
+    va_start(ap, path);
+
+    while ((element = va_arg(ap, char *)) != NULL) {
+        list = list_add(list, element);
+
+        /*
+         * add 2 here to account for possible leading and
+         * trailing slash later
+         */
+        s += strlen(element) + 2;
+    }
+
+    va_end(ap);
 
     /* Allocate a large buffer to use for building the path. */
     tail = built = xalloc(s);
@@ -72,47 +92,48 @@ char *joinpath(const char *path, ...)
     tail = stpncpy(tail, path, s - (tail - built));
 
     /* the remaining elements come in this way */
-    va_start(ap, path);
+    if (list != NULL) {
+        TAILQ_FOREACH(entry, list, items) {
+            /* do not disrupt the main pointer (need to free later) */
+            element = entry->str;
 
-    while ((element = va_arg(ap, char *)) != NULL) {
-        /* for the trailing NUL */
-        needsep = false;
+            /* for the trailing NUL */
+            needsep = false;
 
-        /* trim any extra trailing slashes */
-        while (*tail == '/') {
-            *tail = '\0';
-            tail--;
+            /* trim any extra trailing slashes */
+            while (*tail == '/') {
+                *tail = '\0';
+                tail--;
+            }
+
+            /*
+             * This loop trims multiple leading slashes down to just
+             * one.  If 'i' is 1, it will preserve 1 leading slash.
+             * Actually, set this to the number of slashes to preserve.
+             */
+            if (*element == '/' && *tail != '/') {
+                i = 1;
+            } else {
+                i = 0;
+            }
+
+            while (*(element + i) == '/') {
+                element++;
+            }
+
+            /* make sure we have at least one slash in case there are none */
+            if (*element != '/' && *tail != '/') {
+                needsep = true;
+            }
+
+            /* perform the concatenations */
+            if (needsep) {
+                tail = stpncpy(tail, "/", s - (tail - built));
+            }
+
+            tail = stpncpy(tail, element, s - (tail - built));
         }
-
-        /*
-         * This loop trims multiple leading slashes down to just one.
-         * If 'i' is 1, it will preserve 1 leading slash.  Actually, set
-         * this to the number of slashes to preserve.
-         */
-        if (*element == '/' && *tail != '/') {
-            i = 1;
-        } else {
-            i = 0;
-        }
-
-        while (*(element + i) == '/') {
-            element++;
-        }
-
-        /* make sure we have at least one slash in case there are none */
-        if (*element != '/' && *tail != '/') {
-            needsep = true;
-        }
-
-        /* perform the concatenations */
-        if (needsep) {
-            tail = stpncpy(tail, "/", s - (tail - built));
-        }
-
-        tail = stpncpy(tail, element, s - (tail - built));
     }
-
-    va_end(ap);
 
     /* it's possible there are repeating slashes, eliminate them */
     near = built;
@@ -134,6 +155,9 @@ char *joinpath(const char *path, ...)
     /* shrink memory allocation */
     tmp = xrealloc(built, strlen(built) + 1);
     built = tmp;
+
+    /* clean up */
+    list_free(list, free);
 
     return built;
 }

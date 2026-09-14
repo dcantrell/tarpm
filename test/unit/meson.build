@@ -41,6 +41,8 @@ if cunit.found()
         'test-joinpath',
         [ 'test-joinpath.c',
           'test-main.c',
+          strfuncs_src,
+          listfuncs_src,
           joinpath_src,
           xalloc_src,
         ],
