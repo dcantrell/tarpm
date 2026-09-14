@@ -41,6 +41,9 @@ read_lead(const int fd)
         return NULL;
     }
 
+    /* NUL terminate the name */
+    rawlead.name[sizeof(rawlead.name) - 1] = '\0';
+
     /* convert some lead fields from network byte order to host byte order */
     rawlead.type = ntohs(rawlead.type);
     rawlead.osnum = ntohs(rawlead.osnum);
