@@ -6,6 +6,7 @@
 #include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
 #include <rpm/rpmtd.h>
@@ -13,6 +14,17 @@
 #include <time.h>
 
 #include "tarpm.h"
+
+/*
+ * Structure to track size information for tags with data in an
+ * external file.  This information is required when constructing an
+ * RPM header structure.
+ */
+struct tagfile {
+    uint8_t *data;    /* file contents, always NUL terminated */
+    size_t len;       /* byte length, not counting the trailing NUL */
+    bool present;     /* true once the file has been read */
+};
 
 static rpmTagType
 get_entry_type(struct json_object *entry)
@@ -61,8 +73,136 @@ is_read_only_tag(struct json_object *entry)
     return false;
 }
 
+/* Free the file contents collected by read_tag_files(). */
+static void
+free_tag_files(struct tagfile *tagfiles, size_t len)
+{
+    size_t i = 0;
+
+    if (tagfiles == NULL) {
+        return;
+    }
+
+    for (i = 0; i < len; i++) {
+        free(tagfiles[i].data);
+    }
+
+    free(tagfiles);
+    return;
+}
+
+/*
+ * Read the file holding the value of a file-backed tag.  On success
+ * returns 0 with the contents in *data and the byte length, not
+ * counting the trailing NUL, in *len.  Returns -1 if the file cannot
+ * be read.
+ */
+static int
+read_tag_file(const char *path, uint8_t **data, size_t *len)
+{
+    off_t filelen = 0;
+    struct stat sb;
+
+    if (path == NULL || data == NULL || len == NULL) {
+        return -1;
+    }
+
+    if (stat(path, &sb) == -1) {
+        warn(_("*** unable to read %s"), path);
+        return -1;
+    }
+
+    if (!S_ISREG(sb.st_mode)) {
+        warnx(_("*** %s is not a regular file"), path);
+        return -1;
+    }
+
+    /*
+     * read_file_bytes() reports a zero length file the same way it
+     * reports a failure, so handle an empty file here.  The tag value
+     * is the empty string, which still occupies the one byte its NUL
+     * terminator takes up.
+     */
+    if (sb.st_size == 0) {
+        *data = xalloc(1);
+        *len = 0;
+        return 0;
+    }
+
+    *data = read_file_bytes(path, &filelen);
+
+    if (*data == NULL) {
+        warn(_("*** unable to read %s"), path);
+        return -1;
+    }
+
+    /* the byte length, not strlen() */
+    *len = filelen;
+
+    /*
+     * rpm relies on strings being NUL terminated, so preserving NULs
+     * in a string we know the entire length of is not really
+     * supported.  Catch it here and tell the user and error out.
+     */
+    if (memchr(*data, '\0', *len) != NULL) {
+        warnx(_("*** %s contains a NUL byte and cannot be used as a tag value"), path);
+        free(*data);
+        *data = NULL;
+        *len = 0;
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * Read every file named by a file-backed tag so the sizing pass and
+ * the write pass work from the same bytes.  Results are indexed by
+ * position in the tags array.  Returns 0 on success, -1 if any named
+ * file could not be read.
+ */
+static int
+read_tag_files(struct json_object *tags, struct tagfile *tagfiles, bool is_signature)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *key = NULL;
+    rpmTagVal tag_number = 0;
+
+    if (tags == NULL || tagfiles == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (is_read_only_tag(entry)) {
+            continue;
+        }
+
+        tag_number = get_tag_number(entry, is_signature);
+
+        if (!is_file_tag(tag_number)) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, &key)) {
+            continue;
+        }
+
+        if (read_tag_file(json_object_get_string(key), &tagfiles[i].data, &tagfiles[i].len) == -1) {
+            warnx(_("*** unable to read the value of the %s tag"), rpmTagGetName(tag_number));
+            return -1;
+        }
+
+        tagfiles[i].present = true;
+    }
+
+    return 0;
+}
+
 static size_t
-get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
+get_item_size(size_t index, struct json_object *entry, const struct tagfile *tagfiles, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
 {
     size_t item_size = 0;
     rpmTagType entry_type = RPM_NULL_TYPE;
@@ -75,9 +215,6 @@ get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, s
     size_t j = 0;
     size_t len = 0;
     struct json_object *s = NULL;
-    const char *filepath = NULL;
-    off_t filelen = 0;
-    char *filedata = NULL;
 
     if (entry == NULL) {
         return 0;
@@ -151,17 +288,11 @@ get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, s
     } else {
         /* string data: length + NUL */
         if (is_file_tag(tag_number)) {
-            /* for file tags, we need to get the actual file size */
-            filepath = json_object_get_string(key);
-            filelen = 0;
-            filedata = read_file_bytes(filepath, &filelen);
-
-            if (filedata != NULL) {
-                item_size = filelen + 1;
-                free(filedata);
-            } else {
-                item_size = json_object_get_string_len(key) + 1;
-            }
+            /*
+             * The file was read before the header was sized so we
+             * already know the size of this tag.
+             */
+            item_size = tagfiles[index].len + 1;
         } else {
             item_size = json_object_get_string_len(key) + 1;
         }
@@ -172,7 +303,7 @@ get_item_size(size_t index, struct json_object *entry, int32_t *trailer_index, s
 
 /* Calculate the size of the data buffer for this header. */
 static size_t
-get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
+get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
 {
     size_t datasize = 0;
     size_t i = 0;
@@ -210,7 +341,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
         /* get the value and calculate size */
         if (json_object_object_get_ex(entry, field, &key)) {
-            item_size = get_item_size(i, entry, trailer_index, trailer_size, is_signature);
+            item_size = get_item_size(i, entry, tagfiles, trailer_index, trailer_size, is_signature);
 
             /* sequential calculation with alignment */
             if (entry_type == RPM_INT16_TYPE) {
@@ -232,7 +363,7 @@ get_data_buffer_size(struct json_object *tags, int32_t *trailer_index, size_t *t
 
 /* Add the header tags and their values to the data buffer */
 static int
-add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size, bool is_signature)
+add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size, bool is_signature)
 {
     int r = 0;
     int b = 0;
@@ -245,10 +376,9 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     uint16_t i16 = 0;
     uint32_t i32 = 0;
     uint64_t i64 = 0;
-    char *tmp = NULL;
     const char *value = NULL;
     const char *field = NULL;
-    int len = 0;
+    size_t len = 0;
     uint8_t *blob = NULL;
     size_t blobsize = 0;
     int32_t padding = 0;
@@ -439,21 +569,24 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 } else {
                     /* string data */
                     v->entry->count = 1;
-                    value = json_object_get_string(key);
 
                     if (is_file_tag(v->entry->tag)) {
-                        /* read in this tag's value from the named file */
-                        tmp = read_file(value);
-
-                        if (tmp == NULL) {
-                            warnx(_("*** empty or non-existent file: %s"), value);
-                            len = 0;
+                        /*
+                         * Write the bytes read before the header was
+                         * sized, so this will match get_item_size().
+                         * A tag with no file named for it carries the
+                         * empty string and both passes account for
+                         * just its NUL.
+                         */
+                        if (tagfiles[i].present) {
+                            len = tagfiles[i].len;
+                            memcpy(datapos, tagfiles[i].data, len + 1);
                         } else {
-                            len = strlen(tmp);
-                            memcpy(datapos, tmp, len + 1);
-                            free(tmp);
+                            len = 0;
+                            *datapos = '\0';
                         }
                     } else {
+                        value = json_object_get_string(key);
                         len = strlen(value);
                         memcpy(datapos, value, len + 1);
                     }
@@ -686,6 +819,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct json_object *dependencies = NULL;
     struct json_object *files = NULL;
     struct json_object *tags_copy = NULL;
+    struct tagfile *tagfiles = NULL;
+    size_t ntags = 0;
     size_t totalsize = 0;
     int32_t trailer_index = -1;
     size_t trailer_size = 0;
@@ -756,6 +891,22 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     /* lay the header out the way rpm would have written it */
     sort_header_tags(tags_copy, is_signature);
 
+    /*
+     * Read the files backing the file tags up front, so sizing the
+     * header and writing it both work from the same bytes.  A file
+     * named here that cannot be read is fatal for rpm.
+     */
+    ntags = json_object_array_length(tags);
+    tagfiles = xcalloc(ntags, sizeof(*tagfiles));
+
+    if (read_tag_files(tags, tagfiles, is_signature) == -1) {
+        free_tag_files(tagfiles, ntags);
+        json_object_put(tags);
+        free(s);
+        free(v);
+        return -1;
+    }
+
     /* number of header index entries (excluding read-only tags) */
     s->nentries = 0;
 
@@ -774,7 +925,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
      * total size is just the sequential data, NOT including trailer
      * trailer offset will point past the end of data
      */
-    totalsize = get_data_buffer_size(tags, &trailer_index, &trailer_size, is_signature);
+    totalsize = get_data_buffer_size(tags, tagfiles, &trailer_index, &trailer_size, is_signature);
 
     /* allocate the data buffer */
     v->datastart = xcalloc(totalsize, sizeof(uint8_t));
@@ -791,12 +942,14 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     /* walk the header tags and add them to the values structure */
-    r = add_header_tags(tags, v, totalsize, trailer_index, trailer_size, is_signature);
+    r = add_header_tags(tags, tagfiles, v, totalsize, trailer_index, trailer_size, is_signature);
 
     /* cleanup temporary tags array if we created one */
     if (need_free_tags) {
         json_object_put(tags);
     }
+
+    free_tag_files(tagfiles, ntags);
 
     /* ensure caller gets the header and data */
     *hdr = s;
