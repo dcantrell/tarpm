@@ -208,11 +208,11 @@ split_changelog_text(const char *text)
         return lines;
     }
 
-    line = strtok_r(copy, "\n\r", &sp);
+    line = strtok_r(copy, "\n", &sp);
 
     while (line != NULL) {
         json_object_array_add(lines, json_object_new_string(line));
-        line = strtok_r(NULL, "\n\r", &sp);
+        line = strtok_r(NULL, "\n", &sp);
     }
 
     free(copy);
