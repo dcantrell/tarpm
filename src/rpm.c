@@ -47,6 +47,7 @@ convert_payload(const char *rpm)
     rpm_loff_t left;
     size_t len = 0;
     size_t rd = 0;
+    bool failed = false;
 
     if (rpm == NULL) {
         return NULL;
@@ -213,7 +214,10 @@ convert_payload(const char *rpm)
             }
         }
 
-        archive_write_header(archive, entry);
+        if (archive_write_header(archive, entry) != ARCHIVE_OK) {
+            warnx(_("archive_write_header: %s"), archive_error_string(archive));
+            goto cleanup;
+        }
 
         if (S_ISREG(mode) && (nlink == 1 || rpmfiArchiveHasContent(fi))) {
             left = rpmfiFSize(fi);
@@ -226,7 +230,8 @@ convert_payload(const char *rpm)
                     archive_write_data(archive, buf, len);
                 } else {
                     warnx(_("*** error reading file from RPM payload"));
-                    break;
+                    failed = true;
+                    goto cleanup;
                 }
 
                 left -= len;
@@ -257,6 +262,15 @@ cleanup:
     rpmfiFree(fi);
     headerFree(hdr);
     rpmtsFree(ts);
+
+    if (failed) {
+        if (unlink(payload) == -1) {
+            warn("unlink");
+        }
+
+        free(payload);
+        payload = NULL;
+    }
 
     return payload;
 }
