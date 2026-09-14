@@ -6,10 +6,11 @@
 #include <string.h>
 #include <err.h>
 #include <errno.h>
+#include <time.h>
 #include <arpa/inet.h>
+#include <locale.h>
 #include <rpm/header.h>
 #include <json.h>
-#include <time.h>
 
 #include "tarpm.h"
 
@@ -23,6 +24,7 @@ timestamp_to_changelog_date(uint32_t timestamp)
     time_t t = (time_t) timestamp;
     struct tm *tm_info = NULL;
     char *result = NULL;
+    locale_t cee;
 
     tm_info = gmtime(&t);
 
@@ -30,8 +32,17 @@ timestamp_to_changelog_date(uint32_t timestamp)
         return NULL;
     }
 
+    errno = 0;
+    cee = newlocale(LC_TIME_MASK, "C", 0);
+
+    if (cee == 0) {
+        warn("newlocale");
+        return NULL;
+    }
+
     result = xalloc(64);
-    strftime(result, 64, "%a %b %d %Y", tm_info);
+    strftime_l(result, 64, "%a %b %d %Y", tm_info, cee);
+    freelocale(cee);
 
     return result;
 }
@@ -41,12 +52,13 @@ timestamp_to_changelog_date(uint32_t timestamp)
  * Input formats:
  *   - Original (4 words): "Wed Jul 29 2020"
  *   - Extended (6 words): "Thu Oct 6 06:48:39 CEST 2016"
- * Returns Unix timestamp or 0 on error.
- * Note: Original format sets time to noon (12:00:00 UTC) to match RPM convention.
- * Extended format uses the specified time and timezone.
+ * Stores the Unix timestamp in timestamp and returns 0, or returns -1
+ * if the date cannot be parsed.
+ * Note: Original format sets time to noon (12:00:00 UTC) to match RPM
+ * convention.  Extended format uses the specified time and timezone.
  */
-static uint32_t
-changelog_date_to_timestamp(const char *changelog_date)
+static int
+changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
 {
     struct tm tm_info = {0};
     time_t t = 0;
@@ -61,7 +73,7 @@ changelog_date_to_timestamp(const char *changelog_date)
     long year_long = 0;
 
     if (changelog_date == NULL) {
-        return 0;
+        return -1;
     }
 
     /* Try extended format first: "Day Mon DD HH:MM:SS TZ YYYY" */
@@ -103,7 +115,7 @@ changelog_date_to_timestamp(const char *changelog_date)
         year_long = strtol(year_start, &endptr, 10);
 
         if (errno != 0 || endptr == year_start || year_long < 1990 || year_long >= 3000) {
-            return 0;
+            return -1;
         }
 
         year = (int) year_long;
@@ -122,6 +134,21 @@ changelog_date_to_timestamp(const char *changelog_date)
         }
 
         tzset();
+
+        /*
+         * Unrecognized timezone names fallback to UTC.  Warn the user.
+         */
+        if (tz_name[0] != '\0' && timezone == 0 && tzname[1][0] == '\0') {
+            warnx(_("*** unknown time zone \"%s\" in changelog date \"%s\", using UTC"), tz_name, changelog_date);
+        }
+
+        /*
+         * Let mktime() figure out whether daylight saving time
+         * applies to the timestamp, which we get by setting tm_isdst
+         * to -1.
+         */
+        tm_info.tm_isdst = -1;
+
         t = mktime(&tm_info);
 
         /* Restore original timezone */
@@ -138,7 +165,7 @@ changelog_date_to_timestamp(const char *changelog_date)
         memset(&tm_info, 0, sizeof(tm_info));
 
         if (strptime(changelog_date, "%a %b %d %Y", &tm_info) == NULL) {
-            return 0;
+            return -1;
         }
 
         /* Set time to noon (12:00:00) to match RPM changelog convention */
@@ -151,10 +178,11 @@ changelog_date_to_timestamp(const char *changelog_date)
     }
 
     if (t == -1) {
-        return 0;
+        return -1;
     }
 
-    return (uint32_t) t;
+    *timestamp = (uint32_t) t;
+    return 0;
 }
 
 /*
@@ -385,11 +413,24 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     return changelog;
 }
 
+/* Cleanup function called by add_changelog_tags. */
+static void
+free_changelog_arrays(struct json_object *times, struct json_object *names, struct json_object *texts)
+{
+    json_object_put(times);
+    json_object_put(names);
+    json_object_put(texts);
+
+    return;
+}
+
 /*
  * Reconstruct the three changelog tag entries from the changelog array.
  * Adds the three tag entries to the provided tags array.
+ * Returns 0 on success or -1 if an entry carries a date that cannot be
+ * read, which would otherwise land in the package as 1 Jan 1970.
  */
-void
+int
 add_changelog_tags(struct json_object *tags, struct json_object *changelog)
 {
     size_t i = 0;
@@ -404,17 +445,17 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
     char *changelog_text = NULL;
 
     if (tags == NULL || changelog == NULL) {
-        return;
+        return 0;
     }
 
     if (json_object_get_type(changelog) != json_type_array) {
-        return;
+        return 0;
     }
 
     count = json_object_array_length(changelog);
 
     if (count == 0) {
-        return;
+        return 0;
     }
 
     /* Create the three arrays */
@@ -430,12 +471,25 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
             continue;
         }
 
-        /* Get timestamp and convert back to Unix time */
-        if (json_object_object_get_ex(entry, "timestamp", &obj)) {
-            s = json_object_get_string(obj);
-            timestamp = changelog_date_to_timestamp(s);
-            json_object_array_add(times, json_object_new_int(timestamp));
+        /*
+         * Convert timestamp back to Unix time.  Unreadable or missing
+         * timestamps are fatal, so tell the user.
+         */
+        if (!json_object_object_get_ex(entry, "timestamp", &obj)) {
+            warnx(_("*** changelog entry %zu carries no timestamp"), i);
+            free_changelog_arrays(times, names, texts);
+            return -1;
         }
+
+        s = json_object_get_string(obj);
+
+        if (changelog_date_to_timestamp(s, &timestamp) == -1) {
+            warnx(_("*** unable to read the changelog date \"%s\""), (s == NULL) ? "" : s);
+            free_changelog_arrays(times, names, texts);
+            return -1;
+        }
+
+        json_object_array_add(times, json_object_new_int(timestamp));
 
         /* Get name */
         if (json_object_object_get_ex(entry, "name", &obj)) {
@@ -472,7 +526,7 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
     json_object_object_add(entry, "value", texts);
     json_object_array_add(tags, entry);
 
-    return;
+    return 0;
 }
 
 /*

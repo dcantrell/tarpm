@@ -870,7 +870,12 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
 
     /* Check if there's a changelog array that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_CHANGELOG_DESC, &changelog)) {
-        add_changelog_tags(tags_copy, changelog);
+        if (add_changelog_tags(tags_copy, changelog) == -1) {
+            json_object_put(tags);
+            free(s);
+            free(v);
+            return -1;
+        }
     }
 
     /* Check if there's a dependencies object that needs to be converted to tags */

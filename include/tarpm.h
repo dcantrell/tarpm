@@ -73,7 +73,7 @@ int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, siz
 
 /* changelog.c */
 struct json_object *generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
-void add_changelog_tags(struct json_object *tags, struct json_object *changelog);
+int add_changelog_tags(struct json_object *tags, struct json_object *changelog);
 bool is_changelog_tag(rpmTagVal tag);
 
 /* deps.c */
