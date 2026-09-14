@@ -9,7 +9,8 @@ if python.found()
         'test_signature.py',
         'test_header.py',
         'test_extract.py',
-        'test_create.py'
+        'test_create.py',
+        'test_roundtrip.py'
     ]
 
     foreach suite : test_suites
