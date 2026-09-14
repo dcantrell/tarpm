@@ -116,7 +116,7 @@
 #define RPM_FILE_DEFAULT_GROUP         "root"
 #define RPM_FILE_LANG_SEPARATOR        "|"
 #define RPM_FILE_MODE_FORMAT           "%04o"
-#define RPM_FILE_MTIME_FORMAT          "%Y-%m-%d"
+#define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"
 
 /* names used for the file color bits in the "files" array   */
 /* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
