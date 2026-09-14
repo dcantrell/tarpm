@@ -250,6 +250,7 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
     const char *field = NULL;
     int len = 0;
     uint8_t *blob = NULL;
+    size_t blobsize = 0;
     int32_t padding = 0;
     size_t j = 0;
     struct json_object *obj = NULL;
@@ -319,7 +320,8 @@ add_header_tags(struct json_object *tags, struct rpmhdrinfo *v, size_t totalsize
                 /* handle each data type */
                 if (v->entry->type == RPM_BIN_TYPE) {
                     value = json_object_get_string(key);
-                    b = rpmBase64Decode(value, (void **) &blob, (size_t *) &(v->entry->count));
+                    b = rpmBase64Decode(value, (void **) &blob, &blobsize);
+                    v->entry->count = (uint32_t) blobsize;
 
                     if (b == 0) {
                         memcpy(datapos, blob, v->entry->count);
