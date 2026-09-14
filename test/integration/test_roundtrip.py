@@ -3,20 +3,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import datetime
 import hashlib
 import json
 import os
 import subprocess
 import rpmfluff
 from baseclass import NAME
+from baseclass import REL
+from baseclass import VER
 from baseclass import TestUnpackRPM
 from baseclass import TestUnpackSRPM
 
 
-def run_tarpm(tarpm, args):
+def run_tarpm(tarpm, args, env=None):
     """Run tarpm with the given arguments and return (returncode, stdout, stderr)"""
     proc = subprocess.Popen(
-        [tarpm] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [tarpm] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
     )
     (out, err) = proc.communicate()
 
@@ -88,6 +91,15 @@ def get_tag(header, name):
     return None
 
 
+def utc_seconds(year, month, day, hour=12, minute=0, second=0):
+    """Return the Unix time of a moment in UTC, noon by default"""
+    return int(
+        datetime.datetime(
+            year, month, day, hour, minute, second, tzinfo=datetime.timezone.utc
+        ).timestamp()
+    )
+
+
 class RoundTrip(object):
     """
     Mixin for the round trip tests that runs the extract and create
@@ -96,25 +108,43 @@ class RoundTrip(object):
     cases so that self.tarpm and self.output_dir exist.
     """
 
-    def extract(self, pkg, subdir="extracted"):
+    def extract(self, pkg, subdir="extracted", env=None):
         """Extract an RPM in to a subdirectory of the test output directory"""
         extract_dir = os.path.join(self.output_dir, subdir)
         os.makedirs(extract_dir)
 
-        (rc, out, err) = run_tarpm(self.tarpm, ["-x", "-f", pkg, "-O", extract_dir])
+        (rc, out, err) = run_tarpm(
+            self.tarpm, ["-x", "-f", pkg, "-O", extract_dir], env=env
+        )
         self.assertEqual(rc, 0, "Extract failed: %s" % err)
 
         return extract_dir
 
-    def create(self, extract_dir, name="recreated.rpm"):
-        """Create an RPM from a tarpm extraction directory"""
+    def create_warns(self, extract_dir, name="recreated.rpm", env=None):
+        """Create an RPM and return it along with what tarpm said about it"""
         pkg = os.path.join(self.output_dir, name)
 
-        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
+        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir], env=env)
         self.assertEqual(rc, 0, "Create failed: %s" % err)
         self.assertTrue(os.path.isfile(pkg))
 
+        return (pkg, err)
+
+    def create(self, extract_dir, name="recreated.rpm", env=None):
+        """Create an RPM from a tarpm extraction directory"""
+        (pkg, err) = self.create_warns(extract_dir, name=name, env=env)
+
         return pkg
+
+    def create_fails(self, extract_dir, name="recreated.rpm"):
+        """Assert tarpm refuses to create an RPM and writes nothing"""
+        pkg = os.path.join(self.output_dir, name)
+
+        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
+        self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
+        self.assertFalse(os.path.exists(pkg), "A package was written anyway")
+
+        return err
 
     def payload_path(self, extract_dir, path):
         """Return where a header file list path lands in the payload tree"""
@@ -461,16 +491,6 @@ class TagFile(RoundTrip):
         """Return the path to the file holding the Description value"""
         return os.path.join(extract_dir, "description.txt")
 
-    def create_fails(self, extract_dir):
-        """Assert tarpm refuses to create an RPM and writes nothing"""
-        pkg = os.path.join(self.output_dir, "recreated.rpm")
-
-        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
-        self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
-        self.assertFalse(os.path.exists(pkg), "A package was written anyway")
-
-        return err
-
 
 class TestCreateEmptyTagFile(TagFile, TestUnpackRPM):
     """An emptied file backed tag becomes an empty value, not a broken header"""
@@ -524,3 +544,257 @@ class TestCreateRejectsNulInTagFile(TagFile, TestUnpackRPM):
         f.close()
 
         self.assertTrue("NUL" in self.create_fails(extract_dir))
+
+
+class Changelog(RoundTrip):
+    """
+    Class for the tests covering %changelog timestamps.  rpm keeps the
+    date of an entry as a count of seconds and tarpm writes it out as
+    the date string rpm itself displays, which throws away the time of
+    day.  Reading that string back has to land on the same second no
+    matter what time zone either half of the round trip runs in.
+    """
+
+    # the %changelog the tests build, newest entry first
+    entries = [
+        ("Tue Mar 15 2022", (2022, 3, 15)),
+        ("Wed Jul 29 2020", (2020, 7, 29)),
+        ("Mon Jan 04 2016", (2016, 1, 4)),
+    ]
+
+    def setUp(self):
+        super().setUp()
+
+        # keep rpmbuild from dropping the older entries on age
+        self.rpm.header += "%global _changelog_trimtime 0\n"
+        self.rpm.header += "%global _changelog_trimage 0\n"
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+        # replace the entry rpmfluff writes so the dates are the ones above
+        self.rpm.section_changelog = "".join(
+            "* %s Some One <nobody@example.com> - %s-%s\n- entry %d\n\n"
+            % (date, VER, REL, i)
+            for (i, (date, ymd)) in enumerate(self.entries)
+        )
+
+    def build(self):
+        """Build the package the changelog tests work with"""
+        self.rpm.do_make()
+
+        return self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+    def times(self, pkg):
+        """Return the changelog timestamps an RPM carries, newest first"""
+        return [int(t) for t in query_rpm(pkg, "[%{CHANGELOGTIME}\n]")]
+
+    def stamps(self, extract_dir):
+        """Return the changelog timestamps a tarpm extraction recorded"""
+        return [entry["timestamp"] for entry in read_header(extract_dir)["changelog"]]
+
+    def restamp(self, extract_dir, index, timestamp):
+        """Replace the timestamp of one changelog entry in header.json"""
+        header = read_header(extract_dir)
+        header["changelog"][index]["timestamp"] = timestamp
+        write_header(extract_dir, header)
+
+
+class TestRoundTripChangelogTimestamps(Changelog, TestUnpackRPM):
+    """Changelog timestamps come back on the same second they went in"""
+
+    def runTest(self):
+        original = self.build()
+
+        # rpmbuild dates an entry at noon UTC on the day it names
+        self.assertEqual(
+            self.times(original), [utc_seconds(*ymd) for (date, ymd) in self.entries]
+        )
+
+        extract_dir = self.extract(original)
+
+        # tarpm records the day rpm displays, in the order the header has
+        self.assertEqual(self.stamps(extract_dir), [date for (date, ymd) in self.entries])
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(self.times(recreated), self.times(original))
+        self.assertIdentical(original, recreated)
+
+
+class TestCreateChangelogTimestampIsNoonUTC(Changelog, TestUnpackRPM):
+    """An edited changelog date comes back as noon UTC on that day"""
+
+    def runTest(self):
+        original = self.build()
+        extract_dir = self.extract(original)
+
+        self.restamp(extract_dir, 0, "Thu Jun 01 2023")
+        recreated = self.create(extract_dir)
+
+        # only the entry that was edited moves, and it moves to noon
+        self.assertEqual(
+            self.times(recreated), [utc_seconds(2023, 6, 1)] + self.times(original)[1:]
+        )
+        self.assertVerifies(recreated)
+
+
+class TestCreateChangelogTimestampKeepsTimeOfDay(Changelog, TestUnpackRPM):
+    """A changelog date written with a time of day keeps that exact second"""
+
+    def runTest(self):
+        original = self.build()
+
+        # the same moment named in UTC and in a zone five hours behind it
+        for (subdir, timestamp, expected) in [
+            ("utc", "Thu Oct 6 06:48:39 UTC 2016", utc_seconds(2016, 10, 6, 6, 48, 39)),
+            ("est", "Thu Oct 6 06:48:39 EST 2016", utc_seconds(2016, 10, 6, 11, 48, 39)),
+        ]:
+            extract_dir = self.extract(original, subdir="extracted-%s" % subdir)
+
+            # the oldest entry, so the changelog stays in descending order
+            self.restamp(extract_dir, 2, timestamp)
+            recreated = self.create(extract_dir, name="recreated-%s.rpm" % subdir)
+
+            self.assertEqual(
+                self.times(recreated),
+                self.times(original)[:2] + [expected],
+                "%s did not keep its time of day" % timestamp,
+            )
+            self.assertVerifies(recreated)
+
+
+class TestCreateRejectsBadChangelogTimestamp(Changelog, TestUnpackRPM):
+    """A changelog date that cannot be read is an error, not 1 Jan 1970"""
+
+    def runTest(self):
+        original = self.build()
+
+        # a date rpm cannot be given has to stop the package being written;
+        # the alternative is an entry silently dated to the epoch
+        for (subdir, timestamp, expected) in [
+            ("garbage", "not a date at all", "not a date at all"),
+            ("empty", "", '""'),
+            ("truncated", "Tue Mar 15", "Tue Mar 15"),
+            ("dayonly", "Tuesday", "Tuesday"),
+        ]:
+            extract_dir = self.extract(original, subdir="extracted-%s" % subdir)
+            self.restamp(extract_dir, 0, timestamp)
+
+            err = self.create_fails(extract_dir, name="recreated-%s.rpm" % subdir)
+
+            self.assertTrue(
+                expected in err, "%r was not named in the error: %s" % (timestamp, err)
+            )
+
+
+class TestCreateRejectsMissingChangelogTimestamp(Changelog, TestUnpackRPM):
+    """A changelog entry carrying no date at all is an error"""
+
+    def runTest(self):
+        original = self.build()
+        extract_dir = self.extract(original)
+
+        header = read_header(extract_dir)
+        del header["changelog"][1]["timestamp"]
+        write_header(extract_dir, header)
+
+        err = self.create_fails(extract_dir)
+
+        self.assertTrue("carries no timestamp" in err, err)
+
+
+class TestCreateChangelogTimestampHonorsDaylightSaving(Changelog, TestUnpackRPM):
+    """A date inside a daylight saving window is read at the right offset"""
+
+    def runTest(self):
+        original = self.build()
+
+        # the same wall clock reading in a zone that keeps daylight saving,
+        # once inside the window and once outside it
+        for (subdir, timestamp, expected) in [
+            ("october", "Thu Oct 6 06:48:39 America/New_York 2016",
+             utc_seconds(2016, 10, 6, 10, 48, 39)),
+            ("january", "Wed Jan 6 06:48:39 America/New_York 2016",
+             utc_seconds(2016, 1, 6, 11, 48, 39)),
+        ]:
+            extract_dir = self.extract(original, subdir="extracted-%s" % subdir)
+            self.restamp(extract_dir, 2, timestamp)
+
+            (recreated, err) = self.create_warns(
+                extract_dir, name="recreated-%s.rpm" % subdir
+            )
+
+            # a zone the library knows is never warned about
+            self.assertFalse("America/New_York" in err, err)
+            self.assertEqual(
+                self.times(recreated),
+                self.times(original)[:2] + [expected],
+                "%s was read at the wrong offset" % timestamp,
+            )
+            self.assertVerifies(recreated)
+
+
+class TestCreateWarnsOnUnknownChangelogTimeZone(Changelog, TestUnpackRPM):
+    """A zone the C library does not know falls back on UTC, and says so"""
+
+    def runTest(self):
+        original = self.build()
+
+        # CEST is how a changelog writes central European summer time, but
+        # it is not a zone name, so the date can only be read as UTC
+        extract_dir = self.extract(original, subdir="extracted-cest")
+        self.restamp(extract_dir, 2, "Thu Oct 6 06:48:39 CEST 2016")
+
+        (recreated, err) = self.create_warns(extract_dir, name="recreated-cest.rpm")
+
+        self.assertTrue("CEST" in err, err)
+        self.assertTrue("UTC" in err, err)
+        self.assertEqual(
+            self.times(recreated),
+            self.times(original)[:2] + [utc_seconds(2016, 10, 6, 6, 48, 39)],
+        )
+        self.assertVerifies(recreated)
+
+        # a zone the library does know is used without any complaint
+        extract_dir = self.extract(original, subdir="extracted-known")
+        self.restamp(extract_dir, 2, "Thu Oct 6 06:48:39 EST 2016")
+
+        (recreated, err) = self.create_warns(extract_dir, name="recreated-known.rpm")
+
+        self.assertFalse("EST" in err, err)
+        self.assertEqual(
+            self.times(recreated),
+            self.times(original)[:2] + [utc_seconds(2016, 10, 6, 11, 48, 39)],
+        )
+
+
+class TestChangelogTimestampsIgnoreTimeZone(Changelog, TestUnpackRPM):
+    """The time zone tarpm runs in does not move a changelog timestamp"""
+
+    def runTest(self):
+        original = self.build()
+
+        for tz in ["UTC", "America/New_York", "Asia/Tokyo", "Pacific/Kiritimati"]:
+            env = dict(os.environ, TZ=tz)
+            subdir = tz.replace("/", "-")
+
+            extract_dir = self.extract(
+                original, subdir="extracted-%s" % subdir, env=env
+            )
+            self.assertEqual(
+                self.stamps(extract_dir),
+                [date for (date, ymd) in self.entries],
+                "TZ=%s changed what tarpm extracted" % tz,
+            )
+
+            recreated = self.create(
+                extract_dir, name="recreated-%s.rpm" % subdir, env=env
+            )
+            self.assertEqual(
+                self.times(recreated),
+                self.times(original),
+                "TZ=%s changed what tarpm created" % tz,
+            )
+            self.assertIdentical(original, recreated)
