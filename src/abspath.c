@@ -52,7 +52,7 @@ char *abspath(const char *path)
     }
 
     /* split path in to tokens */
-    tokens = strsplit(path, delim);
+    tokens = strsplit(workpath, delim);
 
     if (tokens == NULL) {
         return NULL;
@@ -92,6 +92,7 @@ char *abspath(const char *path)
     list_free(tokens, free);
     list_free(newpath, free);
     free(p);
+    free(workpath);
 
     return r;
 }

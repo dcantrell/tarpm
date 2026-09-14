@@ -4,6 +4,7 @@
  */
 
 #include <CUnit/Basic.h>
+#include <unistd.h>
 #include "tarpm.h"
 
 #include "test-main.h"
@@ -24,6 +25,8 @@ void
 test_abspath(void)
 {
     char *a = NULL;
+    char *cwd = NULL;
+    char *expected = NULL;
 
     /* the don't crash case */
     a = abspath(NULL);
@@ -74,10 +77,35 @@ test_abspath(void)
     TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
     free(a);
 
-    /* relative path without leading slash */
+    /*
+     * a path without a leading slash is taken from the current
+     * directory, wherever the test happens to be running
+     */
+    cwd = getcwd(NULL, 0);
+    TARPM_ASSERT_PTR_NOT_NULL(cwd);
+    xasprintf(&expected, "%s/usr/local/bin", cwd);
+
     a = abspath("usr/local/bin");
-    TARPM_ASSERT_TRUE(strcmp(a, "/usr/local/bin") == 0);
+    TARPM_ASSERT_STRING_EQUAL(a, expected);
     free(a);
+
+    a = abspath("./usr/local/bin");
+    TARPM_ASSERT_STRING_EQUAL(a, expected);
+    free(a);
+
+    /* and it is simplified the same way an absolute path is */
+    a = abspath("usr//local/./share/../bin/");
+    TARPM_ASSERT_STRING_EQUAL(a, expected);
+    free(a);
+
+    free(expected);
+
+    /* the current directory itself */
+    a = abspath(".");
+    TARPM_ASSERT_STRING_EQUAL(a, cwd);
+    free(a);
+
+    free(cwd);
 
     return;
 }
