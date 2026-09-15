@@ -383,6 +383,7 @@ if cunit.found()
           listfuncs_src,
           strfuncs_src,
           joinpath_src,
+          mkdirp_src,
           tags_src,
           xalloc_src,
         ],

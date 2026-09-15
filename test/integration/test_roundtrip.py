@@ -46,6 +46,16 @@ def digest_list(pkg):
     return [line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{FILEDIGESTS}\n]")]
 
 
+def size_list(pkg):
+    """Return the (path, size) pairs an RPM carries in its header"""
+    return [
+        (path, int(size))
+        for (path, size) in [
+            line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{FILESIZES}\n]")
+        ]
+    ]
+
+
 def inode_list(pkg):
     """Return the (path, inode) pairs an RPM carries in its header"""
     return [
@@ -263,6 +273,115 @@ class TestCreateRecomputesFileDigests(RoundTrip, TestUnpackRPM):
             hashlib.sha256(b"untouched\n").hexdigest(),
         )
 
+        self.assertVerifies(recreated)
+
+
+class TestCreateRecomputesFileSizes(RoundTrip, TestUnpackRPM):
+    """An edited payload file lands its new size in the header"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/grown.txt" % NAME,
+            rpmfluff.SourceFile("grown.txt", b"small\n"),
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/shrunk.txt" % NAME,
+            rpmfluff.SourceFile("shrunk.txt", b"a much longer line than it keeps\n"),
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/untouched.txt" % NAME,
+            rpmfluff.SourceFile("untouched.txt", b"untouched\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        edits = {
+            "/usr/share/%s/grown.txt" % NAME: b"a good deal more content than before\n",
+            "/usr/share/%s/shrunk.txt" % NAME: b"tiny\n",
+        }
+
+        for path, content in edits.items():
+            f = open(self.payload_path(extract_dir, path), "wb")
+            f.write(content)
+            f.close()
+
+        recreated = self.create(extract_dir)
+        sizes = dict(size_list(recreated))
+
+        # the header carries what the payload tree actually holds
+        for path, content in edits.items():
+            self.assertEqual(sizes[path], len(content))
+
+        untouched = "/usr/share/%s/untouched.txt" % NAME
+        self.assertEqual(sizes[untouched], len(b"untouched\n"))
+
+        # and the payload carries all of it, not the old number of bytes
+        recreated_dir = self.extract(recreated, subdir="recreated_extract")
+
+        for path, content in edits.items():
+            f = open(self.payload_path(recreated_dir, path), "rb")
+            self.assertEqual(f.read(), content)
+            f.close()
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateKeepsSymlinkSizes(RoundTrip, TestUnpackRPM):
+    """A symlink keeps the length of its target as its size"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+        self.rpm.add_installed_symlink("/usr/share/%s/link" % NAME, "README")
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        recreated = self.create(self.extract(original))
+        sizes = dict(size_list(recreated))
+
+        self.assertEqual(sizes["/usr/share/%s/link" % NAME], len("README"))
+        self.assertEqual(size_list(recreated), size_list(original))
+        self.assertVerifies(recreated)
+
+
+class TestCreateKeepsGhostFileSizes(RoundTrip, TestUnpackRPM):
+    """A %ghost file is not in the payload, so it keeps its recorded size"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/real.txt" % NAME, rpmfluff.SourceFile("real.txt", b"real\n")
+        )
+        self.rpm.add_installed_file(
+            "/var/lib/%s/ghost.txt" % NAME,
+            rpmfluff.SourceFile("ghost.txt", b"ghostly\n"),
+            isGhost=True,
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        ghost = "/var/lib/%s/ghost.txt" % NAME
+        self.assertFalse(os.path.exists(self.payload_path(extract_dir, ghost)))
+
+        recreated = self.create(extract_dir)
+        sizes = dict(size_list(recreated))
+
+        self.assertEqual(sizes[ghost], dict(size_list(original))[ghost])
+        self.assertEqual(sizes["/usr/share/%s/real.txt" % NAME], len(b"real\n"))
         self.assertVerifies(recreated)
 
 

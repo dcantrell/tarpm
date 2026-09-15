@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
 #include <rpm/rpmtag.h>
@@ -458,6 +461,199 @@ test_add_file_list_tags_file_list(void)
     TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_DEPENDSDICT)));
     TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSX)));
     TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDEPENDSN)));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_sizes() below that creates a
+ * directory in the payload tree of a test extraction directory.
+ */
+static void
+mkdir_payload(const char *input_dir, const char *path)
+{
+    char *dir_path = NULL;
+
+    dir_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    TARPM_ASSERT_TRUE(mkdirp(dir_path, 0755) == 0);
+    free(dir_path);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_sizes() below that writes a file
+ * of the given size in to the payload tree of a test extraction
+ * directory.
+ */
+static void
+write_payload(const char *input_dir, const char *path, const size_t size)
+{
+    size_t i = 0;
+    char *file_path = NULL;
+    FILE *fp = NULL;
+
+    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    fp = fopen(file_path, "wb");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+
+    for (i = 0; i < size; i++) {
+        TARPM_ASSERT_TRUE(fputc('x', fp) != EOF);
+    }
+
+    TARPM_ASSERT_TRUE(fclose(fp) == 0);
+    free(file_path);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_sizes() below that creates a
+ * symlink in the payload tree of a test extraction directory.
+ */
+static void
+link_payload(const char *input_dir, const char *path, const char *target)
+{
+    char *file_path = NULL;
+
+    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    TARPM_ASSERT_TRUE(symlink(target, file_path) == 0);
+    free(file_path);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_sizes() below that removes a file
+ * or a directory from the payload tree of a test extraction directory.
+ */
+static void
+remove_payload(const char *input_dir, const char *path)
+{
+    char *file_path = NULL;
+    struct stat sb;
+
+    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    TARPM_ASSERT_TRUE(lstat(file_path, &sb) == 0);
+
+    if (S_ISDIR(sb.st_mode)) {
+        TARPM_ASSERT_TRUE(rmdir(file_path) == 0);
+    } else {
+        TARPM_ASSERT_TRUE(unlink(file_path) == 0);
+    }
+
+    free(file_path);
+
+    return;
+}
+
+/* Test add_file_list_tags() takes the file sizes from the payload */
+void
+test_add_file_list_tags_sizes(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *flags = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    /* the payload tree holds what the file list describes */
+    mkdir_payload(input_dir, "/usr/bin");
+    write_payload(input_dir, "/usr/bin/grown", 4096);
+    write_payload(input_dir, "/usr/bin/shrunk", 3);
+    link_payload(input_dir, "/usr/bin/link", "grown");
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a file that got bigger since the package was unpacked */
+    file = add_file(files, "/usr/bin/grown");
+    json_object_object_add(file, "size", json_object_new_int64(10));
+
+    /* and one that got smaller */
+    file = add_file(files, "/usr/bin/shrunk");
+    json_object_object_add(file, "size", json_object_new_int64(99));
+
+    /* a symlink keeps the length of the target string the header carries */
+    file = add_file(files, "/usr/bin/link");
+    json_object_object_add(file, "size", json_object_new_int64(11));
+    json_object_object_add(file, "linkto", json_object_new_string("/usr/bin/ls"));
+
+    /* a %ghost file is never in the payload, so it keeps its size */
+    file = add_file(files, "/usr/bin/ghost.log");
+    json_object_object_add(file, "size", json_object_new_int64(77));
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("ghost"));
+    json_object_object_add(file, "flags", flags);
+
+    /* a directory carries no size at all */
+    add_file(files, "/usr/bin");
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    /* the regular files are measured and everything else is left alone */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 4096);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 11);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 77);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* clean up the payload tree */
+    remove_payload(input_dir, "/usr/bin/grown");
+    remove_payload(input_dir, "/usr/bin/shrunk");
+    remove_payload(input_dir, "/usr/bin/link");
+    remove_payload(input_dir, "/usr/bin");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() keeps the recorded sizes when there is no
+ * payload tree to measure.
+ */
+void
+test_add_file_list_tags_sizes_no_payload(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    file = add_file(files, "/usr/bin/ls");
+    json_object_object_add(file, "size", json_object_new_int64(1024));
+
+    add_file(files, "/usr/bin");
+
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 2);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1024);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0);
 
     json_object_put(tags);
     json_object_put(files);
@@ -929,6 +1125,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with empty files", test_add_file_list_tags_empty) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with invalid type", test_add_file_list_tags_invalid_type) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with a file list", test_add_file_list_tags_file_list) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with payload file sizes", test_add_file_list_tags_sizes) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with sizes and no payload", test_add_file_list_tags_sizes_no_payload) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
