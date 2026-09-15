@@ -43,6 +43,7 @@ usage(void)
 int
 main(int argc, char **argv)
 {
+    int r = EXIT_SUCCESS;
     int c = 0;
     int idx = 0;
     bool havefilename = false;
@@ -250,12 +251,16 @@ main(int argc, char **argv)
     if (t_flag) {
         list_rpm(filename);
     } else if (x_flag) {
-        extract_rpm(filename, cwd, output_dir, v_flag);
+        if (extract_rpm(filename, cwd, output_dir, v_flag)) {
+            r = EXIT_FAILURE;
+        }
     } else if (c_flag) {
         if (input_dir == NULL) {
             warnx(_("*** missing input directory, unable to create RPM"));
         } else {
-            create_rpm(filename, cwd, input_dir);
+            if (create_rpm(filename, cwd, input_dir)) {
+                r = EXIT_FAILURE;
+            }
         }
     }
 
@@ -265,5 +270,5 @@ main(int argc, char **argv)
     free(output_dir);
     free(input_dir);
 
-    return EXIT_SUCCESS;
+    return r;
 }

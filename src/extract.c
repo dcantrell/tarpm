@@ -15,7 +15,7 @@
 #include "tarpm.h"
 
 /* Handler for -x mode (extract) */
-void
+int
 extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose)
 {
     int r = 0;
@@ -31,18 +31,21 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     struct json_object *header = NULL;
 
     if (cwd == NULL) {
-        errx(EXIT_FAILURE, _("missing cwd in %s call"), __func__);
+        warnx(_("missing cwd in %s call"), __func__);
+        return -1;
     }
 
     if (filename == NULL) {
-        errx(EXIT_FAILURE, _("missing filename in %s call"), __func__);
+        warnx(_("missing filename in %s call"), __func__);
+        return -1;
     }
 
     /* validate the specified file is an RPM */
     h = get_header(filename);
 
     if (h == NULL) {
-        errx(EXIT_FAILURE, _("*** %s is not a valid RPM"), filename);
+        warnx(_("*** %s is not a valid RPM"), filename);
+        return -1;
     }
 
     /* make a unique output directory name if we need to */
@@ -50,7 +53,8 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         tmp = get_nevra(h);
 
         if (tmp == NULL) {
-            errx(EXIT_FAILURE, _("unable to read NEVRA from RPM header"));
+            warnx(_("unable to read NEVRA from RPM header"));
+            return -1;
         }
 
         xasprintf(&candidate_path, "%s/%s", cwd, tmp);
@@ -63,40 +67,46 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     if (dest_dir == NULL) {
-        errx(EXIT_FAILURE, _("*** unable to set dest_dir"));
+        warnx(_("*** unable to set dest_dir"));
+        return -1;
     }
 
     /* create the output directory */
     if (mkdirp(dest_dir, mode) == -1) {
-        err(EXIT_FAILURE, "mkdirp");
+        warnx("mkdirp");
+        return -1;
     }
 
     /* open the RPM file (this handle will be passed around) */
     rpmfd = open(filename, O_RDONLY);
 
     if (rpmfd == -1) {
-        err(EXIT_FAILURE, "open");
+        warn("open");
+        return -1;
     }
 
     /* extract the RPM lead -- the first header (unused) */
     lead = read_lead(rpmfd);
 
     if (lead == NULL) {
-        err(EXIT_FAILURE, "read_lead");
+        warnx("read_lead");
+        return -1;
     }
 
     /* extract the RPM signature -- the second header (sort of used) */
     signature = read_signature(rpmfd);
 
     if (signature == NULL) {
-        err(EXIT_FAILURE, "read_signature");
+        warnx("read_signature");
+        return -1;
     }
 
     /* extract the RPM header -- the third header (used) */
     header = read_header(rpmfd, dest_dir);
 
     if (header == NULL) {
-        err(EXIT_FAILURE, "read_header");
+        warnx("read_header");
+        return -1;
     }
 
     /* close the RPM after reading headers */
@@ -121,7 +131,8 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
 
     if (mkdirp(tmp, mode) == -1) {
-        err(EXIT_FAILURE, "mkdir");
+        warnx("mkdirp");
+        return -1;
     }
 
     /*
@@ -140,25 +151,30 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
          * librpm.
          */
         if (chdir(dest_dir) == -1) {
-            err(EXIT_FAILURE, "chdir");
+            warn("chdir");
+            return -1;
         }
 
         payload_file = convert_payload(filename);
 
         if (payload_file == NULL) {
-            errx(EXIT_FAILURE, "convert_payload");
+            warnx("convert_payload");
+            return -1;
         }
 
         if (chdir(cwd) == -1) {
-            err(EXIT_FAILURE, "chdir");
+            warn("chdir");
+            return -1;
         }
 
         if (unpack_archive(payload_file, tmp, false, verbose) != 0) {
-            err(EXIT_FAILURE, "unpack_archive");
+            warnx("unpack_archive");
+            return -1;
         }
 
         if (unlink(payload_file) == -1) {
-            err(EXIT_FAILURE, "unlink");
+            warn("unlink");
+            return -1;
         }
 
         free(payload_file);
@@ -172,5 +188,5 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     free(dest_dir);
     headerFree(h);
 
-    return;
+    return 0;
 }

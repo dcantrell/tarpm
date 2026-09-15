@@ -129,10 +129,10 @@ void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buf
 bool xread(int fd, void *buf, size_t count);
 
 /* extract.c */
-void extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose);
+int extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose);
 
 /* create.c */
-void create_rpm(const char *filename, const char *cwd, const char *input_dir);
+int create_rpm(const char *filename, const char *cwd, const char *input_dir);
 
 /* list.c */
 void list_rpm(const char *rpm);

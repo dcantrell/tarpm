@@ -1424,7 +1424,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 }
 
 /* Handler for -c mode (create) */
-void
+int
 create_rpm(const char *filename, const char *cwd, const char *input_dir)
 {
     FILE *rpm = NULL;
@@ -1439,69 +1439,80 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     struct rpmhdrinfo *hdrinfo = NULL;
 
     if (filename == NULL || cwd == NULL || input_dir == NULL) {
-        return;
+        return -1;
     }
 
     /* make sure the input directory exists */
     if (access(input_dir, R_OK|X_OK)) {
-        errx(EXIT_FAILURE, _("*** %s does not exist"), input_dir);
+        warnx(_("*** %s does not exist"), input_dir);
+        return -1;
     }
 
     /* change to the input directory */
     if (chdir(input_dir) == -1) {
-        err(EXIT_FAILURE, "chdir");
+        warn("chdir");
+        return -1;
     }
 
     /* make sure we have the payload subdirectory */
     if (lstat(PAYLOAD_SUBDIR, &sb) == -1) {
-        err(EXIT_FAILURE, "lstat");
+        warn("lstat");
+        return -1;
     }
 
     if (!S_ISDIR(sb.st_mode)) {
-        errx(EXIT_FAILURE, _("*** %s is not a directory"), PAYLOAD_SUBDIR);
+        warn(_("*** %s is not a directory"), PAYLOAD_SUBDIR);
+        return -1;
     }
 
     /* read in signature.json and header.json */
     signature = read_json_file(OUTPUT_SIGNATURE);
 
     if (signature == NULL) {
-        errx(EXIT_FAILURE, _("*** missing signature data"));
+        warnx(_("*** missing signature data"));
+        return -1;
     }
 
     header = read_json_file(OUTPUT_HEADER);
 
     if (header == NULL) {
-        errx(EXIT_FAILURE, _("*** missing header data"));
+        warnx(_("*** missing header data"));
+        return -1;
     }
 
     /* create the lead from header metadata */
     rawlead = create_lead(header);
 
     if (rawlead == NULL) {
-        errx(EXIT_FAILURE, _("*** unable to construct RPM lead"));
+        warnx(_("*** unable to construct RPM lead"));
+        return -1;
     }
 
     /* create the header (the main header) */
     if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to construct RPM header"));
+        warnx(_("*** unable to construct RPM header"));
+        return -1;
     }
 
     /* create the payload */
     payloadfd = create_payload(header, input_dir, PAYLOAD_SUBDIR);
 
     if (payloadfd == -1) {
-        errx(EXIT_FAILURE, "create_payload");
+        warnx("create_payload");
+        return -1;
     }
 
     /* create the signature */
     if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to construct RPM signature"));
+        warnx(_("*** unable to construct RPM signature"));
+        return -1;
     }
 
     /* update the header payload digest (payload only) */
     if (update_header_digests(header, hdr, hdrinfo, payloadfd) != 0) {
         close(payloadfd);
-        errx(EXIT_FAILURE, "update_header_digests");
+        warnx("update_header_digests");
+        return -1;
     }
 
     /* free the old header structures before regenerating */
@@ -1509,13 +1520,15 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     /* regenerate the header with updated digests */
     if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to reconstruct RPM header"));
+        warnx(_("*** unable to reconstruct RPM header"));
+        return -1;
     }
 
     /* recalculate the digests and update the signature data using the updated header */
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
         close(payloadfd);
-        errx(EXIT_FAILURE, "update_signature");
+        warnx("update_signature");
+        return -1;
     }
 
     /* free the old signature structures before regenerating */
@@ -1523,14 +1536,16 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     /* regenerate the signature with updated digests */
     if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to reconstruct RPM signature"));
+        warnx(_("*** unable to reconstruct RPM signature"));
+        return -1;
     }
 
     /* create an RPM for writing */
     rpm = fopen(filename, "wb");
 
     if (rpm == NULL) {
-        err(EXIT_FAILURE, "fopen");
+        warn("fopen");
+        return -1;
     }
 
     /* write the lead to the RPM */
@@ -1554,6 +1569,12 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     }
 
 create_cleanup:
+    json_object_put(header);
+    json_object_put(signature);
+    free_header(sig, siginfo);
+    free_header(hdr, hdrinfo);
+    free(rawlead);
+
     /* close the RPM */
     if (fclose(rpm) != 0) {
         warn("fclose");
@@ -1561,14 +1582,8 @@ create_cleanup:
 
     /* back to the starting point and clean up */
     if (chdir(cwd) == -1) {
-        err(EXIT_FAILURE, "chdir");
+        warn("chdir");
     }
 
-    json_object_put(header);
-    json_object_put(signature);
-    free_header(sig, siginfo);
-    free_header(hdr, hdrinfo);
-    free(rawlead);
-
-    return;
+    return 0;
 }
