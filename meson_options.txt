@@ -1,3 +1,8 @@
+option('docs',
+       type : 'boolean',
+       value : true,
+       description : 'Build and install documentation (e.g., man pages)')
+
 option('nls',
        type : 'boolean',
        value : true,
