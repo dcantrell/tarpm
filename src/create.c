@@ -1345,6 +1345,12 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
     /* compute MD5 digest */
     digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
+
+    if (digest == NULL) {
+        warnx(_("*** failed to compute the signature MD5 digest"));
+        return -1;
+    }
+
     blob = xalloc(MD5_DIGEST_LENGTH);
     memcpy(blob, digest, MD5_DIGEST_LENGTH);
     buf = rpmBase64Encode(blob, MD5_DIGEST_LENGTH, -1);
@@ -1368,6 +1374,12 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
     /* compute SHA-1 digest */
     digest = mksigdigest(TARPM_DIGEST_SHA1, hdr, hdrinfo, header, payloadfd);
+
+    if (digest == NULL) {
+        warnx(_("*** failed to compute the signature SHA-1 digest"));
+        return -1;
+    }
+
     buf = xcalloc(SHA_DIGEST_LENGTH * 2 + 1, sizeof(char));
 
     for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
@@ -1386,6 +1398,12 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
     /* compute SHA-256 digest */
     digest = mksigdigest(TARPM_DIGEST_SHA256, hdr, hdrinfo, header, payloadfd);
+
+    if (digest == NULL) {
+        warnx(_("*** failed to compute the signature SHA-256 digest"));
+        return -1;
+    }
+
     buf = xcalloc(SHA256_DIGEST_LENGTH * 2 + 1, sizeof(char));
 
     for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
