@@ -441,6 +441,7 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
     struct json_object *names = NULL;
     struct json_object *texts = NULL;
     const char *s = NULL;
+    const char *name = NULL;
     uint32_t timestamp = 0;
     char *changelog_text = NULL;
 
@@ -465,6 +466,10 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
 
     /* Process each changelog entry */
     for (i = 0; i < count; i++) {
+        timestamp = 0;
+        name = NULL;
+        changelog_text = NULL;
+
         entry = json_object_array_get_idx(changelog, i);
 
         if (entry == NULL) {
@@ -489,19 +494,24 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
             return -1;
         }
 
-        json_object_array_add(times, json_object_new_int(timestamp));
-
         /* Get name */
         if (json_object_object_get_ex(entry, "name", &obj)) {
-            s = json_object_get_string(obj);
-            json_object_array_add(names, json_object_new_string(s));
+            name = json_object_get_string(obj);
         }
 
         /* Get text array and join back to string with newlines */
         if (json_object_object_get_ex(entry, "text", &obj)) {
             changelog_text = join_changelog_text(obj);
+        }
+
+        /* Add the parallel array entries if we have them all */
+        if (timestamp > 0 && name != NULL && changelog_text != NULL) {
+            json_object_array_add(times, json_object_new_int(timestamp));
+            json_object_array_add(names, json_object_new_string(name));
             json_object_array_add(texts, json_object_new_string(changelog_text));
             free(changelog_text);
+        } else {
+            warnx(_("*** invalid changelog entry at index %lu"), i);
         }
     }
 
