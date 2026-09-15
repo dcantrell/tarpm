@@ -1361,11 +1361,25 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         json_object_array_add(basenames, json_object_new_string(basename));
         json_object_array_add(dirindexes, json_object_new_int(dirindex));
 
-        /* Add size (regular files have size, non-files get 0) */
+        /*
+         * Add size (regular files have size, non-files get 0).  The
+         * size comes from the regular file in the payload directory
+         * so an edited payload gets the correct size in the header.
+         */
+        size = 0;
+
         if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, &size_obj)) {
             size = json_object_get_int64(size_obj);
-        } else {
-            size = 0;
+
+            if (input_dir != NULL && payload_subdir != NULL) {
+                file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+
+                if (lstat(file_path, &sb) == 0 && S_ISREG(sb.st_mode)) {
+                    size = (int64_t) sb.st_size;
+                }
+
+                free(file_path);
+            }
         }
 
         json_object_array_add(filesizes, json_object_new_int64(size));

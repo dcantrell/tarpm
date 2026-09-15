@@ -16,7 +16,7 @@ Core functionality that still needs to happen:
 
     [ ] File metadata in the payload subdirectory should be updated
         based on what actually exists (but not everything).
-        [ ] Size
+        [*] Size
         [ ] Type (regular file, devnode, link)
         [ ] Linkto
         [*] Digests
