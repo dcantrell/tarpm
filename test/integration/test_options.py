@@ -16,7 +16,7 @@ class TarpmHelp(RequiresTarpm):
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        (out, err) = p.communicate()
+        out, err = p.communicate()
         self.assertEqual(p.returncode, 0)
 
         out = out.splitlines()
@@ -35,7 +35,7 @@ class TarpmRequiredOption(RequiresTarpm):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = p.communicate()
+        out, err = p.communicate()
         self.assertEqual(p.returncode, 1)
         s = "must specify at least"
         self.assertNotEqual(err.decode("utf-8").find(s), -1)
@@ -49,7 +49,7 @@ class TarpmSegv(RequiresTarpm):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = p.communicate()
+        out, err = p.communicate()
         self.assertEqual(p.returncode, 1)
         s = "is not a valid RPM"
         self.assertNotEqual(err.decode("utf-8").find(s), -1)

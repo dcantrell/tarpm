@@ -21,7 +21,7 @@ def run_tarpm(tarpm, args, env=None):
     proc = subprocess.Popen(
         [tarpm] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
     )
-    (out, err) = proc.communicate()
+    out, err = proc.communicate()
 
     return (proc.returncode, out.decode(), err.decode())
 
@@ -31,7 +31,7 @@ def query_rpm(pkg, qf):
     proc = subprocess.Popen(
         ["rpm", "-qp", "--qf", qf, pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
-    (out, err) = proc.communicate()
+    out, err = proc.communicate()
 
     return out.decode().splitlines()
 
@@ -71,7 +71,7 @@ def payload_bytes(pkg):
     proc = subprocess.Popen(
         ["rpm2cpio", pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
-    (out, err) = proc.communicate()
+    out, err = proc.communicate()
 
     return out
 
@@ -123,7 +123,7 @@ class RoundTrip(object):
         extract_dir = os.path.join(self.output_dir, subdir)
         os.makedirs(extract_dir)
 
-        (rc, out, err) = run_tarpm(
+        rc, out, err = run_tarpm(
             self.tarpm, ["-x", "-f", pkg, "-O", extract_dir], env=env
         )
         self.assertEqual(rc, 0, "Extract failed: %s" % err)
@@ -134,7 +134,7 @@ class RoundTrip(object):
         """Create an RPM and return it along with what tarpm said about it"""
         pkg = os.path.join(self.output_dir, name)
 
-        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir], env=env)
+        rc, out, err = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir], env=env)
         self.assertEqual(rc, 0, "Create failed: %s" % err)
         self.assertTrue(os.path.isfile(pkg))
 
@@ -142,7 +142,7 @@ class RoundTrip(object):
 
     def create(self, extract_dir, name="recreated.rpm", env=None):
         """Create an RPM from a tarpm extraction directory"""
-        (pkg, err) = self.create_warns(extract_dir, name=name, env=env)
+        pkg, err = self.create_warns(extract_dir, name=name, env=env)
 
         return pkg
 
@@ -150,7 +150,7 @@ class RoundTrip(object):
         """Assert tarpm refuses to create an RPM and writes nothing"""
         pkg = os.path.join(self.output_dir, name)
 
-        (rc, out, err) = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
+        rc, out, err = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
         self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
         self.assertFalse(os.path.exists(pkg), "A package was written anyway")
 
@@ -180,7 +180,7 @@ class RoundTrip(object):
         proc = subprocess.Popen(
             ["rpm", "-Kv", pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
 
         self.assertEqual(proc.returncode, 0, "rpm -Kv failed: %s" % err.decode())
         self.assertTrue("Header SHA256 digest: OK" in out.decode())
@@ -456,8 +456,10 @@ class TestCreateDropsMissingPayloadFiles(RoundTrip, TestUnpackRPM):
             self.assertTrue("/usr/share/%s/file%d.txt" % (NAME, i) in files)
 
         # the inodes are the one based positions of what is left
-        self.assertEqual([inode for (path, inode) in inode_list(recreated)],
-                         list(range(1, len(files) + 1)))
+        self.assertEqual(
+            [inode for (path, inode) in inode_list(recreated)],
+            list(range(1, len(files) + 1)),
+        )
 
         self.assertVerifies(recreated)
 
@@ -591,7 +593,8 @@ class TestRoundTripTagsWrittenByName(RoundTrip, TestUnpackRPM):
         recreated = self.create(extract_dir)
 
         self.assertEqual(
-            query_rpm(recreated, "%{BUILDTIME}\n"), query_rpm(original, "%{BUILDTIME}\n")
+            query_rpm(recreated, "%{BUILDTIME}\n"),
+            query_rpm(original, "%{BUILDTIME}\n"),
         )
         self.assertEqual(query_rpm(recreated, "%{FILEDIGESTALGO}\n"), ["8"])
         self.assertIdentical(original, recreated)
@@ -734,7 +737,9 @@ class TestRoundTripChangelogTimestamps(Changelog, TestUnpackRPM):
         extract_dir = self.extract(original)
 
         # tarpm records the day rpm displays, in the order the header has
-        self.assertEqual(self.stamps(extract_dir), [date for (date, ymd) in self.entries])
+        self.assertEqual(
+            self.stamps(extract_dir), [date for (date, ymd) in self.entries]
+        )
 
         recreated = self.create(extract_dir)
 
@@ -766,9 +771,13 @@ class TestCreateChangelogTimestampKeepsTimeOfDay(Changelog, TestUnpackRPM):
         original = self.build()
 
         # the same moment named in UTC and in a zone five hours behind it
-        for (subdir, timestamp, expected) in [
+        for subdir, timestamp, expected in [
             ("utc", "Thu Oct 6 06:48:39 UTC 2016", utc_seconds(2016, 10, 6, 6, 48, 39)),
-            ("est", "Thu Oct 6 06:48:39 EST 2016", utc_seconds(2016, 10, 6, 11, 48, 39)),
+            (
+                "est",
+                "Thu Oct 6 06:48:39 EST 2016",
+                utc_seconds(2016, 10, 6, 11, 48, 39),
+            ),
         ]:
             extract_dir = self.extract(original, subdir="extracted-%s" % subdir)
 
@@ -792,7 +801,7 @@ class TestCreateRejectsBadChangelogTimestamp(Changelog, TestUnpackRPM):
 
         # a date rpm cannot be given has to stop the package being written;
         # the alternative is an entry silently dated to the epoch
-        for (subdir, timestamp, expected) in [
+        for subdir, timestamp, expected in [
             ("garbage", "not a date at all", "not a date at all"),
             ("empty", "", '""'),
             ("truncated", "Tue Mar 15", "Tue Mar 15"),
@@ -832,16 +841,22 @@ class TestCreateChangelogTimestampHonorsDaylightSaving(Changelog, TestUnpackRPM)
 
         # the same wall clock reading in a zone that keeps daylight saving,
         # once inside the window and once outside it
-        for (subdir, timestamp, expected) in [
-            ("october", "Thu Oct 6 06:48:39 America/New_York 2016",
-             utc_seconds(2016, 10, 6, 10, 48, 39)),
-            ("january", "Wed Jan 6 06:48:39 America/New_York 2016",
-             utc_seconds(2016, 1, 6, 11, 48, 39)),
+        for subdir, timestamp, expected in [
+            (
+                "october",
+                "Thu Oct 6 06:48:39 America/New_York 2016",
+                utc_seconds(2016, 10, 6, 10, 48, 39),
+            ),
+            (
+                "january",
+                "Wed Jan 6 06:48:39 America/New_York 2016",
+                utc_seconds(2016, 1, 6, 11, 48, 39),
+            ),
         ]:
             extract_dir = self.extract(original, subdir="extracted-%s" % subdir)
             self.restamp(extract_dir, 2, timestamp)
 
-            (recreated, err) = self.create_warns(
+            recreated, err = self.create_warns(
                 extract_dir, name="recreated-%s.rpm" % subdir
             )
 
@@ -866,7 +881,7 @@ class TestCreateWarnsOnUnknownChangelogTimeZone(Changelog, TestUnpackRPM):
         extract_dir = self.extract(original, subdir="extracted-cest")
         self.restamp(extract_dir, 2, "Thu Oct 6 06:48:39 CEST 2016")
 
-        (recreated, err) = self.create_warns(extract_dir, name="recreated-cest.rpm")
+        recreated, err = self.create_warns(extract_dir, name="recreated-cest.rpm")
 
         self.assertTrue("CEST" in err, err)
         self.assertTrue("UTC" in err, err)
@@ -880,7 +895,7 @@ class TestCreateWarnsOnUnknownChangelogTimeZone(Changelog, TestUnpackRPM):
         extract_dir = self.extract(original, subdir="extracted-known")
         self.restamp(extract_dir, 2, "Thu Oct 6 06:48:39 EST 2016")
 
-        (recreated, err) = self.create_warns(extract_dir, name="recreated-known.rpm")
+        recreated, err = self.create_warns(extract_dir, name="recreated-known.rpm")
 
         self.assertFalse("EST" in err, err)
         self.assertEqual(

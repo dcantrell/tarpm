@@ -61,7 +61,7 @@ class TestCreateRPMRoundTrip(TestUnpackRPM):
             extract_dir,
         ]
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Extract failed: {err.decode()}")
 
         # Verify extraction created expected structure
@@ -81,7 +81,7 @@ class TestCreateRPMRoundTrip(TestUnpackRPM):
             extract_dir,
         ]
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         # Verify the new RPM was created
@@ -204,7 +204,7 @@ class TestCreateRPMWithSymlinks(TestUnpackRPM):
         recreated_rpm = os.path.join(self.output_dir, "recreated.rpm")
         args = [self.tarpm, "-c", "-f", recreated_rpm, extract_dir]
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         # Extract the recreated RPM
@@ -258,7 +258,7 @@ class TestCreateRPMWithDirectories(TestUnpackRPM):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         recreated_extract = os.path.join(self.output_dir, "recreated_extract")
@@ -321,7 +321,7 @@ class TestCreateRPMPreservesPermissions(TestUnpackRPM):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         recreated_extract = os.path.join(self.output_dir, "recreated_extract")
@@ -378,7 +378,7 @@ class TestCreateRPMWithEmptyFiles(TestUnpackRPM):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         recreated_extract = os.path.join(self.output_dir, "recreated_extract")
@@ -431,7 +431,7 @@ class TestCreateRPMMultipleFiles(TestUnpackRPM):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        (out, err) = proc.communicate()
+        out, err = proc.communicate()
         self.assertEqual(proc.returncode, 0, f"Create failed: {err.decode()}")
 
         recreated_extract = os.path.join(self.output_dir, "recreated_extract")

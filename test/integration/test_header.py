@@ -232,8 +232,14 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
 
             # Valid dependency types
             valid_dep_types = [
-                "provides", "requires", "conflicts", "obsoletes",
-                "recommends", "suggests", "supplements", "enhances"
+                "provides",
+                "requires",
+                "conflicts",
+                "obsoletes",
+                "recommends",
+                "suggests",
+                "supplements",
+                "enhances",
             ]
 
             for dep_type, deps_array in header["dependencies"].items():
@@ -254,7 +260,9 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     # Optional: comparison (if present, must be a string)
                     if "comparison" in dep.keys():
                         self.assertTrue(isinstance(dep["comparison"], str))
-                        self.assertTrue(dep["comparison"] in ["<", "<=", ">", ">=", "="])
+                        self.assertTrue(
+                            dep["comparison"] in ["<", "<=", ">", ">=", "="]
+                        )
 
                     # Optional: version (if present, must be a string)
                     if "version" in dep.keys():
@@ -464,8 +472,14 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
 
             # Valid dependency types
             valid_dep_types = [
-                "provides", "requires", "conflicts", "obsoletes",
-                "recommends", "suggests", "supplements", "enhances"
+                "provides",
+                "requires",
+                "conflicts",
+                "obsoletes",
+                "recommends",
+                "suggests",
+                "supplements",
+                "enhances",
             ]
 
             for dep_type, deps_array in header["dependencies"].items():
@@ -486,7 +500,9 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     # Optional: comparison (if present, must be a string)
                     if "comparison" in dep.keys():
                         self.assertTrue(isinstance(dep["comparison"], str))
-                        self.assertTrue(dep["comparison"] in ["<", "<=", ">", ">=", "="])
+                        self.assertTrue(
+                            dep["comparison"] in ["<", "<=", ">", ">=", "="]
+                        )
 
                     # Optional: version (if present, must be a string)
                     if "version" in dep.keys():

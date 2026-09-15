@@ -169,7 +169,7 @@ class TestUnpackSRPM(RequiresTarpm):
             + ["-f", self.rpm.get_built_srpm(), "-O", self.output_dir]
         )
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (self.out, self.err) = proc.communicate()
+        self.out, self.err = proc.communicate()
 
         self.assertEqual(proc.returncode, self.exitcode)
 
@@ -206,7 +206,7 @@ class TestUnpackRPM(RequiresTarpm):
             ]
         )
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (self.out, self.err) = proc.communicate()
+        self.out, self.err = proc.communicate()
 
         self.assertEqual(proc.returncode, self.exitcode)
 
