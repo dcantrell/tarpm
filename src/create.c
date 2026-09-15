@@ -1019,7 +1019,7 @@ write_payload(FILE *rpm, int fd)
     /* bring the payload back to the beginning */
     if (lseek(fd, 0, SEEK_SET) == -1) {
         warn("lseek");
-        r = -1;
+        return -1;
     }
 
     /* open the payload for reading */
@@ -1027,7 +1027,7 @@ write_payload(FILE *rpm, int fd)
 
     if (pload == NULL) {
         warn("fdopen");
-        r = -1;
+        return -1;
     }
 
     /* copy payload over to the RPM */
@@ -1042,7 +1042,7 @@ write_payload(FILE *rpm, int fd)
     /* close the payload -- deletes the temporary file */
     if (fclose(pload) != 0) {
         warn("fclose");
-        r = -1;
+        return -1;
     }
 
     return r;
