@@ -97,7 +97,9 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
 int
 unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose)
 {
-    int flags, r, ret = 0;
+    int flags = 0;
+    int r = 0;
+    int ret = 0;
     char cwd[PATH_MAX + 1];
     const char *p = NULL;
     struct archive *input = NULL;
@@ -159,6 +161,7 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
     while ((r = archive_read_next_header(input, &entry)) != ARCHIVE_EOF) {
         if (r == ARCHIVE_FATAL) {
             /* we cannot recover here, so just take what we could extract */
+            ret = -1;
             break;
         }
 
