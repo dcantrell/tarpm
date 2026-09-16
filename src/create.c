@@ -1432,6 +1432,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     struct stat sb;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
     struct rpmlead *rawlead = NULL;
     struct rpmhdr *sig = NULL;
     struct rpmhdrinfo *siginfo = NULL;
@@ -1478,6 +1480,11 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     if (header == NULL) {
         warnx(_("*** missing header data"));
         return -1;
+    }
+
+    /* pick up the files added to the payload tree */
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) && json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
+        add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
     }
 
     /* create the lead from header metadata */

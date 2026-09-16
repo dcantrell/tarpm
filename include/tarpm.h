@@ -86,6 +86,7 @@ int dependency_index(struct json_object *dependencies, const char *key, struct j
 
 /* files.c */
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
+void add_payload_files(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir);
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies);
 bool is_file_list_tag(rpmTagVal tag);
 

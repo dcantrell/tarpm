@@ -4,10 +4,13 @@
  */
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <dirent.h>
 #include <err.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
 #include <rpm/header.h>
@@ -55,6 +58,16 @@ struct file_metadata {
      * since it is part of file metadata.
      */
     uint32_list_t *dependsdict;
+};
+
+/*
+ * Holds what a walk of the payload tree needs to add entries to the
+ * "files" array for the files it finds there.
+ */
+struct payload_scan {
+    struct json_object *files;
+    uint32_t digestalgo;
+    bool source_package;
 };
 
 /*
@@ -1129,6 +1142,260 @@ missing_from_payload(struct json_object *file, const char *path, const char *inp
 }
 
 /*
+ * Returns true if the "files" array needs an entry for this file in
+ * the payload tree.  Paths the list already names do not need one.
+ * Neither do the directories that lead to a file the list names; the
+ * payload tree has to have them to hold the files under them, but the
+ * package never owned them.
+ */
+static bool
+new_in_payload(struct json_object *files, const char *path, const struct stat *sb)
+{
+    size_t i = 0;
+    size_t len = 0;
+    size_t count = 0;
+    const char *s = NULL;
+    struct json_object *file = NULL;
+    struct json_object *path_obj = NULL;
+
+    count = json_object_array_length(files);
+    len = strlen(path);
+
+    for (i = 0; i < count; i++) {
+        file = json_object_array_get_idx(files, i);
+
+        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &path_obj)) {
+            continue;
+        }
+
+        s = json_object_get_string(path_obj);
+
+        /* the list already names it */
+        if (!strcmp(s, path)) {
+            return false;
+        }
+
+        /* a directory on the way to something the list names */
+        if (S_ISDIR(sb->st_mode) && !strncmp(s, path, len) && s[len] == '/') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * Build the "files" array entry for a file in the payload tree.  The
+ * keys are the ones generate_files() writes for a file of this type so
+ * an added file reads back the same way an unpacked one does.  The
+ * path is where the file lands when the package is installed and
+ * file_path is where it sits in the payload tree now.
+ */
+static struct json_object *
+mkfileentry(const struct payload_scan *scan, const char *path, const char *file_path, const struct stat *sb)
+{
+    ssize_t len = 0;
+    char *target = NULL;
+    char *digest = NULL;
+    struct json_object *file = NULL;
+    struct json_object *verifyflags = NULL;
+    char mode_str[5];
+    char mtime_str[32];
+    time_t mtime = 0;
+    struct tm *tm_info = NULL;
+
+    file = json_object_new_object();
+    json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
+
+    /* a regular file carries the number of bytes it holds */
+    if (S_ISREG(sb->st_mode)) {
+        json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) sb->st_size));
+    }
+
+    /* a symlink carries its target and the length of it */
+    if (S_ISLNK(sb->st_mode)) {
+        target = xalloc(sb->st_size + 1);
+        len = readlink(file_path, target, sb->st_size);
+
+        if (len < 0) {
+            warn("readlink");
+            len = 0;
+        }
+
+        target[len] = '\0';
+        json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
+        json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
+        free(target);
+    }
+
+    /* the permission bits as an octal string */
+    snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, sb->st_mode & ALLPERMS);
+    json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
+
+    /* the mtime as an ISO 8601 timestamp */
+    mtime = sb->st_mtime;
+    tm_info = gmtime(&mtime);
+
+    if (tm_info != NULL) {
+        strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+        json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
+    }
+
+    /*
+     * The payload tree is unpacked as whoever ran tarpm, so who owns
+     * the file now says nothing about who should own it once the
+     * package is installed.  Added files go to the default owner.
+     */
+    json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(RPM_FILE_DEFAULT_USER));
+    json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
+
+    /* a device node carries the device number it names */
+    if (S_ISCHR(sb->st_mode) || S_ISBLK(sb->st_mode)) {
+        json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int((int) sb->st_rdev));
+    }
+
+    json_object_object_add(file, RPM_FILE_DEVICE_DESC, json_object_new_int64(RPM_FILE_DEFAULT_DEVICE));
+
+    /* only regular files carry a digest */
+    if (S_ISREG(sb->st_mode) && scan->digestalgo != 0) {
+        digest = mkfiledigest(file_path, scan->digestalgo);
+
+        if (digest != NULL) {
+            json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+            free(digest);
+        }
+    }
+
+    /*
+     * Files that are hard links of one another share an inode number,
+     * which is the only thing the "inode" key is read for.  Entries
+     * with a link count of one do not need it.
+     */
+    if (sb->st_nlink > 1) {
+        json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
+    }
+
+    /* rpmbuild starts every file out verifying all of its attributes */
+    verifyflags = verifyflag_names(RPMVERIFY_ALL);
+
+    if (verifyflags != NULL) {
+        json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags);
+    }
+
+    return file;
+}
+
+/*
+ * Walk one directory of the payload tree and add an entry to the
+ * "files" array for everything in it the file list does not name yet.
+ * A directory is added before what it holds, which is the order the
+ * payload wants them in.  dir_path is the directory to read and prefix
+ * is the installed path that leads to it.
+ */
+static void
+scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const char *prefix)
+{
+    int i = 0;
+    int n = 0;
+    char *path = NULL;
+    char *file_path = NULL;
+    struct dirent **entries = NULL;
+    struct stat sb;
+
+    n = scandir(dir_path, &entries, NULL, alphasort);
+
+    if (n < 0) {
+        warn("scandir: %s", dir_path);
+        return;
+    }
+
+    for (i = 0; i < n; i++) {
+        if (!strcmp(entries[i]->d_name, ".") || !strcmp(entries[i]->d_name, "..")) {
+            free(entries[i]);
+            continue;
+        }
+
+        /* source RPMs keep bare filenames, binary ones full paths */
+        if (scan->source_package && prefix[0] == '\0') {
+            path = strdup(entries[i]->d_name);
+        } else {
+            xasprintf(&path, "%s/%s", prefix, entries[i]->d_name);
+        }
+
+        file_path = joinpath(dir_path, entries[i]->d_name, NULL);
+
+        if (lstat(file_path, &sb) == -1) {
+            warn("lstat");
+        } else {
+            if (new_in_payload(scan->files, path, &sb)) {
+                warnx(_("*** %s is new in the payload, adding it to the file list"), path);
+                json_object_array_add(scan->files, mkfileentry(scan, path, file_path, &sb));
+            }
+
+            if (S_ISDIR(sb.st_mode)) {
+                scan_payload_dir(scan, file_path, path);
+            }
+        }
+
+        free(file_path);
+        free(path);
+        free(entries[i]);
+    }
+
+    free(entries);
+    return;
+}
+
+/*
+ * Add entries to the "files" array for the files and directories added
+ * to the payload tree.  Done when creating an RPM so a file put in the
+ * payload lands in the file list of the new package.
+ */
+void
+add_payload_files(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir)
+{
+    char *payload_dir = NULL;
+    const char *digestalgo_str = NULL;
+    struct payload_scan scan = { 0 };
+    struct stat sb;
+
+    if (tags == NULL || files == NULL || input_dir == NULL || payload_subdir == NULL) {
+        return;
+    }
+
+    if (json_object_get_type(files) != json_type_array) {
+        return;
+    }
+
+    payload_dir = joinpath(input_dir, payload_subdir, NULL);
+
+    if (lstat(payload_dir, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
+        free(payload_dir);
+        return;
+    }
+
+    /*
+     * The digests of the added files are computed with the algorithm
+     * the header names, which rpm defaults to MD5.
+     */
+    digestalgo_str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+
+    if (digestalgo_str == NULL) {
+        scan.digestalgo = PGPHASHALGO_MD5;
+    } else {
+        scan.digestalgo = digest_algo(digestalgo_str);
+    }
+
+    scan.files = files;
+    scan.source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
+
+    scan_payload_dir(&scan, payload_dir, "");
+
+    free(payload_dir);
+    return;
+}
+
+/*
  * Reconstruct the file list tag entries from the files array.
  * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
  * to the provided tags array.
@@ -1219,6 +1486,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct tm tm_info;
     int dirindex = 0;
     int64_t size = 0;
+    int64_t totalsize = 0;
+    char sizebuf[32];
     int mode = 0;
     int perms = 0;
     int rdev = 0;
@@ -1569,6 +1838,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         json_object_array_add(fileinodes, json_object_new_int(inode));
 
         /*
+         * Add up the installed size.  Hard links of one another share
+         * the space they take up, so only the first of a group counts.
+         */
+        if (!json_object_object_get_ex(file, RPM_FILE_INODE_DESC, NULL) || !found) {
+            totalsize += size;
+        }
+
+        /*
          * Extract class and rebuild the CLASSDICT/FILECLASS pair the way
          * librpm does: CLASSDICT holds the unique class strings in order
          * of first appearance and FILECLASS holds each file's index into
@@ -1746,6 +2023,17 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     }
 
     free(unique_classes);
+
+    /*
+     * Update the installed size of the package.  Files may have been
+     * added to, edited in or taken out of the payload tree since it
+     * was unpacked, so the size header.json carries is out of date.
+     * Whichever of the two size tags the header has gets the new
+     * number and a header without either one is left alone.
+     */
+    snprintf(sizebuf, sizeof(sizebuf), "%" PRId64, totalsize);
+    set_tag_value(tags, rpmTagGetName(RPMTAG_SIZE), sizebuf);
+    set_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE), sizebuf);
 
     /* Add RPMTAG_BASENAMES tag */
     tag = json_object_new_object();
