@@ -56,6 +56,11 @@ def size_list(pkg):
     ]
 
 
+def installed_size(pkg):
+    """Return the installed size an RPM carries in its header"""
+    return int(query_rpm(pkg, "%{LONGSIZE}")[0])
+
+
 def inode_list(pkg):
     """Return the (path, inode) pairs an RPM carries in its header"""
     return [
@@ -932,3 +937,227 @@ class TestChangelogTimestampsIgnoreTimeZone(Changelog, TestUnpackRPM):
                 "TZ=%s changed what tarpm created" % tz,
             )
             self.assertIdentical(original, recreated)
+
+
+class TestCreateAddsNewPayloadFiles(RoundTrip, TestUnpackRPM):
+    """Files added to the payload tree land in the new package"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        added = "%s/added.txt" % base
+        newdir = "%s/newdir" % base
+        nested = "%s/nested.txt" % newdir
+        link = "%s/link" % base
+
+        f = open(self.payload_path(extract_dir, added), "wb")
+        f.write(b"added in the payload\n")
+        f.close()
+
+        os.mkdir(self.payload_path(extract_dir, newdir))
+
+        f = open(self.payload_path(extract_dir, nested), "wb")
+        f.write(b"nested\n")
+        f.close()
+
+        os.symlink("kept.txt", self.payload_path(extract_dir, link))
+
+        recreated, err = self.create_warns(extract_dir)
+        files = file_list(recreated)
+        sizes = dict(size_list(recreated))
+        digests = dict([pair for pair in digest_list(recreated) if len(pair) == 2])
+
+        # each new path is named once and only once
+        for path in [added, newdir, nested, link]:
+            self.assertEqual(err.count("%s is new" % path), 1, err)
+            self.assertTrue(path in files, files)
+
+        # the directories the package never owned stay out of the list
+        for path in ["/usr", "/usr/share"]:
+            self.assertFalse(path in files, files)
+
+        self.assertEqual(sizes[added], len(b"added in the payload\n"))
+        self.assertEqual(sizes[nested], len(b"nested\n"))
+        self.assertEqual(sizes[link], len("kept.txt"))
+
+        self.assertEqual(
+            digests[added], hashlib.sha256(b"added in the payload\n").hexdigest()
+        )
+        self.assertEqual(digests[nested], hashlib.sha256(b"nested\n").hexdigest())
+
+        # the payload carries them too
+        recreated_dir = self.extract(recreated, subdir="recreated_extract")
+
+        self.assertIdentical(
+            self.payload_path(extract_dir, added),
+            self.payload_path(recreated_dir, added),
+        )
+        self.assertIdentical(
+            self.payload_path(extract_dir, nested),
+            self.payload_path(recreated_dir, nested),
+        )
+        self.assertTrue(os.path.isdir(self.payload_path(recreated_dir, newdir)))
+        self.assertEqual(
+            os.readlink(self.payload_path(recreated_dir, link)), "kept.txt"
+        )
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateAddsNewSourcePayloadFiles(RoundTrip, TestUnpackSRPM):
+    """A file added to a source package payload lands in the new package"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_srpm()
+
+        extract_dir = self.extract(original)
+
+        f = open(self.payload_path(extract_dir, "added.patch"), "wb")
+        f.write(b"not really a patch\n")
+        f.close()
+
+        recreated, err = self.create_warns(extract_dir)
+        files = file_list(recreated)
+        sizes = dict(size_list(recreated))
+        digests = dict([pair for pair in digest_list(recreated) if len(pair) == 2])
+
+        # source package paths carry no leading directory
+        self.assertEqual(err.count("added.patch is new"), 1, err)
+        self.assertTrue("added.patch" in files, files)
+        self.assertFalse("/added.patch" in files, files)
+
+        for path in file_list(original):
+            self.assertTrue(path in files, files)
+
+        self.assertEqual(sizes["added.patch"], len(b"not really a patch\n"))
+        self.assertEqual(
+            digests["added.patch"], hashlib.sha256(b"not really a patch\n").hexdigest()
+        )
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateLeavesUnchangedPayloadAlone(RoundTrip, TestUnpackRPM):
+    """Nothing is added when the payload tree is left as it was extracted"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/other.txt" % NAME,
+            rpmfluff.SourceFile("other.txt", b"other\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        recreated, err = self.create_warns(self.extract(original))
+
+        self.assertFalse("is new in the payload" in err, err)
+        self.assertEqual(file_list(recreated), file_list(original))
+        self.assertIdentical(original, recreated)
+
+
+class TestCreateRecomputesInstalledSize(RoundTrip, TestUnpackRPM):
+    """The installed size follows what the payload tree holds"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/edited.txt" % NAME,
+            rpmfluff.SourceFile("edited.txt", b"before\n"),
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/gone.txt" % NAME,
+            rpmfluff.SourceFile("gone.txt", b"on the way out\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        # rpm adds up the file sizes to get the installed size
+        self.assertEqual(
+            installed_size(original), sum(size for (path, size) in size_list(original))
+        )
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        after = b"a good deal longer than before\n"
+        added = b"added in the payload\n"
+
+        f = open(self.payload_path(extract_dir, "%s/edited.txt" % base), "wb")
+        f.write(after)
+        f.close()
+
+        os.unlink(self.payload_path(extract_dir, "%s/gone.txt" % base))
+
+        f = open(self.payload_path(extract_dir, "%s/added.txt" % base), "wb")
+        f.write(added)
+        f.close()
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(
+            installed_size(recreated),
+            installed_size(original)
+            - len(b"before\n")
+            - len(b"on the way out\n")
+            + len(after)
+            + len(added),
+        )
+        self.assertEqual(
+            installed_size(recreated),
+            sum(size for (path, size) in size_list(recreated)),
+        )
+        self.assertVerifies(recreated)
+
+
+class TestCreateCountsHardLinkSizeOnce(RoundTrip, TestUnpackRPM):
+    """Hard links of one another only take up their space once"""
+
+    def setUp(self):
+        super().setUp()
+
+        for name in ["one.txt", "two.txt", "three.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"the same content\n"),
+            )
+
+        for name in ["two.txt", "three.txt"]:
+            self.rpm.section_install += (
+                "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+                "$RPM_BUILD_ROOT/usr/share/%s/%s\n" % (NAME, NAME, name)
+            )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        # the three links are one file as far as the size goes
+        self.assertEqual(installed_size(original), len(b"the same content\n"))
+
+        recreated = self.create(self.extract(original))
+
+        self.assertEqual(installed_size(recreated), installed_size(original))
+        self.assertIdentical(original, recreated)

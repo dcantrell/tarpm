@@ -661,6 +661,331 @@ test_add_file_list_tags_sizes_no_payload(void)
     return;
 }
 
+/* Add a tag entry with the given name and value to a tags array */
+static void
+add_tag(struct json_object *tags, const char *name, const char *value)
+{
+    struct json_object *tag = NULL;
+
+    tag = json_object_new_object();
+    json_object_object_add(tag, "tag", json_object_new_string(name));
+    json_object_object_add(tag, "value", json_object_new_string(value));
+    json_object_array_add(tags, tag);
+
+    return;
+}
+
+/* Test add_file_list_tags() adds up the installed size of the package */
+void
+test_add_file_list_tags_total_size(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *flags = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    mkdir_payload(input_dir, "/usr/bin");
+    write_payload(input_dir, "/usr/bin/one", 4096);
+    write_payload(input_dir, "/usr/bin/two", 3);
+    write_payload(input_dir, "/usr/bin/hard1", 100);
+    write_payload(input_dir, "/usr/bin/hard2", 100);
+    link_payload(input_dir, "/usr/bin/link", "one");
+
+    files = json_object_new_array();
+
+    file = add_file(files, "/usr/bin/one");
+    json_object_object_add(file, "size", json_object_new_int64(10));
+
+    file = add_file(files, "/usr/bin/two");
+    json_object_object_add(file, "size", json_object_new_int64(99));
+
+    /* hard links of one another only take up the space once */
+    file = add_file(files, "/usr/bin/hard1");
+    json_object_object_add(file, "size", json_object_new_int64(100));
+    json_object_object_add(file, "inode", json_object_new_int(42));
+
+    file = add_file(files, "/usr/bin/hard2");
+    json_object_object_add(file, "size", json_object_new_int64(100));
+    json_object_object_add(file, "inode", json_object_new_int(42));
+
+    /* a symlink counts the length of the target string */
+    file = add_file(files, "/usr/bin/link");
+    json_object_object_add(file, "size", json_object_new_int64(3));
+    json_object_object_add(file, "linkto", json_object_new_string("one"));
+
+    /* a %ghost file is never in the payload but still counts */
+    file = add_file(files, "/usr/bin/ghost.log");
+    json_object_object_add(file, "size", json_object_new_int64(77));
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("ghost"));
+    json_object_object_add(file, "flags", flags);
+
+    /* a directory adds nothing */
+    add_file(files, "/usr/bin");
+
+    /* the recorded size is out of date and gets replaced */
+    tags = json_object_new_array();
+    add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "4279"));
+
+    json_object_put(tags);
+
+    /* a header using the long form of the tag gets the same number */
+    tags = json_object_new_array();
+    add_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE), "1");
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "4279"));
+
+    json_object_put(tags);
+
+    /* a header carrying neither tag does not gain one */
+    tags = json_object_new_array();
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)) == NULL);
+    TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)) == NULL);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(input_dir, "/usr/bin/one");
+    remove_payload(input_dir, "/usr/bin/two");
+    remove_payload(input_dir, "/usr/bin/hard1");
+    remove_payload(input_dir, "/usr/bin/hard2");
+    remove_payload(input_dir, "/usr/bin/link");
+    remove_payload(input_dir, "/usr/bin");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Return the entry with the given path from a files array */
+static struct json_object *
+find_file(struct json_object *files, const char *path)
+{
+    size_t i = 0;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    for (i = 0; i < json_object_array_length(files); i++) {
+        file = json_object_array_get_idx(files, i);
+
+        if (json_object_object_get_ex(file, "path", &value) && !strcmp(json_object_get_string(value), path)) {
+            return file;
+        }
+    }
+
+    return NULL;
+}
+
+/* Return the string value of a key in a files array entry */
+static const char *
+file_str(struct json_object *file, const char *key)
+{
+    struct json_object *value = NULL;
+
+    if (file == NULL || !json_object_object_get_ex(file, key, &value)) {
+        return NULL;
+    }
+
+    return json_object_get_string(value);
+}
+
+/* Test add_payload_files() with NULL and bad inputs */
+void
+test_add_payload_files_null(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/bin/ls");
+
+    add_payload_files(NULL, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, NULL, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, NULL, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, input_dir, NULL);
+
+    /* and there is no payload tree here to walk */
+    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 1);
+
+    json_object_put(files);
+
+    /* the files value has to be an array */
+    files = json_object_new_object();
+    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_payload_files() picks up what was added to the payload */
+void
+test_add_payload_files_new(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    /* the payload tree holds more than the file list names */
+    mkdir_payload(input_dir, "/usr/bin");
+    write_payload(input_dir, "/usr/bin/known", 5);
+    write_payload(input_dir, "/usr/bin/added", 12);
+    link_payload(input_dir, "/usr/bin/link", "known");
+    mkdir_payload(input_dir, "/usr/share/newdir");
+    write_payload(input_dir, "/usr/share/newdir/note.txt", 3);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/bin");
+    add_file(files, "/usr/bin/known");
+
+    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+
+    /*
+     * The two entries the list had are joined by the five new ones.
+     * "/usr" is left out because it only leads to "/usr/bin", which
+     * the list already names.
+     */
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 7);
+    TARPM_ASSERT_TRUE(find_file(files, "/usr") == NULL);
+
+    /* a new regular file carries its size, mode, mtime, owner and digest */
+    file = find_file(files, "/usr/bin/added");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_object_get(file, "size")), 12);
+    TARPM_ASSERT_TRUE(file_str(file, "mode") != NULL);
+    TARPM_ASSERT_TRUE(file_str(file, "mtime") != NULL);
+    TARPM_ASSERT_STRING_EQUAL(file_str(file, "user"), RPM_FILE_DEFAULT_USER);
+    TARPM_ASSERT_STRING_EQUAL(file_str(file, "group"), RPM_FILE_DEFAULT_GROUP);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_object_get(file, "device")), RPM_FILE_DEFAULT_DEVICE);
+
+    /* the digest is the MD5 of the twelve bytes written above */
+    TARPM_ASSERT_STRING_EQUAL(file_str(file, "digest"), "f94c84fac5cb091c60bb143cb957d229");
+
+    /* a new symlink carries its target and the length of it */
+    file = find_file(files, "/usr/bin/link");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    TARPM_ASSERT_STRING_EQUAL(file_str(file, "linkto"), "known");
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_object_get(file, "size")), 5);
+    TARPM_ASSERT_TRUE(file_str(file, "digest") == NULL);
+
+    /* a new directory carries no size and no digest */
+    file = find_file(files, "/usr/share/newdir");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    TARPM_ASSERT_TRUE(json_object_object_get(file, "size") == NULL);
+    TARPM_ASSERT_TRUE(file_str(file, "digest") == NULL);
+
+    /* and the directories come before what they hold */
+    TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "/usr/share"));
+    TARPM_ASSERT_STRING_EQUAL(file_str(json_object_array_get_idx(files, 4), "path"), "/usr/share");
+    TARPM_ASSERT_STRING_EQUAL(file_str(json_object_array_get_idx(files, 5), "path"), "/usr/share/newdir");
+    TARPM_ASSERT_STRING_EQUAL(file_str(json_object_array_get_idx(files, 6), "path"), "/usr/share/newdir/note.txt");
+
+    /* a second run finds nothing new */
+    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 7);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* clean up the payload tree */
+    remove_payload(input_dir, "/usr/share/newdir/note.txt");
+    remove_payload(input_dir, "/usr/share/newdir");
+    remove_payload(input_dir, "/usr/share");
+    remove_payload(input_dir, "/usr/bin/known");
+    remove_payload(input_dir, "/usr/bin/added");
+    remove_payload(input_dir, "/usr/bin/link");
+    remove_payload(input_dir, "/usr/bin");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_payload_files() keeps the bare names a source RPM uses */
+void
+test_add_payload_files_source(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *tag = NULL;
+    struct json_object *files = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(mkdirp(payload_dir, 0755) == 0);
+
+    write_payload(input_dir, "/known.spec", 4);
+    write_payload(input_dir, "/added.tar.gz", 8);
+
+    /* a source package says so with a tag */
+    tags = json_object_new_array();
+    tag = json_object_new_object();
+    json_object_object_add(tag, "tag", json_object_new_string(rpmTagGetName(RPMTAG_SOURCEPACKAGE)));
+    json_object_object_add(tag, "value", json_object_new_int(1));
+    json_object_array_add(tags, tag);
+
+    files = json_object_new_array();
+    add_file(files, "known.spec");
+
+    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
+    TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "added.tar.gz"));
+    TARPM_ASSERT_TRUE(find_file(files, "/added.tar.gz") == NULL);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(input_dir, "/known.spec");
+    remove_payload(input_dir, "/added.tar.gz");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
 /* Test add_file_list_tags() with class values */
 void
 test_add_file_list_tags_class(void)
@@ -1127,6 +1452,10 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with a file list", test_add_file_list_tags_file_list) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with payload file sizes", test_add_file_list_tags_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with sizes and no payload", test_add_file_list_tags_sizes_no_payload) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the installed size", test_add_file_list_tags_total_size) == NULL ||
+        CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
+        CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
+        CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
