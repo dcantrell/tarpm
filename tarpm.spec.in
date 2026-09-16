@@ -15,7 +15,6 @@ BuildRequires:  libarchive-devel
 BuildRequires:  json-c-devel
 BuildRequires:  CUnit-devel
 BuildRequires:  python3-devel
-BuildRequires:  pandoc-cli
 BuildRequires:  gettext
 BuildRequires:  libzstd-devel
 BuildRequires:  openssl-devel
