@@ -129,6 +129,88 @@ static const struct file_flag_name file_verify_names[] = {
 };
 
 /*
+ * Maps the file type bits of a mode to the name they carry in the
+ * "files" array.  The types are the ones rpmfiWhatis() in the rpm
+ * source picks out of a mode.
+ */
+struct file_type_name {
+    mode_t bits;
+    const char *name;
+};
+
+static const struct file_type_name file_type_names[] = {
+    { S_IFIFO, RPM_FILE_TYPE_PIPE },
+    { S_IFCHR, RPM_FILE_TYPE_CHARDEV },
+    { S_IFDIR, RPM_FILE_TYPE_DIR },
+    { S_IFBLK, RPM_FILE_TYPE_BLOCKDEV },
+    { S_IFREG, RPM_FILE_TYPE_FILE },
+    { S_IFLNK, RPM_FILE_TYPE_SYMLINK },
+    { S_IFSOCK, RPM_FILE_TYPE_SOCKET },
+    { 0, NULL }
+};
+
+/*
+ * Returns the name for the file type bits of a mode.  rpmfiWhatis()
+ * decides which type it is so tarpm reads a mode the way rpm does.
+ * Anything that is not one of the types rpm knows is a regular file.
+ */
+static const char *
+type_name(rpm_mode_t mode)
+{
+    const char *name = RPM_FILE_TYPE_FILE;
+
+    switch (rpmfiWhatis(mode)) {
+        case PIPE:
+            name = RPM_FILE_TYPE_PIPE;
+            break;
+        case CDEV:
+            name = RPM_FILE_TYPE_CHARDEV;
+            break;
+        case XDIR:
+            name = RPM_FILE_TYPE_DIR;
+            break;
+        case BDEV:
+            name = RPM_FILE_TYPE_BLOCKDEV;
+            break;
+        case LINK:
+            name = RPM_FILE_TYPE_SYMLINK;
+            break;
+        case SOCK:
+            name = RPM_FILE_TYPE_SOCKET;
+            break;
+        default:
+            break;
+    }
+
+    return name;
+}
+
+/*
+ * Returns the file type bits a type name stands for.  An unknown name
+ * or a NULL gives back 0 so the caller can fall back to what it knows
+ * about the file.
+ */
+static mode_t
+type_bits(const char *name)
+{
+    int i = 0;
+
+    if (name == NULL) {
+        return 0;
+    }
+
+    for (i = 0; file_type_names[i].name != NULL; i++) {
+        if (!strcmp(file_type_names[i].name, name)) {
+            return file_type_names[i].bits;
+        }
+    }
+
+    warnx(_("*** unknown file type %s"), name);
+
+    return 0;
+}
+
+/*
  * Free all of the lists held in a struct file_metadata.  String lists go
  * through list_free() and the integer lists through uint32_list_free().
  * Safe to call with a NULL pointer.
@@ -822,10 +904,15 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
                 }
             }
 
-            /* Add mode if available (as octal string of permission bits only) */
+            /*
+             * Add mode if available (as octal string of permission bits
+             * only).  The file type bits of the mode go alongside it
+             * under their own name.
+             */
             if (filemode != NULL) {
                 snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, filemode->value & ALLPERMS);
                 json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
+                json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(filemode->value)));
             }
 
             /* Add mtime if available (as ISO 8601 timestamp) */
@@ -1228,9 +1315,10 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
         free(target);
     }
 
-    /* the permission bits as an octal string */
+    /* the permission bits as an octal string and the type by name */
     snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, sb->st_mode & ALLPERMS);
     json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
+    json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(sb->st_mode)));
 
     /* the mtime as an ISO 8601 timestamp */
     mtime = sb->st_mtime;
@@ -1411,6 +1499,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *path_obj = NULL;
     struct json_object *size_obj = NULL;
     struct json_object *mode_obj = NULL;
+    struct json_object *filetype_obj = NULL;
     struct json_object *mtime_obj = NULL;
     struct json_object *user_obj = NULL;
     struct json_object *group_obj = NULL;
@@ -1490,6 +1579,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     char sizebuf[32];
     int mode = 0;
     int perms = 0;
+    mode_t typebits = 0;
     int rdev = 0;
     int64_t device = 0;
     int inode = 0;
@@ -1661,31 +1751,43 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             mode_str = json_object_get_string(mode_obj);
             perms = (int) strtol(mode_str, NULL, 8);
 
-            /* Determine file type */
+            /* the file in the payload tree says what type it is */
+            typebits = 0;
+
             if (input_dir != NULL && payload_subdir != NULL) {
                 /* Strip leading slash from path for payload lookup */
                 const char *relative_path = (path[0] == '/') ? path + 1 : path;
                 file_path = joinpath(input_dir, payload_subdir, relative_path, NULL);
 
                 if (lstat(file_path, &sb) == 0) {
-                    /* Combine file type from stat with permissions from JSON */
-                    mode = (sb.st_mode & ~ALLPERMS) | (perms & ALLPERMS);
-                } else {
-                    /* File doesn't exist in payload (e.g., 0-byte file or directory) */
-                    /* Use heuristic: if entry has "size" field, it's a regular file */
-                    if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
-                        mode = S_IFREG | (perms & ALLPERMS);
-                    } else {
-                        /* No size field, assume directory */
-                        mode = S_IFDIR | (perms & ALLPERMS);
-                    }
+                    typebits = sb.st_mode & S_IFMT;
                 }
 
                 free(file_path);
-            } else {
-                /* No input_dir provided, use permissions only (assume regular file) */
-                mode = S_IFREG | (perms & ALLPERMS);
             }
+
+            /*
+             * Nothing in the payload to look at, so go by the type the
+             * file list names.  %ghost entries land here.
+             */
+            if (typebits == 0 && json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &filetype_obj)) {
+                typebits = type_bits(json_object_get_string(filetype_obj));
+            }
+
+            /*
+             * A file list from an older tarpm names no type, so fall
+             * back to the guess it used to make: an entry with a size
+             * is a regular file and anything else is a directory.
+             */
+            if (typebits == 0) {
+                if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
+                    typebits = S_IFREG;
+                } else {
+                    typebits = S_IFDIR;
+                }
+            }
+
+            mode = typebits | (perms & ALLPERMS);
         }
 
         json_object_array_add(filemodes, json_object_new_int(mode));

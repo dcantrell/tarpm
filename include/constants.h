@@ -92,6 +92,7 @@
 #define RPM_FILE_PATH_DESC             "path"
 #define RPM_FILE_SIZE_DESC             "size"
 #define RPM_FILE_MODE_DESC             "mode"
+#define RPM_FILE_TYPE_DESC             "type"
 #define RPM_FILE_MTIME_DESC            "mtime"
 #define RPM_FILE_USER_DESC             "user"
 #define RPM_FILE_GROUP_DESC            "group"
@@ -118,6 +119,21 @@
 #define RPM_FILE_LANG_SEPARATOR        "|"
 #define RPM_FILE_MODE_FORMAT           "%04o"
 #define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"
+
+/* names used for the file type bits in the "files" array */
+/*
+ * RPMTAG_FILEMODES holds the file type bits along with the
+ * permissions.  The "mode" key carries the permissions and these
+ * names carry the type.  See rpmfiWhatis() in lib/rpmfi.cc in the rpm
+ * source for how rpm reads the same bits.
+ */
+#define RPM_FILE_TYPE_PIPE             "pipe"
+#define RPM_FILE_TYPE_CHARDEV          "chardev"
+#define RPM_FILE_TYPE_DIR              "dir"
+#define RPM_FILE_TYPE_BLOCKDEV         "blockdev"
+#define RPM_FILE_TYPE_FILE             "file"
+#define RPM_FILE_TYPE_SYMLINK          "symlink"
+#define RPM_FILE_TYPE_SOCKET           "socket"
 
 /* names used for the file color bits in the "files" array   */
 /* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
