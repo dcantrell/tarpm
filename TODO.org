@@ -8,24 +8,42 @@ Core functionality that still needs to happen:
 
     [*] Compute digests for the signature header.
 
-    [ ] Files added to the payload subdirectory should have header
+    [*] Files added to the payload subdirectory should have header
         entries created if they do not exist in the JSON metadata.
 
     [*] Files removed from the payload subdirectory should have header
         entries removed if they do not exist in the JSON metadata.
 
-    [ ] File metadata in the payload subdirectory should be updated
+    [*] Split RPMTAG_FILEMODES in to octal permission mode and type
+        for header.json.  Recombine them in to an st_mode value when
+        creating an RPM.
+
+    [*] File metadata in the payload subdirectory should be updated
         based on what actually exists (but not everything).
         [*] Size
-        [ ] Type (regular file, devnode, link)
-        [ ] Linkto
+        [*] Type (regular file, devnode, link)
         [*] Digests
         [ ] Class
+        [*] rdev
+        [*] linkto
 
     [ ] Missing metadata should be picked up from the system:
         [ ] mtime
         [ ] User?
         [ ] Group?
+        [ ] Type (regular file, devnode, link)
+        [ ] Linkto
+
+    [ ] Command line switches to force updating metadata from the
+        payload subdir and ignoring header.json:
+        [ ] mtime
+        [ ] user
+        [ ] group
+        [ ] Linkto
+
+    [ ] Improved verbose mode output
+        [ ] Note what is happening in different stages
+        [ ] Note added and removed files from the payload
 
 [*] List mode
     [*] Need a strmode() function
