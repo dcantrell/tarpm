@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <arpa/inet.h>
 #include <rpm/rpmtag.h>
 #include <rpm/rpmfiles.h>
@@ -576,6 +577,22 @@ link_payload(const char *input_dir, const char *path, const char *target)
 }
 
 /*
+ * Helper for test_add_file_list_tags_mismatch_rdev() below that
+ * creates a pipe in the payload tree of a test extraction directory.
+ */
+static void
+fifo_payload(const char *input_dir, const char *path)
+{
+    char *file_path = NULL;
+
+    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    TARPM_ASSERT_TRUE(mkfifo(file_path, 0600) == 0);
+    free(file_path);
+
+    return;
+}
+
+/*
  * Helper for test_add_file_list_tags_sizes() below that removes a file
  * or a directory from the payload tree of a test extraction directory.
  */
@@ -903,6 +920,208 @@ test_add_file_list_tags_type_mismatch(void)
     remove_payload(input_dir, "/usr/bin/link");
     remove_payload(input_dir, "/usr/bin");
     remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() takes the size, the digest and the link
+ * target from the payload when the type of an entry changes
+ */
+void
+test_add_file_list_tags_mismatch_values(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+    struct json_object *sizes = NULL;
+    struct json_object *digests = NULL;
+    struct json_object *linktos = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    mkdir_payload(input_dir, "/usr/share");
+    mkdir_payload(input_dir, "/usr/share/wasfile");
+    write_payload(input_dir, "/usr/share/waslink", 5);
+    link_payload(input_dir, "/usr/share/wasplain", "target");
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a regular file that is now a directory */
+    file = add_file(files, "/usr/share/wasfile");
+    json_object_object_add(file, "mode", json_object_new_string("0755"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+    json_object_object_add(file, "size", json_object_new_int64(42));
+    json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
+
+    /* a symlink that is now a regular file */
+    file = add_file(files, "/usr/share/waslink");
+    json_object_object_add(file, "mode", json_object_new_string("0644"));
+    json_object_object_add(file, "type", json_object_new_string("symlink"));
+    json_object_object_add(file, "size", json_object_new_int64(3));
+    json_object_object_add(file, "linkto", json_object_new_string("old"));
+
+    /* a regular file that is now a symlink */
+    file = add_file(files, "/usr/share/wasplain");
+    json_object_object_add(file, "mode", json_object_new_string("0777"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+    json_object_object_add(file, "size", json_object_new_int64(99));
+    json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    /* the directory keeps none of what it carried as a file */
+    file = json_object_array_get_idx(files, 0);
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "size", &value));
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "digest", &value));
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "linkto", &value));
+
+    /* the regular file picks up its size and a digest of its contents */
+    file = json_object_array_get_idx(files, 1);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "size", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 5);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "digest", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "fb0e22c79ac75679e9881e6ba183b354");
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "linkto", &value));
+
+    /* the symlink picks up its target and the length of it */
+    file = json_object_array_get_idx(files, 2);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "size", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 6);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "linkto", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "target");
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "digest", &value));
+
+    /* and the tags carry the same */
+    sizes = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(sizes);
+    TARPM_ASSERT_EQUAL(json_object_array_length(sizes), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(sizes, 0)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(sizes, 1)), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(sizes, 2)), 6);
+
+    digests = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDIGESTS));
+    TARPM_ASSERT_PTR_NOT_NULL(digests);
+    TARPM_ASSERT_EQUAL(json_object_array_length(digests), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(digests, 0)), "");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(digests, 1)), "fb0e22c79ac75679e9881e6ba183b354");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(digests, 2)), "");
+
+    linktos = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
+    TARPM_ASSERT_PTR_NOT_NULL(linktos);
+    TARPM_ASSERT_EQUAL(json_object_array_length(linktos), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(linktos, 0)), "");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(linktos, 1)), "");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(linktos, 2)), "target");
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(input_dir, "/usr/share/wasfile");
+    remove_payload(input_dir, "/usr/share/waslink");
+    remove_payload(input_dir, "/usr/share/wasplain");
+    remove_payload(input_dir, "/usr/share");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() takes the device number from the payload
+ * when the type of an entry changes
+ */
+void
+test_add_file_list_tags_mismatch_rdev(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    char *file_path = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+    struct json_object *rdevs = NULL;
+    bool have_dev = false;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    mkdir_payload(input_dir, "/dev");
+    fifo_payload(input_dir, "/dev/wasdev");
+
+    /*
+     * Making a device node takes privileges the test suite usually
+     * does not have, so the half of this that needs one only runs
+     * when the suite is run as root.
+     */
+    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, "/dev/isdev", NULL);
+    have_dev = (mknod(file_path, S_IFCHR | 0600, makedev(1, 3)) == 0);
+    free(file_path);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a device node that is now a pipe gives up its device number */
+    file = add_file(files, "/dev/wasdev");
+    json_object_object_add(file, "mode", json_object_new_string("0600"));
+    json_object_object_add(file, "type", json_object_new_string("chardev"));
+    json_object_object_add(file, "rdev", json_object_new_int(1234));
+
+    if (have_dev) {
+        /* and a regular file that is now a device node picks one up */
+        file = add_file(files, "/dev/isdev");
+        json_object_object_add(file, "mode", json_object_new_string("0600"));
+        json_object_object_add(file, "type", json_object_new_string("file"));
+        json_object_object_add(file, "size", json_object_new_int64(7));
+        json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
+    }
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    rdevs = get_tag_values(tags, rpmTagGetName(RPMTAG_FILERDEVS));
+    TARPM_ASSERT_PTR_NOT_NULL(rdevs);
+
+    file = json_object_array_get_idx(files, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "pipe");
+    TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "rdev", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(rdevs, 0)), 0);
+
+    if (have_dev) {
+        file = json_object_array_get_idx(files, 1);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "chardev");
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "rdev", &value));
+        TARPM_ASSERT_EQUAL(json_object_get_int(value), (int) makedev(1, 3));
+        TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "size", &value));
+        TARPM_ASSERT_TRUE(!json_object_object_get_ex(file, "digest", &value));
+        TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(rdevs, 1)), (int) makedev(1, 3));
+    }
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    if (have_dev) {
+        remove_payload(input_dir, "/dev/isdev");
+    }
+
+    remove_payload(input_dir, "/dev/wasdev");
+    remove_payload(input_dir, "/dev");
 
     payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
@@ -1709,6 +1928,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with each file type", test_add_file_list_tags_types) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with types from the payload", test_add_file_list_tags_type_from_payload) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with a type mismatch", test_add_file_list_tags_type_mismatch) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with values from a type mismatch", test_add_file_list_tags_mismatch_values) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with an rdev from a type mismatch", test_add_file_list_tags_mismatch_rdev) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||

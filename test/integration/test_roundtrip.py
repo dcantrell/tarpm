@@ -56,6 +56,15 @@ def size_list(pkg):
     ]
 
 
+def linkto_list(pkg):
+    """Return the (path, link target) pairs an RPM carries in its header"""
+    # everything that is not a symlink carries an empty target, so the
+    # two fields need a separator that splitting on whitespace lacks
+    return [
+        line.split("|", 1) for line in query_rpm(pkg, "[%{FILENAMES}|%{FILELINKTOS}\n]")
+    ]
+
+
 def mode_list(pkg):
     """Return the (path, mode) pairs an RPM carries in its header"""
     return [
@@ -1219,6 +1228,84 @@ class TestCreateFixesFileTypeMismatch(RoundTrip, TestUnpackRPM):
 
         self.assertEqual(types[swapped], "dir")
         self.assertEqual(types["%s/kept.txt" % base], "file")
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateFixesMismatchValues(RoundTrip, TestUnpackRPM):
+    """A type change in the payload brings the size, digest and target along"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/tolink.txt" % NAME,
+            rpmfluff.SourceFile("tolink.txt", b"a plain file for now\n"),
+        )
+        self.rpm.add_installed_symlink("usr/share/%s/tofile.txt" % NAME, "tolink.txt")
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        tolink = "%s/tolink.txt" % base
+        tofile = "%s/tofile.txt" % base
+        target = "somewhere/else"
+        content = b"now a regular file\n"
+
+        # the file becomes a symlink and the symlink becomes a file
+        os.unlink(self.payload_path(extract_dir, tolink))
+        os.symlink(target, self.payload_path(extract_dir, tolink))
+
+        os.unlink(self.payload_path(extract_dir, tofile))
+        f = open(self.payload_path(extract_dir, tofile), "wb")
+        f.write(content)
+        f.close()
+
+        recreated, err = self.create_warns(extract_dir)
+
+        self.assertEqual(
+            err.count("%s is a symlink in the payload and not a file" % tolink), 1, err
+        )
+        self.assertEqual(
+            err.count("%s is a file in the payload and not a symlink" % tofile), 1, err
+        )
+
+        links = dict(linkto_list(recreated))
+        sizes = dict(size_list(recreated))
+        digests = dict([pair for pair in digest_list(recreated) if len(pair) == 2])
+
+        # the new symlink carries its target and the length of it
+        self.assertEqual(links[tolink], target)
+        self.assertEqual(sizes[tolink], len(target))
+        self.assertFalse(tolink in digests, digests)
+
+        # the new regular file carries its size and a digest, not a target
+        self.assertEqual(links[tofile], "")
+        self.assertEqual(sizes[tofile], len(content))
+        self.assertEqual(digests[tofile], hashlib.sha256(content).hexdigest())
+
+        # and the file list of the new package says the same
+        files = dict(
+            [
+                (entry["path"], entry)
+                for entry in read_header(self.extract(recreated, subdir="again"))[
+                    "files"
+                ]
+            ]
+        )
+
+        self.assertEqual(files[tolink]["type"], "symlink")
+        self.assertEqual(files[tolink]["linkto"], target)
+        self.assertEqual(files[tolink]["size"], len(target))
+        self.assertFalse("digest" in files[tolink], files[tolink])
+
+        self.assertEqual(files[tofile]["type"], "file")
+        self.assertEqual(files[tofile]["size"], len(content))
+        self.assertEqual(files[tofile]["digest"], hashlib.sha256(content).hexdigest())
+        self.assertFalse("linkto" in files[tofile], files[tofile])
 
         self.assertVerifies(recreated)
 
