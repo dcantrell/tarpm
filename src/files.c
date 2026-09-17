@@ -1546,6 +1546,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *basename = NULL;
     const char *dirname = NULL;
     const char *mode_str = NULL;
+    const char *filetype_str = NULL;
+    const char *payload_type = NULL;
     const char *mtime_str = NULL;
     const char *user_str = NULL;
     const char *group_str = NULL;
@@ -1761,6 +1763,21 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
                 if (lstat(file_path, &sb) == 0) {
                     typebits = sb.st_mode & S_IFMT;
+                    payload_type = type_name(sb.st_mode);
+
+                    /*
+                     * The payload holds something other than what the
+                     * file list calls it, so the file list is what
+                     * needs fixing.
+                     */
+                    if (json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &filetype_obj)) {
+                        filetype_str = json_object_get_string(filetype_obj);
+
+                        if (strcmp(filetype_str, payload_type)) {
+                            warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, filetype_str);
+                            json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(payload_type));
+                        }
+                    }
                 }
 
                 free(file_path);
