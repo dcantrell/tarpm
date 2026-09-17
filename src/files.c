@@ -71,6 +71,51 @@ struct payload_scan {
 };
 
 /*
+ * Helper struct for the add_file_list_tags() function.
+ * There is one array per file list tag and they all stay parallel to
+ * the file list.  The rest of it tracks the things rpm stores once
+ * and has each file point at: the directory names, the file classes
+ * and the hard link groups.
+ */
+struct file_list_tags {
+    struct json_object *dirnames;
+    struct json_object *basenames;
+    struct json_object *dirindexes;
+    struct json_object *filesizes;
+    struct json_object *filemodes;
+    struct json_object *filemtimes;
+    struct json_object *fileusernames;
+    struct json_object *filegroupnames;
+    struct json_object *filerdevs;
+    struct json_object *filedevices;
+    struct json_object *filedigests;
+    struct json_object *filelinktos;
+    struct json_object *fileinodes;
+    struct json_object *fileclass;
+    struct json_object *classdict;
+    struct json_object *filelangs;
+    struct json_object *filecolors;
+    struct json_object *fileflags;
+    struct json_object *fileverifyflags;
+    struct json_object *filedependsx;
+    struct json_object *filedependsn;
+    struct json_object *dependsdict;
+
+    /* the directory names, in the order they first show up */
+    char **dirs;
+    size_t ndirs;
+
+    /* the class strings, in the order they first show up */
+    char **classes;
+    size_t nclasses;
+
+    /* what each hard link group carried and the number rpm gives it */
+    int *inodes;
+    int *mapped;
+    size_t ninodes;
+};
+
+/*
  * Maps a single RPMFILE_* bit to the name it carries in the "files"
  * array.  The names are the enum constant names from rpmfileAttrs_e
  * with the RPMFILE_ prefix trimmed and lowercased.
@@ -1579,102 +1624,46 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     size_t i = 0;
     size_t j = 0;
     size_t count = 0;
-    size_t ndirs = 0;
-    struct json_object *file = NULL;
-    struct json_object *path_obj = NULL;
-    struct json_object *size_obj = NULL;
-    struct json_object *mode_obj = NULL;
-    struct json_object *filetype_obj = NULL;
-    struct json_object *mtime_obj = NULL;
-    struct json_object *user_obj = NULL;
-    struct json_object *group_obj = NULL;
-    struct json_object *rdev_obj = NULL;
-    struct json_object *device_obj = NULL;
-    struct json_object *digest_obj = NULL;
-    struct json_object *linkto_obj = NULL;
-    struct json_object *inode_obj = NULL;
-    struct json_object *class_obj = NULL;
-    struct json_object *langs_obj = NULL;
-    struct json_object *colors_obj = NULL;
-    struct json_object *flags_obj = NULL;
-    struct json_object *verifyflags_obj = NULL;
-    struct json_object *provides_obj = NULL;
-    struct json_object *type_obj = NULL;
-    struct json_object *ref = NULL;
-    struct json_object *dirnames = NULL;
-    struct json_object *basenames = NULL;
-    struct json_object *dirindexes = NULL;
-    struct json_object *filesizes = NULL;
-    struct json_object *filemodes = NULL;
-    struct json_object *filemtimes = NULL;
-    struct json_object *fileusernames = NULL;
-    struct json_object *filegroupnames = NULL;
-    struct json_object *filerdevs = NULL;
-    struct json_object *filedevices = NULL;
-    struct json_object *filedigests = NULL;
-    struct json_object *filelinktos = NULL;
-    struct json_object *fileinodes = NULL;
-    struct json_object *fileclass = NULL;
-    struct json_object *classdict = NULL;
-    struct json_object *filelangs = NULL;
-    struct json_object *filecolors = NULL;
-    struct json_object *fileflags = NULL;
-    struct json_object *fileverifyflags = NULL;
-    struct json_object *filedependsx = NULL;
-    struct json_object *filedependsn = NULL;
-    struct json_object *dependsdict = NULL;
-    struct json_object *tag = NULL;
-    str_list_t *langs = NULL;
-    char *langs_str = NULL;
-    size_t nlangs = 0;
-    const char *path = NULL;
-    const char *basename = NULL;
-    const char *dirname = NULL;
-    const char *mode_str = NULL;
-    const char *mtime_str = NULL;
-    const char *user_str = NULL;
-    const char *group_str = NULL;
-    const char *digest_str = NULL;
-    const char *digestalgo_str = NULL;
-    char *computed_digest = NULL;
-    uint32_t digestalgo = 0;
-    const char *linkto_str = NULL;
-    const char *class_str = NULL;
-    const char *type_str = NULL;
-    char *dirname_copy = NULL;
-    const char *separator = NULL;
-    char *file_path = NULL;
-    char **unique_dirs = NULL;
-    char **unique_classes = NULL;
-    int *unique_inodes = NULL;
-    int *mapped_inodes = NULL;
-    size_t ninodes = 0;
     size_t nkept = 0;
-    size_t nclasses = 0;
+    size_t nlangs = 0;
     size_t nprovides = 0;
     size_t ndepends = 0;
     size_t dependsstart = 0;
-    int depindex = 0;
+    struct file_list_tags out = { 0 };
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+    struct json_object *provides = NULL;
+    struct json_object *ref = NULL;
+    struct json_object *tag = NULL;
+    str_list_t *langs = NULL;
+    char *langs_str = NULL;
+    const char *path = NULL;
+    const char *basename = NULL;
+    const char *dirname = NULL;
+    const char *str = NULL;
+    const char *separator = NULL;
+    char *dirname_copy = NULL;
+    char *file_path = NULL;
+    char *computed_digest = NULL;
+    char sizebuf[32];
+    uint32_t digestalgo = 0;
+    uint32_t bits = 0;
     char abbrev = '\0';
     struct stat sb;
     struct tm tm_info;
-    int dirindex = 0;
-    int64_t size = 0;
-    int64_t totalsize = 0;
-    char sizebuf[32];
+    int dictindex = 0;
+    int depindex = 0;
     int mode = 0;
     int perms = 0;
     mode_t typebits = 0;
     int rdev = 0;
     int64_t device = 0;
     int inode = 0;
-    int classindex = 0;
-    uint32_t color = 0;
-    uint32_t flags = 0;
-    uint32_t verifyflags = 0;
+    int64_t size = 0;
+    int64_t totalsize = 0;
     time_t mtime = 0;
     bool found = false;
-    bool class_found = false;
+    bool have_stat = false;
     bool source_package = false;
 
     if (tags == NULL || files == NULL) {
@@ -1703,53 +1692,53 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
      * up front.  rpm defaults to MD5 for packages missing the
      * RPMTAG_FILEDIGESTALGO tag.
      */
-    digestalgo_str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+    str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
 
-    if (digestalgo_str == NULL) {
+    if (str == NULL) {
         digestalgo = PGPHASHALGO_MD5;
     } else {
-        digestalgo = digest_algo(digestalgo_str);
+        digestalgo = digest_algo(str);
     }
 
     /* Allocate arrays for unique directory, class and inode tracking */
-    unique_dirs = xcalloc(count, sizeof(char *));
-    unique_classes = xcalloc(count, sizeof(char *));
-    unique_inodes = xcalloc(count, sizeof(int));
-    mapped_inodes = xcalloc(count, sizeof(int));
+    out.dirs = xcalloc(count, sizeof(char *));
+    out.classes = xcalloc(count, sizeof(char *));
+    out.inodes = xcalloc(count, sizeof(int));
+    out.mapped = xcalloc(count, sizeof(int));
 
     /* Create the arrays */
-    dirnames = json_object_new_array();
-    basenames = json_object_new_array();
-    dirindexes = json_object_new_array();
-    filesizes = json_object_new_array();
-    filemodes = json_object_new_array();
-    filemtimes = json_object_new_array();
-    fileusernames = json_object_new_array();
-    filegroupnames = json_object_new_array();
-    filerdevs = json_object_new_array();
-    filedevices = json_object_new_array();
-    filedigests = json_object_new_array();
-    filelinktos = json_object_new_array();
-    fileinodes = json_object_new_array();
-    fileclass = json_object_new_array();
-    classdict = json_object_new_array();
-    filelangs = json_object_new_array();
-    filecolors = json_object_new_array();
-    fileflags = json_object_new_array();
-    fileverifyflags = json_object_new_array();
-    filedependsx = json_object_new_array();
-    filedependsn = json_object_new_array();
-    dependsdict = json_object_new_array();
+    out.dirnames = json_object_new_array();
+    out.basenames = json_object_new_array();
+    out.dirindexes = json_object_new_array();
+    out.filesizes = json_object_new_array();
+    out.filemodes = json_object_new_array();
+    out.filemtimes = json_object_new_array();
+    out.fileusernames = json_object_new_array();
+    out.filegroupnames = json_object_new_array();
+    out.filerdevs = json_object_new_array();
+    out.filedevices = json_object_new_array();
+    out.filedigests = json_object_new_array();
+    out.filelinktos = json_object_new_array();
+    out.fileinodes = json_object_new_array();
+    out.fileclass = json_object_new_array();
+    out.classdict = json_object_new_array();
+    out.filelangs = json_object_new_array();
+    out.filecolors = json_object_new_array();
+    out.fileflags = json_object_new_array();
+    out.fileverifyflags = json_object_new_array();
+    out.filedependsx = json_object_new_array();
+    out.filedependsn = json_object_new_array();
+    out.dependsdict = json_object_new_array();
 
     /* Process each file entry */
     for (i = 0; i < count; i++) {
         file = json_object_array_get_idx(files, i);
 
-        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &path_obj)) {
+        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &value)) {
             continue;
         }
 
-        path = json_object_get_string(path_obj);
+        path = json_object_get_string(value);
 
         /*
          * Files that have been removed from the payload tree since the
@@ -1761,16 +1750,24 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         /*
+         * Where this entry lands in the payload tree and what is
+         * sitting there.  The type, the size and the digest all come
+         * from it below, so look it up the once.
+         */
+        file_path = NULL;
+        have_stat = false;
+
+        if (input_dir != NULL && payload_subdir != NULL) {
+            /* Strip leading slash from path for payload lookup */
+            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+            have_stat = (lstat(file_path, &sb) == 0);
+        }
+
+        /*
          * Make entry types match types in the payload subdirectory.
          */
-        if (input_dir != NULL && payload_subdir != NULL) {
-            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
-
-            if (lstat(file_path, &sb) == 0) {
-                fix_type_mismatch(file, path, file_path, &sb, digestalgo);
-            }
-
-            free(file_path);
+        if (have_stat) {
+            fix_type_mismatch(file, path, file_path, &sb, digestalgo);
         }
 
         /* Find the last separator to split dirname and basename */
@@ -1795,13 +1792,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             dirname = dirname_copy;
         }
 
-        /* Find or add dirname to unique_dirs */
-        dirindex = -1;
+        /* Find or add dirname to the directory names */
+        dictindex = -1;
         found = false;
 
-        for (j = 0; j < ndirs; j++) {
-            if (strcmp(unique_dirs[j], dirname) == 0) {
-                dirindex = j;
+        for (j = 0; j < out.ndirs; j++) {
+            if (strcmp(out.dirs[j], dirname) == 0) {
+                dictindex = j;
                 found = true;
                 break;
             }
@@ -1809,14 +1806,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         if (!found) {
             /* New directory */
-            unique_dirs[ndirs] = strdup(dirname);
-            dirindex = ndirs;
-            ndirs++;
+            out.dirs[out.ndirs] = strdup(dirname);
+            dictindex = out.ndirs;
+            out.ndirs++;
         }
 
         /* Add basename and dirindex */
-        json_object_array_add(basenames, json_object_new_string(basename));
-        json_object_array_add(dirindexes, json_object_new_int(dirindex));
+        json_object_array_add(out.basenames, json_object_new_string(basename));
+        json_object_array_add(out.dirindexes, json_object_new_int(dictindex));
 
         /*
          * Add size (regular files have size, non-files get 0).  The
@@ -1825,51 +1822,36 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         size = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, &size_obj)) {
-            size = json_object_get_int64(size_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, &value)) {
+            size = json_object_get_int64(value);
 
-            if (input_dir != NULL && payload_subdir != NULL) {
-                file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
-
-                if (lstat(file_path, &sb) == 0 && S_ISREG(sb.st_mode)) {
-                    size = (int64_t) sb.st_size;
-                }
-
-                free(file_path);
+            if (have_stat && S_ISREG(sb.st_mode)) {
+                size = (int64_t) sb.st_size;
             }
         }
 
-        json_object_array_add(filesizes, json_object_new_int64(size));
+        json_object_array_add(out.filesizes, json_object_new_int64(size));
 
         /* Reconstruct full mode from permission bits and actual file type */
         mode = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_MODE_DESC, &mode_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_MODE_DESC, &value)) {
             /* Parse octal permission string */
-            mode_str = json_object_get_string(mode_obj);
-            perms = (int) strtol(mode_str, NULL, 8);
+            perms = (int) strtol(json_object_get_string(value), NULL, 8);
 
             /* the file in the payload tree says what type it is */
             typebits = 0;
 
-            if (input_dir != NULL && payload_subdir != NULL) {
-                /* Strip leading slash from path for payload lookup */
-                const char *relative_path = (path[0] == '/') ? path + 1 : path;
-                file_path = joinpath(input_dir, payload_subdir, relative_path, NULL);
-
-                if (lstat(file_path, &sb) == 0) {
-                    typebits = sb.st_mode & S_IFMT;
-                }
-
-                free(file_path);
+            if (have_stat) {
+                typebits = sb.st_mode & S_IFMT;
             }
 
             /*
              * Nothing in the payload to look at, so go by the type the
              * file list names.  %ghost entries land here.
              */
-            if (typebits == 0 && json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &filetype_obj)) {
-                typebits = type_bits(json_object_get_string(filetype_obj));
+            if (typebits == 0 && json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &value)) {
+                typebits = type_bits(json_object_get_string(value));
             }
 
             /*
@@ -1888,76 +1870,75 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             mode = typebits | (perms & ALLPERMS);
         }
 
-        json_object_array_add(filemodes, json_object_new_int(mode));
+        json_object_array_add(out.filemodes, json_object_new_int(mode));
 
         /* Parse mtime from ISO 8601 timestamp string */
         mtime = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_MTIME_DESC, &mtime_obj)) {
-            mtime_str = json_object_get_string(mtime_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_MTIME_DESC, &value)) {
             memset(&tm_info, 0, sizeof(struct tm));
 
-            if (strptime(mtime_str, RPM_FILE_MTIME_FORMAT, &tm_info) != NULL) {
+            if (strptime(json_object_get_string(value), RPM_FILE_MTIME_FORMAT, &tm_info) != NULL) {
                 mtime = timegm(&tm_info);
             }
         }
 
-        json_object_array_add(filemtimes, json_object_new_int64(mtime));
+        json_object_array_add(out.filemtimes, json_object_new_int64(mtime));
 
         /* Extract user if available */
-        user_str = NULL;
+        str = NULL;
 
-        if (json_object_object_get_ex(file, RPM_FILE_USER_DESC, &user_obj)) {
-            user_str = json_object_get_string(user_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_USER_DESC, &value)) {
+            str = json_object_get_string(value);
         }
 
-        if (user_str != NULL) {
-            json_object_array_add(fileusernames, json_object_new_string(user_str));
+        if (str != NULL) {
+            json_object_array_add(out.fileusernames, json_object_new_string(str));
         } else {
-            json_object_array_add(fileusernames, json_object_new_string(RPM_FILE_DEFAULT_USER));
+            json_object_array_add(out.fileusernames, json_object_new_string(RPM_FILE_DEFAULT_USER));
         }
 
         /* Extract group if available */
-        group_str = NULL;
+        str = NULL;
 
-        if (json_object_object_get_ex(file, RPM_FILE_GROUP_DESC, &group_obj)) {
-            group_str = json_object_get_string(group_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_GROUP_DESC, &value)) {
+            str = json_object_get_string(value);
         }
 
-        if (group_str != NULL) {
-            json_object_array_add(filegroupnames, json_object_new_string(group_str));
+        if (str != NULL) {
+            json_object_array_add(out.filegroupnames, json_object_new_string(str));
         } else {
-            json_object_array_add(filegroupnames, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
+            json_object_array_add(out.filegroupnames, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
         }
 
         /* Extract rdev if available */
         rdev = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_RDEV_DESC, &rdev_obj)) {
-            rdev = json_object_get_int(rdev_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_RDEV_DESC, &value)) {
+            rdev = json_object_get_int(value);
         }
 
-        json_object_array_add(filerdevs, json_object_new_int(rdev));
+        json_object_array_add(out.filerdevs, json_object_new_int(rdev));
 
         /* Extract device if available */
         device = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_DEVICE_DESC, &device_obj)) {
-            device = json_object_get_int64(device_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_DEVICE_DESC, &value)) {
+            device = json_object_get_int64(value);
         }
 
-        json_object_array_add(filedevices, json_object_new_int64(device));
+        json_object_array_add(out.filedevices, json_object_new_int64(device));
 
         /*
          * Extract digest if available.  Entries without a "digest" key
          * (directories, symlinks, device nodes, etc.) carry an empty
          * string so the array stays parallel to the file list.
          */
-        digest_str = NULL;
+        str = NULL;
         computed_digest = NULL;
 
-        if (json_object_object_get_ex(file, RPM_FILE_DIGEST_DESC, &digest_obj)) {
-            digest_str = json_object_get_string(digest_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_DIGEST_DESC, &value)) {
+            str = json_object_get_string(value);
         }
 
         /*
@@ -1966,24 +1947,18 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * the header.  The digest header.json recorded is kept if
          * there is no regular file in the payload to read.
          */
-        if (digest_str != NULL && digest_str[0] != '\0' && digestalgo != 0 && input_dir != NULL && payload_subdir != NULL) {
-            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+        if (str != NULL && str[0] != '\0' && digestalgo != 0 && have_stat && S_ISREG(sb.st_mode)) {
+            computed_digest = mkfiledigest(file_path, digestalgo);
 
-            if (lstat(file_path, &sb) == 0 && S_ISREG(sb.st_mode)) {
-                computed_digest = mkfiledigest(file_path, digestalgo);
-
-                if (computed_digest != NULL) {
-                    digest_str = computed_digest;
-                }
+            if (computed_digest != NULL) {
+                str = computed_digest;
             }
-
-            free(file_path);
         }
 
-        if (digest_str != NULL) {
-            json_object_array_add(filedigests, json_object_new_string(digest_str));
+        if (str != NULL) {
+            json_object_array_add(out.filedigests, json_object_new_string(str));
         } else {
-            json_object_array_add(filedigests, json_object_new_string(""));
+            json_object_array_add(out.filedigests, json_object_new_string(""));
         }
 
         free(computed_digest);
@@ -1993,16 +1968,16 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * (everything that is not a symlink) carry an empty string so
          * the array stays parallel to the file list.
          */
-        linkto_str = NULL;
+        str = NULL;
 
-        if (json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, &linkto_obj)) {
-            linkto_str = json_object_get_string(linkto_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, &value)) {
+            str = json_object_get_string(value);
         }
 
-        if (linkto_str != NULL) {
-            json_object_array_add(filelinktos, json_object_new_string(linkto_str));
+        if (str != NULL) {
+            json_object_array_add(out.filelinktos, json_object_new_string(str));
         } else {
-            json_object_array_add(filelinktos, json_object_new_string(""));
+            json_object_array_add(out.filelinktos, json_object_new_string(""));
         }
 
         /*
@@ -2016,12 +1991,12 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         inode = (int) (nkept + 1);
 
-        if (json_object_object_get_ex(file, RPM_FILE_INODE_DESC, &inode_obj)) {
+        if (json_object_object_get_ex(file, RPM_FILE_INODE_DESC, &value)) {
             found = false;
 
-            for (j = 0; j < ninodes; j++) {
-                if (unique_inodes[j] == json_object_get_int(inode_obj)) {
-                    inode = mapped_inodes[j];
+            for (j = 0; j < out.ninodes; j++) {
+                if (out.inodes[j] == json_object_get_int(value)) {
+                    inode = out.mapped[j];
                     found = true;
                     break;
                 }
@@ -2029,13 +2004,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
             if (!found) {
                 /* the first entry of a hard link group names the group */
-                unique_inodes[ninodes] = json_object_get_int(inode_obj);
-                mapped_inodes[ninodes] = inode;
-                ninodes++;
+                out.inodes[out.ninodes] = json_object_get_int(value);
+                out.mapped[out.ninodes] = inode;
+                out.ninodes++;
             }
         }
 
-        json_object_array_add(fileinodes, json_object_new_int(inode));
+        json_object_array_add(out.fileinodes, json_object_new_int(inode));
 
         /*
          * Add up the installed size.  Hard links of one another share
@@ -2051,30 +2026,30 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * of first appearance and FILECLASS holds each file's index into
          * it.  Entries without a "class" key use an empty string.
          */
-        class_str = "";
+        str = "";
 
-        if (json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, &class_obj)) {
-            class_str = json_object_get_string(class_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, &value)) {
+            str = json_object_get_string(value);
         }
 
-        classindex = -1;
-        class_found = false;
+        dictindex = -1;
+        found = false;
 
-        for (j = 0; j < nclasses; j++) {
-            if (strcmp(unique_classes[j], class_str) == 0) {
-                classindex = j;
-                class_found = true;
+        for (j = 0; j < out.nclasses; j++) {
+            if (strcmp(out.classes[j], str) == 0) {
+                dictindex = j;
+                found = true;
                 break;
             }
         }
 
-        if (!class_found) {
-            unique_classes[nclasses] = strdup(class_str);
-            classindex = nclasses;
-            nclasses++;
+        if (!found) {
+            out.classes[out.nclasses] = strdup(str);
+            dictindex = out.nclasses;
+            out.nclasses++;
         }
 
-        json_object_array_add(fileclass, json_object_new_int(classindex));
+        json_object_array_add(out.fileclass, json_object_new_int(dictindex));
 
         /*
          * Extract langs if available.  The "langs" value is an array of
@@ -2085,11 +2060,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          */
         langs_str = NULL;
 
-        if (json_object_object_get_ex(file, RPM_FILE_LANGS_DESC, &langs_obj) && json_object_get_type(langs_obj) == json_type_array) {
-            nlangs = json_object_array_length(langs_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_LANGS_DESC, &value) && json_object_get_type(value) == json_type_array) {
+            nlangs = json_object_array_length(value);
 
             for (j = 0; j < nlangs; j++) {
-                langs = list_add(langs, json_object_get_string(json_object_array_get_idx(langs_obj, j)));
+                langs = list_add(langs, json_object_get_string(json_object_array_get_idx(value, j)));
             }
 
             langs_str = list_to_string(langs, RPM_FILE_LANG_SEPARATOR);
@@ -2098,11 +2073,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         if (langs_str != NULL) {
-            json_object_array_add(filelangs, json_object_new_string(langs_str));
+            json_object_array_add(out.filelangs, json_object_new_string(langs_str));
             free(langs_str);
             langs_str = NULL;
         } else {
-            json_object_array_add(filelangs, json_object_new_string(""));
+            json_object_array_add(out.filelangs, json_object_new_string(""));
         }
 
         /*
@@ -2111,13 +2086,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * without a "colors" key carry a zero so the array stays
          * parallel to the file list.
          */
-        color = 0;
+        bits = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_COLORS_DESC, &colors_obj)) {
-            color = color_value(colors_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_COLORS_DESC, &value)) {
+            bits = color_value(value);
         }
 
-        json_object_array_add(filecolors, json_object_new_int64(color));
+        json_object_array_add(out.filecolors, json_object_new_int64(bits));
 
         /*
          * Extract flags if available.  The "flags" value is an array of
@@ -2125,13 +2100,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * "flags" key carry a zero so the array stays parallel to the
          * file list.
          */
-        flags = 0;
+        bits = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags_obj)) {
-            flags = flag_value(flags_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &value)) {
+            bits = flag_value(value);
         }
 
-        json_object_array_add(fileflags, json_object_new_int64(flags));
+        json_object_array_add(out.fileflags, json_object_new_int64(bits));
 
         /*
          * Extract verifyflags if available.  The "verifyflags" value is
@@ -2140,11 +2115,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * attributes, which verifyflag_value() handles, so the array
          * stays parallel to the file list.
          */
-        verifyflags_obj = NULL;
-        json_object_object_get_ex(file, RPM_FILE_VERIFYFLAGS_DESC, &verifyflags_obj);
-        verifyflags = verifyflag_value(verifyflags_obj);
+        value = NULL;
+        json_object_object_get_ex(file, RPM_FILE_VERIFYFLAGS_DESC, &value);
+        bits = verifyflag_value(value);
 
-        json_object_array_add(fileverifyflags, json_object_new_int64(verifyflags));
+        json_object_array_add(out.fileverifyflags, json_object_new_int64(bits));
 
         /*
          * Extract provides if available.  The "provides" value is the
@@ -2156,36 +2131,36 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * a "provides" key get a length of zero, and rpmbuild writes a
          * zero start for those too.
          */
-        dependsstart = json_object_array_length(dependsdict);
+        dependsstart = json_object_array_length(out.dependsdict);
         ndepends = 0;
 
-        if (json_object_object_get_ex(file, RPM_FILE_PROVIDES_DESC, &provides_obj) && json_object_get_type(provides_obj) == json_type_array) {
-            nprovides = json_object_array_length(provides_obj);
+        if (json_object_object_get_ex(file, RPM_FILE_PROVIDES_DESC, &provides) && json_object_get_type(provides) == json_type_array) {
+            nprovides = json_object_array_length(provides);
 
             for (j = 0; j < nprovides; j++) {
-                ref = json_object_array_get_idx(provides_obj, j);
+                ref = json_object_array_get_idx(provides, j);
 
-                if (!json_object_object_get_ex(ref, RPM_DEPENDENCY_TYPE_DESC, &type_obj)) {
+                if (!json_object_object_get_ex(ref, RPM_DEPENDENCY_TYPE_DESC, &value)) {
                     warnx(_("*** missing dependency type in the provides of %s"), path);
                     continue;
                 }
 
-                type_str = json_object_get_string(type_obj);
-                abbrev = dependency_type_abbrev(type_str);
+                str = json_object_get_string(value);
+                abbrev = dependency_type_abbrev(str);
 
                 if (abbrev == '\0') {
-                    warnx(_("*** unknown dependency type %s in the provides of %s"), type_str, path);
+                    warnx(_("*** unknown dependency type %s in the provides of %s"), str, path);
                     continue;
                 }
 
-                depindex = dependency_index(dependencies, type_str, ref);
+                depindex = dependency_index(dependencies, str, ref);
 
                 if (depindex < 0) {
-                    warnx(_("*** no matching %s dependency for the provides of %s"), type_str, path);
+                    warnx(_("*** no matching %s dependency for the provides of %s"), str, path);
                     continue;
                 }
 
-                json_object_array_add(dependsdict, json_object_new_int64((((uint32_t) abbrev) << DEPENDS_DICT_TYPE_SHIFT) | ((uint32_t) depindex & DEPENDS_DICT_INDEX_MASK)));
+                json_object_array_add(out.dependsdict, json_object_new_int64((((uint32_t) abbrev) << DEPENDS_DICT_TYPE_SHIFT) | ((uint32_t) depindex & DEPENDS_DICT_INDEX_MASK)));
                 ndepends++;
             }
         }
@@ -2194,35 +2169,38 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             dependsstart = 0;
         }
 
-        json_object_array_add(filedependsx, json_object_new_int64(dependsstart));
-        json_object_array_add(filedependsn, json_object_new_int64(ndepends));
+        json_object_array_add(out.filedependsx, json_object_new_int64(dependsstart));
+        json_object_array_add(out.filedependsn, json_object_new_int64(ndepends));
 
         if (dirname_copy) {
             free(dirname_copy);
             dirname_copy = NULL;
         }
 
+        free(file_path);
+        file_path = NULL;
+
         nkept++;
     }
 
-    free(unique_inodes);
-    free(mapped_inodes);
+    free(out.inodes);
+    free(out.mapped);
 
-    /* Build the dirnames array from unique_dirs */
-    for (i = 0; i < ndirs; i++) {
-        json_object_array_add(dirnames, json_object_new_string(unique_dirs[i]));
-        free(unique_dirs[i]);
+    /* Build the dirnames array from the directory names */
+    for (i = 0; i < out.ndirs; i++) {
+        json_object_array_add(out.dirnames, json_object_new_string(out.dirs[i]));
+        free(out.dirs[i]);
     }
 
-    free(unique_dirs);
+    free(out.dirs);
 
-    /* Build the classdict array from unique_classes */
-    for (i = 0; i < nclasses; i++) {
-        json_object_array_add(classdict, json_object_new_string(unique_classes[i]));
-        free(unique_classes[i]);
+    /* Build the classdict array from the class strings */
+    for (i = 0; i < out.nclasses; i++) {
+        json_object_array_add(out.classdict, json_object_new_string(out.classes[i]));
+        free(out.classes[i]);
     }
 
-    free(unique_classes);
+    free(out.classes);
 
     /*
      * Update the installed size of the package.  Files may have been
@@ -2239,109 +2217,109 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_BASENAMES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, basenames);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.basenames);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_DIRINDEXES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DIRINDEXES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dirindexes);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.dirindexes);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_DIRNAMES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DIRNAMES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dirnames);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.dirnames);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILESIZES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILESIZES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filesizes);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filesizes);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEMODES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMODES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT16_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemodes);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filemodes);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEMTIMES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMTIMES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filemtimes);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filemtimes);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEUSERNAME tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEUSERNAME)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileusernames);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.fileusernames);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEGROUPNAME tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEGROUPNAME)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filegroupnames);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filegroupnames);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILERDEVS tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILERDEVS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT16_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filerdevs);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filerdevs);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEDEVICES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEVICES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedevices);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filedevices);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEDIGESTS tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDIGESTS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedigests);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filedigests);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILELINKTOS tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILELINKTOS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelinktos);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filelinktos);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEINODES tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEINODES)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileinodes);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.fileinodes);
     json_object_array_add(tags, tag);
 
     if (source_package) {
-        json_object_put(fileclass);
-        json_object_put(classdict);
+        json_object_put(out.fileclass);
+        json_object_put(out.classdict);
     } else {
         /* Add RPMTAG_FILECLASS tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECLASS)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileclass);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.fileclass);
         json_object_array_add(tags, tag);
 
         /* Add RPMTAG_CLASSDICT tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_CLASSDICT)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, classdict);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.classdict);
         json_object_array_add(tags, tag);
     }
 
@@ -2349,17 +2327,17 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILELANGS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filelangs);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filelangs);
     json_object_array_add(tags, tag);
 
     if (source_package) {
-        json_object_put(filecolors);
+        json_object_put(out.filecolors);
     } else {
         /* Add RPMTAG_FILECOLORS tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILECOLORS)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filecolors);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filecolors);
         json_object_array_add(tags, tag);
     }
 
@@ -2367,14 +2345,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEFLAGS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileflags);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.fileflags);
     json_object_array_add(tags, tag);
 
     /* Add RPMTAG_FILEVERIFYFLAGS tag */
     tag = json_object_new_object();
     json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEVERIFYFLAGS)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, fileverifyflags);
+    json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.fileverifyflags);
     json_object_array_add(tags, tag);
 
     /*
@@ -2384,31 +2362,31 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
      * drop them when the dictionary came out empty.  Source RPMs are
      * the common case for that.
      */
-    if (json_object_array_length(dependsdict) > 0) {
+    if (json_object_array_length(out.dependsdict) > 0) {
         /* Add RPMTAG_DEPENDSDICT tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_DEPENDSDICT)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, dependsdict);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.dependsdict);
         json_object_array_add(tags, tag);
 
         /* Add RPMTAG_FILEDEPENDSX tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEPENDSX)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedependsx);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filedependsx);
         json_object_array_add(tags, tag);
 
         /* Add RPMTAG_FILEDEPENDSN tag */
         tag = json_object_new_object();
         json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEDEPENDSN)));
         json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
-        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, filedependsn);
+        json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, out.filedependsn);
         json_object_array_add(tags, tag);
     } else {
-        json_object_put(dependsdict);
-        json_object_put(filedependsx);
-        json_object_put(filedependsn);
+        json_object_put(out.dependsdict);
+        json_object_put(out.filedependsx);
+        json_object_put(out.filedependsn);
     }
 
     return;
