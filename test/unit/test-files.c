@@ -833,6 +833,86 @@ test_add_file_list_tags_type_from_payload(void)
     return;
 }
 
+/*
+ * Test add_file_list_tags() corrects an entry whose type does not
+ * match what the payload tree holds.
+ */
+void
+test_add_file_list_tags_type_mismatch(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    mkdir_payload(input_dir, "/usr/bin");
+    write_payload(input_dir, "/usr/bin/plain", 3);
+    link_payload(input_dir, "/usr/bin/link", "plain");
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* the payload has a directory here and not a regular file */
+    file = add_file(files, "/usr/bin");
+    json_object_object_add(file, "mode", json_object_new_string("0755"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+
+    /* and a symlink here and not a regular file */
+    file = add_file(files, "/usr/bin/link");
+    json_object_object_add(file, "mode", json_object_new_string("0777"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+
+    /* this one agrees and is left alone */
+    file = add_file(files, "/usr/bin/plain");
+    json_object_object_add(file, "mode", json_object_new_string("0644"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+    json_object_object_add(file, "size", json_object_new_int64(3));
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    /* the file list now says what the payload holds */
+    file = json_object_array_get_idx(files, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "dir");
+
+    file = json_object_array_get_idx(files, 1);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "symlink");
+
+    file = json_object_array_get_idx(files, 2);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "file");
+
+    /* and so do the modes */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), (int) (S_IFDIR | 0755));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), (int) (S_IFLNK | 0777));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), (int) (S_IFREG | 0644));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(input_dir, "/usr/bin/plain");
+    remove_payload(input_dir, "/usr/bin/link");
+    remove_payload(input_dir, "/usr/bin");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
 /* Add a tag entry with the given name and value to a tags array */
 static void
 add_tag(struct json_object *tags, const char *name, const char *value)
@@ -1628,6 +1708,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with the installed size", test_add_file_list_tags_total_size) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with each file type", test_add_file_list_tags_types) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with types from the payload", test_add_file_list_tags_type_from_payload) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with a type mismatch", test_add_file_list_tags_type_mismatch) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||

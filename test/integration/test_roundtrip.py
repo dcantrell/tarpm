@@ -1174,6 +1174,55 @@ class TestCreateAddedPayloadFileTypes(RoundTrip, TestUnpackRPM):
         self.assertVerifies(recreated)
 
 
+class TestCreateFixesFileTypeMismatch(RoundTrip, TestUnpackRPM):
+    """A payload file of another type than the file list says wins"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/swapped.txt" % NAME,
+            rpmfluff.SourceFile("swapped.txt", b"a plain file for now\n"),
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        swapped = "%s/swapped.txt" % base
+
+        # the file list calls it a file, so make it a directory instead
+        os.unlink(self.payload_path(extract_dir, swapped))
+        os.mkdir(self.payload_path(extract_dir, swapped))
+
+        recreated, err = self.create_warns(extract_dir)
+        modes = dict(mode_list(recreated))
+
+        self.assertEqual(
+            err.count("%s is a dir in the payload and not a file" % swapped), 1, err
+        )
+        self.assertEqual(modes[swapped] & 0o170000, 0o040000)
+        self.assertEqual(modes["%s/kept.txt" % base] & 0o170000, 0o100000)
+
+        # the file list of the new package says so too
+        types = dict(
+            [
+                (f["path"], f["type"])
+                for f in read_header(self.extract(recreated, subdir="again"))["files"]
+            ]
+        )
+
+        self.assertEqual(types[swapped], "dir")
+        self.assertEqual(types["%s/kept.txt" % base], "file")
+
+        self.assertVerifies(recreated)
+
+
 class TestCreateRecomputesInstalledSize(RoundTrip, TestUnpackRPM):
     """The installed size follows what the payload tree holds"""
 
