@@ -65,7 +65,7 @@ check: setup
 	fi
 
 flake8:
-	$(PYTHON) -m flake8 --ignore=E501,W503
+	$(PYTHON) -m flake8 --ignore=E501,W503 $(topdir)/test/
 
 black:
 	$(PYTHON) -m black --check --diff $(topdir)/test/
