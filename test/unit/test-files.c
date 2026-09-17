@@ -317,6 +317,55 @@ test_generate_files_valid(void)
     return;
 }
 
+/* The file types and the names the "files" array gives them */
+static const mode_t type_bits_list[] = { S_IFIFO, S_IFCHR, S_IFDIR, S_IFBLK, S_IFREG, S_IFLNK, S_IFSOCK };
+static const char *type_name_list[] = { "pipe", "chardev", "dir", "blockdev", "file", "symlink", "socket" };
+static const size_t ntypes = sizeof(type_bits_list) / sizeof(type_bits_list[0]);
+
+/* Test generate_files() names the file type the mode bits carry */
+void
+test_generate_files_types(void)
+{
+    size_t i = 0;
+    struct rpmhdr hdr;
+    struct rpmhdrinfo hdrinfo;
+    struct rpmhdrentry entries[NUM_ENTRIES];
+    uint8_t data[DATA_SIZE];
+    uint16_t val16 = 0;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    for (i = 0; i < ntypes; i++) {
+        build_header(&hdr, &hdrinfo, entries, data);
+
+        /* the second file takes the type under test */
+        val16 = htons(type_bits_list[i] | 0644);
+        memcpy(data + FILEMODES_OFFSET + sizeof(val16), &val16, sizeof(val16));
+
+        files = generate_files(&hdr, &hdrinfo, NULL);
+        TARPM_ASSERT_PTR_NOT_NULL(files);
+        TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
+
+        /* the first file is left a regular file */
+        file = json_object_array_get_idx(files, 0);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "file");
+
+        file = json_object_array_get_idx(files, 1);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "type", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), type_name_list[i]);
+
+        /* the permissions keep to themselves */
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "mode", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "0644");
+
+        json_object_put(files);
+    }
+
+    return;
+}
+
 /* Test add_file_list_tags() with NULL inputs */
 void
 test_add_file_list_tags_null(void)
@@ -657,6 +706,129 @@ test_add_file_list_tags_sizes_no_payload(void)
 
     json_object_put(tags);
     json_object_put(files);
+
+    return;
+}
+
+/* Test add_file_list_tags() builds the mode out of the type and the permissions */
+void
+test_add_file_list_tags_types(void)
+{
+    size_t i = 0;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    for (i = 0; i < ntypes; i++) {
+        file = add_file(files, type_name_list[i]);
+        json_object_object_add(file, "mode", json_object_new_string("0644"));
+        json_object_object_add(file, "type", json_object_new_string(type_name_list[i]));
+    }
+
+    /* a type nobody knows falls back to the guess tarpm used to make */
+    file = add_file(files, "mystery");
+    json_object_object_add(file, "mode", json_object_new_string("0644"));
+    json_object_object_add(file, "type", json_object_new_string("wormhole"));
+    json_object_object_add(file, "size", json_object_new_int64(3));
+
+    /* so does an entry from an older file list that names no type */
+    file = add_file(files, "notype");
+    json_object_object_add(file, "mode", json_object_new_string("0755"));
+
+    add_file_list_tags(tags, files, NULL, NULL, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), ntypes + 2);
+
+    for (i = 0; i < ntypes; i++) {
+        TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, i)), (int) (type_bits_list[i] | 0644));
+    }
+
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, ntypes)), (int) (S_IFREG | 0644));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, ntypes + 1)), (int) (S_IFDIR | 0755));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() takes the file type from the payload when
+ * there is a file there to look at.
+ */
+void
+test_add_file_list_tags_type_from_payload(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *flags = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+
+    mkdir_payload(input_dir, "/usr/bin");
+    write_payload(input_dir, "/usr/bin/plain", 3);
+    link_payload(input_dir, "/usr/bin/link", "plain");
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* the payload has a directory no matter what the entry says */
+    file = add_file(files, "/usr/bin");
+    json_object_object_add(file, "mode", json_object_new_string("0755"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+
+    file = add_file(files, "/usr/bin/plain");
+    json_object_object_add(file, "mode", json_object_new_string("0644"));
+    json_object_object_add(file, "type", json_object_new_string("file"));
+    json_object_object_add(file, "size", json_object_new_int64(3));
+
+    file = add_file(files, "/usr/bin/link");
+    json_object_object_add(file, "mode", json_object_new_string("0777"));
+    json_object_object_add(file, "type", json_object_new_string("symlink"));
+    json_object_object_add(file, "size", json_object_new_int64(5));
+
+    /* a %ghost is never in the payload, so its type is all there is */
+    file = add_file(files, "/usr/bin/ghostdir");
+    json_object_object_add(file, "mode", json_object_new_string("0700"));
+    json_object_object_add(file, "type", json_object_new_string("dir"));
+    json_object_object_add(file, "size", json_object_new_int64(9));
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("ghost"));
+    json_object_object_add(file, "flags", flags);
+
+    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 4);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), (int) (S_IFDIR | 0755));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), (int) (S_IFREG | 0644));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), (int) (S_IFLNK | 0777));
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 3)), (int) (S_IFDIR | 0700));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(input_dir, "/usr/bin/plain");
+    remove_payload(input_dir, "/usr/bin/link");
+    remove_payload(input_dir, "/usr/bin");
+    remove_payload(input_dir, "/usr");
+
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
 
     return;
 }
@@ -1446,6 +1618,7 @@ get_suite(void)
         CU_add_test(pSuite, "test generate_files() with no file list", test_generate_files_no_file_list) == NULL ||
         CU_add_test(pSuite, "test generate_files() with mismatched lengths", test_generate_files_mismatched_lengths) == NULL ||
         CU_add_test(pSuite, "test generate_files() with a valid file list", test_generate_files_valid) == NULL ||
+        CU_add_test(pSuite, "test generate_files() with each file type", test_generate_files_types) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with NULL", test_add_file_list_tags_null) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with empty files", test_add_file_list_tags_empty) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with invalid type", test_add_file_list_tags_invalid_type) == NULL ||
@@ -1453,6 +1626,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with payload file sizes", test_add_file_list_tags_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with sizes and no payload", test_add_file_list_tags_sizes_no_payload) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with the installed size", test_add_file_list_tags_total_size) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with each file type", test_add_file_list_tags_types) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with types from the payload", test_add_file_list_tags_type_from_payload) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||

@@ -56,6 +56,17 @@ def size_list(pkg):
     ]
 
 
+def mode_list(pkg):
+    """Return the (path, mode) pairs an RPM carries in its header"""
+    return [
+        (path, int(mode, 8))
+        for (path, mode) in [
+            line.split()
+            for line in query_rpm(pkg, "[%{FILENAMES} %{FILEMODES:octal}\n]")
+        ]
+    ]
+
+
 def installed_size(pkg):
     """Return the installed size an RPM carries in its header"""
     return int(query_rpm(pkg, "%{LONGSIZE}")[0])
@@ -1071,6 +1082,96 @@ class TestCreateLeavesUnchangedPayloadAlone(RoundTrip, TestUnpackRPM):
         self.assertFalse("is new in the payload" in err, err)
         self.assertEqual(file_list(recreated), file_list(original))
         self.assertIdentical(original, recreated)
+
+
+class TestRoundTripFileTypes(RoundTrip, TestUnpackRPM):
+    """The file type of every entry survives a round trip"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/plain.txt" % NAME,
+            rpmfluff.SourceFile("plain.txt", b"plain\n"),
+        )
+        self.rpm.add_installed_directory("/usr/share/%s/emptydir" % NAME)
+        self.rpm.add_installed_symlink("usr/share/%s/link" % NAME, "plain.txt")
+
+        # neither of these is ever in the payload
+        self.rpm.add_installed_file(
+            "/var/lib/%s/ghost.txt" % NAME,
+            rpmfluff.SourceFile("ghost.txt", b""),
+            isGhost=True,
+        )
+        self.rpm.add_installed_symlink(
+            "var/lib/%s/ghostlink" % NAME, "ghost.txt", isGhost=True
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        types = dict(
+            [(f["path"], f["type"]) for f in read_header(extract_dir)["files"]]
+        )
+
+        self.assertEqual(types["/usr/share/%s/plain.txt" % NAME], "file")
+        self.assertEqual(types["/usr/share/%s/emptydir" % NAME], "dir")
+        self.assertEqual(types["/usr/share/%s/link" % NAME], "symlink")
+        self.assertEqual(types["/var/lib/%s/ghost.txt" % NAME], "file")
+        self.assertEqual(types["/var/lib/%s/ghostlink" % NAME], "symlink")
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(mode_list(recreated), mode_list(original))
+        self.assertIdentical(original, recreated)
+
+
+class TestCreateAddedPayloadFileTypes(RoundTrip, TestUnpackRPM):
+    """A file added to the payload tree lands with the right type"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+
+        f = open(self.payload_path(extract_dir, "%s/added.txt" % base), "wb")
+        f.write(b"added\n")
+        f.close()
+
+        os.mkdir(self.payload_path(extract_dir, "%s/newdir" % base))
+        os.symlink("kept.txt", self.payload_path(extract_dir, "%s/link" % base))
+
+        recreated = self.create(extract_dir)
+        modes = dict(mode_list(recreated))
+
+        self.assertEqual(modes["%s/added.txt" % base] & 0o170000, 0o100000)
+        self.assertEqual(modes["%s/newdir" % base] & 0o170000, 0o040000)
+        self.assertEqual(modes["%s/link" % base] & 0o170000, 0o120000)
+
+        # the new entries name their types in the file list as well
+        types = dict(
+            [
+                (f["path"], f["type"])
+                for f in read_header(self.extract(recreated, subdir="again"))["files"]
+            ]
+        )
+
+        self.assertEqual(types["%s/added.txt" % base], "file")
+        self.assertEqual(types["%s/newdir" % base], "dir")
+        self.assertEqual(types["%s/link" % base], "symlink")
+
+        self.assertVerifies(recreated)
 
 
 class TestCreateRecomputesInstalledSize(RoundTrip, TestUnpackRPM):
