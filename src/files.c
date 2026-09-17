@@ -1475,11 +1475,96 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
     }
 
     scan.files = files;
-    scan.source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
+    scan.source_package = false;
+
+    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+        scan.source_package = true;
+    }
 
     scan_payload_dir(&scan, payload_dir, "");
 
     free(payload_dir);
+    return;
+}
+
+/*
+ * Update any inconsistencies with file metadata in the JSON
+ * structures with what is on the actual files in the payload
+ * subdirectory.
+ *
+ * The metadata checked and updated if necessary is size, type, linkto
+ * (for symbolic links), and rdev.  For payload members that
+ * completely change types, the metadata is adjusted accordingly to
+ * match the new type.
+ */
+static void
+fix_type_mismatch(struct json_object *file, const char *path, const char *file_path, const struct stat *sb, const uint32_t digestalgo)
+{
+    ssize_t len = 0;
+    char *target = NULL;
+    char *digest = NULL;
+    struct json_object *type_obj = NULL;
+    const char *type_str = NULL;
+    const char *payload_type = NULL;
+
+    if (!json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &type_obj)) {
+        return;
+    }
+
+    type_str = json_object_get_string(type_obj);
+    payload_type = type_name(sb->st_mode);
+
+    if (!strcmp(type_str, payload_type)) {
+        return;
+    }
+
+    warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, type_str);
+    json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(payload_type));
+
+    /*
+     * These belong to the type the entry used to name, so drop them
+     * and take what the payload has in their place.
+     */
+    json_object_object_del(file, RPM_FILE_SIZE_DESC);
+    json_object_object_del(file, RPM_FILE_DIGEST_DESC);
+    json_object_object_del(file, RPM_FILE_LINKTO_DESC);
+    json_object_object_del(file, RPM_FILE_RDEV_DESC);
+
+    /* a regular file carries the bytes it holds and a digest of them */
+    if (S_ISREG(sb->st_mode)) {
+        json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) sb->st_size));
+
+        if (digestalgo != 0) {
+            digest = mkfiledigest(file_path, digestalgo);
+
+            if (digest != NULL) {
+                json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+                free(digest);
+            }
+        }
+    }
+
+    /* a symlink carries its target and the length of it */
+    if (S_ISLNK(sb->st_mode)) {
+        target = xalloc(sb->st_size + 1);
+        len = readlink(file_path, target, sb->st_size);
+
+        if (len < 0) {
+            warn("readlink");
+            len = 0;
+        }
+
+        target[len] = '\0';
+        json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
+        json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
+        free(target);
+    }
+
+    /* a device node carries the device number it names */
+    if (S_ISCHR(sb->st_mode) || S_ISBLK(sb->st_mode)) {
+        json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int((int) sb->st_rdev));
+    }
+
     return;
 }
 
@@ -1546,8 +1631,6 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     const char *basename = NULL;
     const char *dirname = NULL;
     const char *mode_str = NULL;
-    const char *filetype_str = NULL;
-    const char *payload_type = NULL;
     const char *mtime_str = NULL;
     const char *user_str = NULL;
     const char *group_str = NULL;
@@ -1677,6 +1760,19 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
             continue;
         }
 
+        /*
+         * Make entry types match types in the payload subdirectory.
+         */
+        if (input_dir != NULL && payload_subdir != NULL) {
+            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+
+            if (lstat(file_path, &sb) == 0) {
+                fix_type_mismatch(file, path, file_path, &sb, digestalgo);
+            }
+
+            free(file_path);
+        }
+
         /* Find the last separator to split dirname and basename */
         separator = strrchr(path, '/');
 
@@ -1763,21 +1859,6 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
                 if (lstat(file_path, &sb) == 0) {
                     typebits = sb.st_mode & S_IFMT;
-                    payload_type = type_name(sb.st_mode);
-
-                    /*
-                     * The payload holds something other than what the
-                     * file list calls it, so the file list is what
-                     * needs fixing.
-                     */
-                    if (json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &filetype_obj)) {
-                        filetype_str = json_object_get_string(filetype_obj);
-
-                        if (strcmp(filetype_str, payload_type)) {
-                            warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, filetype_str);
-                            json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(payload_type));
-                        }
-                    }
                 }
 
                 free(file_path);
