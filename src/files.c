@@ -1488,7 +1488,7 @@ void
 add_payload_files(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir)
 {
     char *payload_dir = NULL;
-    const char *digestalgo_str = NULL;
+    const char *algo = NULL;
     struct payload_scan scan = { 0 };
     struct stat sb;
 
@@ -1511,12 +1511,12 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
      * The digests of the added files are computed with the algorithm
      * the header names, which rpm defaults to MD5.
      */
-    digestalgo_str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+    algo = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
 
-    if (digestalgo_str == NULL) {
+    if (algo == NULL) {
         scan.digestalgo = PGPHASHALGO_MD5;
     } else {
-        scan.digestalgo = digest_algo(digestalgo_str);
+        scan.digestalgo = digest_algo(algo);
     }
 
     scan.files = files;
@@ -1549,21 +1549,21 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
     char *target = NULL;
     char *digest = NULL;
     struct json_object *type_obj = NULL;
-    const char *type_str = NULL;
+    const char *entry_type = NULL;
     const char *payload_type = NULL;
 
     if (!json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &type_obj)) {
         return;
     }
 
-    type_str = json_object_get_string(type_obj);
+    entry_type = json_object_get_string(type_obj);
     payload_type = type_name(sb->st_mode);
 
-    if (!strcmp(type_str, payload_type)) {
+    if (!strcmp(entry_type, payload_type)) {
         return;
     }
 
-    warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, type_str);
+    warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, entry_type);
     json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(payload_type));
 
     /*
@@ -1636,7 +1636,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     struct json_object *ref = NULL;
     struct json_object *tag = NULL;
     str_list_t *langs = NULL;
-    char *langs_str = NULL;
+    char *joined = NULL;
     const char *path = NULL;
     const char *basename = NULL;
     const char *dirname = NULL;
@@ -2058,7 +2058,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * carry an empty string so the array stays parallel to the file
          * list.
          */
-        langs_str = NULL;
+        joined = NULL;
 
         if (json_object_object_get_ex(file, RPM_FILE_LANGS_DESC, &value) && json_object_get_type(value) == json_type_array) {
             nlangs = json_object_array_length(value);
@@ -2067,15 +2067,15 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
                 langs = list_add(langs, json_object_get_string(json_object_array_get_idx(value, j)));
             }
 
-            langs_str = list_to_string(langs, RPM_FILE_LANG_SEPARATOR);
+            joined = list_to_string(langs, RPM_FILE_LANG_SEPARATOR);
             list_free(langs, free);
             langs = NULL;
         }
 
-        if (langs_str != NULL) {
-            json_object_array_add(out.filelangs, json_object_new_string(langs_str));
-            free(langs_str);
-            langs_str = NULL;
+        if (joined != NULL) {
+            json_object_array_add(out.filelangs, json_object_new_string(joined));
+            free(joined);
+            joined = NULL;
         } else {
             json_object_array_add(out.filelangs, json_object_new_string(""));
         }
