@@ -76,6 +76,39 @@ def mode_list(pkg):
     ]
 
 
+def mtime_list(pkg):
+    """Return the (path, mtime) pairs an RPM carries in its header"""
+    return [
+        (path, int(mtime))
+        for (path, mtime) in [
+            line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{FILEMTIMES}\n]")
+        ]
+    ]
+
+
+def owner_list(pkg):
+    """Return the (path, (user, group)) pairs an RPM carries in its header"""
+    return [
+        (path, (user, group))
+        for (path, user, group) in [
+            line.split()
+            for line in query_rpm(
+                pkg, "[%{FILENAMES} %{FILEUSERNAME} %{FILEGROUPNAME}\n]"
+            )
+        ]
+    ]
+
+
+def device_list(pkg):
+    """Return the (path, device) pairs an RPM carries in its header"""
+    return [
+        (path, int(device))
+        for (path, device) in [
+            line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{FILEDEVICES}\n]")
+        ]
+    ]
+
+
 def installed_size(pkg):
     """Return the installed size an RPM carries in its header"""
     return int(query_rpm(pkg, "%{LONGSIZE}")[0])
@@ -1306,6 +1339,208 @@ class TestCreateFixesMismatchValues(RoundTrip, TestUnpackRPM):
         self.assertEqual(files[tofile]["size"], len(content))
         self.assertEqual(files[tofile]["digest"], hashlib.sha256(content).hexdigest())
         self.assertFalse("linkto" in files[tofile], files[tofile])
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateFillsMissingFileMetadata(RoundTrip, TestUnpackRPM):
+    """Keys an entry in the file list lacks come from the payload"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/data.txt" % NAME,
+            rpmfluff.SourceFile("data.txt", b"metadata comes from here\n"),
+            mode="750",
+        )
+        self.rpm.add_installed_file(
+            "/usr/share/%s/kept.txt" % NAME, rpmfluff.SourceFile("kept.txt", b"kept\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        data = "%s/data.txt" % base
+        content = b"metadata comes from here\n"
+        stripped = [
+            "size",
+            "mode",
+            "type",
+            "mtime",
+            "user",
+            "group",
+            "device",
+            "digest",
+        ]
+
+        # take the keys the payload can answer out of the entry
+        header = read_header(extract_dir)
+
+        for entry in header["files"]:
+            if entry["path"] == data:
+                for key in stripped:
+                    del entry[key]
+
+        write_header(extract_dir, header)
+
+        sb = os.lstat(self.payload_path(extract_dir, data))
+        recreated, err = self.create_warns(extract_dir)
+
+        # each missing key is named once
+        for key in stripped:
+            self.assertEqual(
+                err.count("%s is missing the %s file metadata" % (data, key)), 1, err
+            )
+
+        # and the entry with all of its keys is left alone
+        self.assertEqual(err.count("%s/kept.txt is missing" % base), 0, err)
+
+        sizes = dict(size_list(recreated))
+        modes = dict(mode_list(recreated))
+        mtimes = dict(mtime_list(recreated))
+        owners = dict(owner_list(recreated))
+        devices = dict(device_list(recreated))
+        digests = dict([pair for pair in digest_list(recreated) if len(pair) == 2])
+
+        # the header now has what the payload file holds
+        self.assertEqual(sizes[data], sb.st_size)
+        self.assertEqual(modes[data], sb.st_mode)
+        self.assertEqual(mtimes[data], int(sb.st_mtime))
+        self.assertEqual(digests[data], hashlib.sha256(content).hexdigest())
+
+        # and the defaults for the keys the payload cannot answer
+        self.assertEqual(owners[data], ("root", "root"))
+        self.assertEqual(devices[data], 1)
+
+        # the file list of the new package has the keys back
+        entries = dict(
+            [
+                (entry["path"], entry)
+                for entry in read_header(self.extract(recreated, subdir="again"))[
+                    "files"
+                ]
+            ]
+        )
+
+        for key in stripped:
+            self.assertTrue(key in entries[data], entries[data])
+
+        self.assertEqual(entries[data]["type"], "file")
+        self.assertEqual(entries[data]["size"], sb.st_size)
+        self.assertEqual(entries[data]["digest"], hashlib.sha256(content).hexdigest())
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateFillsMissingSymlinkMetadata(RoundTrip, TestUnpackRPM):
+    """A symlink entry with no target gets one from the payload"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+        self.rpm.add_installed_symlink("/usr/share/%s/link" % NAME, "README")
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        base = "/usr/share/%s" % NAME
+        link = "%s/link" % base
+        stripped = ["size", "type", "linkto"]
+
+        header = read_header(extract_dir)
+
+        for entry in header["files"]:
+            if entry["path"] == link:
+                for key in stripped:
+                    del entry[key]
+
+        write_header(extract_dir, header)
+
+        recreated, err = self.create_warns(extract_dir)
+
+        for key in stripped:
+            self.assertEqual(
+                err.count("%s is missing the %s file metadata" % (link, key)), 1, err
+            )
+
+        links = dict(linkto_list(recreated))
+        sizes = dict(size_list(recreated))
+        modes = dict(mode_list(recreated))
+
+        # a symlink carries its target and the length of it
+        self.assertEqual(links[link], "README")
+        self.assertEqual(sizes[link], len("README"))
+        self.assertEqual(modes[link] & 0o170000, 0o120000)
+
+        # and the new package holds the symlink itself
+        recreated_dir = self.extract(recreated, subdir="recreated_extract")
+        self.assertEqual(os.readlink(self.payload_path(recreated_dir, link)), "README")
+
+        entries = dict(
+            [(entry["path"], entry) for entry in read_header(recreated_dir)["files"]]
+        )
+
+        self.assertEqual(entries[link]["type"], "symlink")
+        self.assertEqual(entries[link]["linkto"], "README")
+        self.assertEqual(entries[link]["size"], len("README"))
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateLeavesGhostMetadataAlone(RoundTrip, TestUnpackRPM):
+    """An entry with no payload file keeps what the file list says"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/real.txt" % NAME, rpmfluff.SourceFile("real.txt", b"real\n")
+        )
+        self.rpm.add_installed_file(
+            "/var/lib/%s/ghost.txt" % NAME,
+            rpmfluff.SourceFile("ghost.txt", b"ghostly\n"),
+            isGhost=True,
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        real = "/usr/share/%s/real.txt" % NAME
+        ghost = "/var/lib/%s/ghost.txt" % NAME
+
+        # drop the same key from a real file and from a %ghost
+        header = read_header(extract_dir)
+
+        for entry in header["files"]:
+            if entry["path"] in [real, ghost]:
+                del entry["mtime"]
+
+        write_header(extract_dir, header)
+
+        sb = os.lstat(self.payload_path(extract_dir, real))
+        recreated, err = self.create_warns(extract_dir)
+        mtimes = dict(mtime_list(recreated))
+
+        # the real file gets its mtime from the payload
+        self.assertEqual(
+            err.count("%s is missing the mtime file metadata" % real), 1, err
+        )
+        self.assertEqual(mtimes[real], int(sb.st_mtime))
+
+        # the %ghost is not in the payload, so nothing to read
+        self.assertEqual(err.count("%s is missing" % ghost), 0, err)
+        self.assertEqual(mtimes[ghost], 0)
 
         self.assertVerifies(recreated)
 
