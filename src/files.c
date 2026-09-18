@@ -1614,6 +1614,154 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
 }
 
 /*
+ * Tell the user a key was missing from a "files" entry and say where
+ * the value tarpm put there came from.
+ */
+static void
+report_missing(const char *path, const char *key, const bool from_payload)
+{
+    if (from_payload) {
+        warnx(_("*** %s is missing the %s file metadata, taking it from the payload"), path, key);
+    } else {
+        warnx(_("*** %s is missing the %s file metadata, using the default"), path, key);
+    }
+
+    return;
+}
+
+/*
+ * Add the keys a "files" entry is missing, reading them off the file
+ * in the payload tree.  A hand edited header.json can be missing keys
+ * the header needs.  The owner, the group and the device are not
+ * things the file can answer, so those get the same defaults a new
+ * payload file gets.  Only the keys generate_files() writes for a
+ * file of this type are added.  The user is told about each one.
+ */
+static void
+add_missing_metadata(struct json_object *file, const char *path, const char *file_path, const struct stat *sb, const uint32_t digestalgo)
+{
+    ssize_t len = 0;
+    char *target = NULL;
+    char *digest = NULL;
+    char mode_str[5];
+    char mtime_str[32];
+    time_t mtime = 0;
+    struct tm *tm_info = NULL;
+
+    if (file == NULL || path == NULL || file_path == NULL || sb == NULL) {
+        return;
+    }
+
+    /* a regular file carries the number of bytes it holds */
+    if (S_ISREG(sb->st_mode) && !json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
+        report_missing(path, RPM_FILE_SIZE_DESC, true);
+        json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) sb->st_size));
+    }
+
+    /* a symlink carries its target and the length of it */
+    if (S_ISLNK(sb->st_mode) && (!json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL) || !json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, NULL))) {
+        target = xalloc(sb->st_size + 1);
+        len = readlink(file_path, target, sb->st_size);
+
+        if (len < 0) {
+            warn("readlink");
+            len = 0;
+        }
+
+        target[len] = '\0';
+
+        if (!json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
+            report_missing(path, RPM_FILE_SIZE_DESC, true);
+            json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
+        }
+
+        if (!json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, NULL)) {
+            report_missing(path, RPM_FILE_LINKTO_DESC, true);
+            json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
+        }
+
+        free(target);
+    }
+
+    /* the permission bits as an octal string */
+    if (!json_object_object_get_ex(file, RPM_FILE_MODE_DESC, NULL)) {
+        report_missing(path, RPM_FILE_MODE_DESC, true);
+        snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, sb->st_mode & ALLPERMS);
+        json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
+    }
+
+    /* the type by name */
+    if (!json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, NULL)) {
+        report_missing(path, RPM_FILE_TYPE_DESC, true);
+        json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(sb->st_mode)));
+    }
+
+    /* the mtime as an ISO 8601 timestamp */
+    if (!json_object_object_get_ex(file, RPM_FILE_MTIME_DESC, NULL)) {
+        mtime = sb->st_mtime;
+        tm_info = gmtime(&mtime);
+
+        if (tm_info != NULL) {
+            report_missing(path, RPM_FILE_MTIME_DESC, true);
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+            json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
+        }
+    }
+
+    /*
+     * Who owns the file now is whoever ran tarpm, which is not who
+     * should own it once the package is installed, so use the default.
+     */
+    if (!json_object_object_get_ex(file, RPM_FILE_USER_DESC, NULL)) {
+        report_missing(path, RPM_FILE_USER_DESC, false);
+        json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(RPM_FILE_DEFAULT_USER));
+    }
+
+    if (!json_object_object_get_ex(file, RPM_FILE_GROUP_DESC, NULL)) {
+        report_missing(path, RPM_FILE_GROUP_DESC, false);
+        json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
+    }
+
+    /* a device node carries the device number it names */
+    if ((S_ISCHR(sb->st_mode) || S_ISBLK(sb->st_mode)) && !json_object_object_get_ex(file, RPM_FILE_RDEV_DESC, NULL)) {
+        report_missing(path, RPM_FILE_RDEV_DESC, true);
+        json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int((int) sb->st_rdev));
+    }
+
+    /*
+     * The device the file sits on now is not the one the package
+     * records, so use the default.
+     */
+    if (!json_object_object_get_ex(file, RPM_FILE_DEVICE_DESC, NULL)) {
+        report_missing(path, RPM_FILE_DEVICE_DESC, false);
+        json_object_object_add(file, RPM_FILE_DEVICE_DESC, json_object_new_int64(RPM_FILE_DEFAULT_DEVICE));
+    }
+
+    /* only regular files carry a digest */
+    if (S_ISREG(sb->st_mode) && digestalgo != 0 && !json_object_object_get_ex(file, RPM_FILE_DIGEST_DESC, NULL)) {
+        digest = mkfiledigest(file_path, digestalgo);
+
+        if (digest != NULL) {
+            report_missing(path, RPM_FILE_DIGEST_DESC, true);
+            json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+            free(digest);
+        }
+    }
+
+    /*
+     * Hard links of one another share an inode number, which is all
+     * the "inode" key is read for.  A file with one link does not
+     * need it.
+     */
+    if (sb->st_nlink > 1 && !json_object_object_get_ex(file, RPM_FILE_INODE_DESC, NULL)) {
+        report_missing(path, RPM_FILE_INODE_DESC, true);
+        json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
+    }
+
+    return;
+}
+
+/*
  * Reconstruct the file list tag entries from the files array.
  * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
  * to the provided tags array.
@@ -1764,10 +1912,12 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         /*
-         * Make entry types match types in the payload subdirectory.
+         * Make entry types match types in the payload subdirectory
+         * and fill in the keys the entry does not carry.
          */
         if (have_stat) {
             fix_type_mismatch(file, path, file_path, &sb, digestalgo);
+            add_missing_metadata(file, path, file_path, &sb, digestalgo);
         }
 
         /* Find the last separator to split dirname and basename */
