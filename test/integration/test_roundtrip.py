@@ -16,10 +16,14 @@ from baseclass import TestUnpackRPM
 from baseclass import TestUnpackSRPM
 
 
-def run_tarpm(tarpm, args, env=None):
+def run_tarpm(tarpm, args, env=None, cwd=None):
     """Run tarpm with the given arguments and return (returncode, stdout, stderr)"""
     proc = subprocess.Popen(
-        [tarpm] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+        [tarpm] + args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        cwd=cwd,
     )
     out, err = proc.communicate()
 
@@ -1633,3 +1637,118 @@ class TestCreateCountsHardLinkSizeOnce(RoundTrip, TestUnpackRPM):
 
         self.assertEqual(installed_size(recreated), installed_size(original))
         self.assertIdentical(original, recreated)
+
+
+class TestMetadataPathsRoundTrip(RoundTrip, TestUnpackRPM):
+    """The JSON metadata files land where the command line says"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = os.path.join(self.output_dir, "extracted")
+        meta_dir = os.path.join(extract_dir, "meta", "sub")
+        lead = os.path.join(meta_dir, "lead.json")
+        signature = os.path.join(meta_dir, "signature.json")
+        header = os.path.join(meta_dir, "header.json")
+
+        # the metadata subdirectory is not there yet
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            [
+                "-x",
+                "-f",
+                original,
+                "-O",
+                extract_dir,
+                "--lead",
+                lead,
+                "--signature",
+                signature,
+                "--header",
+                header,
+            ],
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        for path in [lead, signature, header]:
+            name = os.path.basename(path)
+            self.assertTrue(os.path.isfile(path), "%s is missing" % path)
+            self.assertFalse(
+                os.path.exists(os.path.join(extract_dir, name)),
+                "%s landed in the extraction directory too" % name,
+            )
+
+        # tag values kept in their own file sit next to header.json
+        self.assertTrue(
+            os.path.isfile(os.path.join(meta_dir, "description.txt")),
+            "description.txt is not next to header.json",
+        )
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            [
+                "-c",
+                "-f",
+                pkg,
+                "--signature",
+                signature,
+                "--header",
+                header,
+                extract_dir,
+            ],
+        )
+        self.assertEqual(rc, 0, "Create failed: %s" % err)
+
+        self.assertIdentical(original, pkg)
+
+
+class TestMetadataPathsAreRelative(RoundTrip, TestUnpackRPM):
+    """A metadata path is taken from the directory tarpm runs in"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = os.path.join(self.output_dir, "extracted")
+
+        # a path ending in a slash names a directory to write in to
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-x", "-f", original, "-O", "extracted", "--header", "meta/"],
+            cwd=self.output_dir,
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        header = os.path.join(self.output_dir, "meta", "header.json")
+        self.assertTrue(os.path.isfile(header), "%s is missing" % header)
+        self.assertFalse(os.path.exists(os.path.join(extract_dir, "header.json")))
+
+        # the other two files keep their usual home
+        for name in ["lead.json", "signature.json"]:
+            self.assertTrue(os.path.isfile(os.path.join(extract_dir, name)))
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-c", "-f", "recreated.rpm", "--header", "meta/", "extracted"],
+            cwd=self.output_dir,
+        )
+        self.assertEqual(rc, 0, "Create failed: %s" % err)
+
+        self.assertIdentical(original, pkg)

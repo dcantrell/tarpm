@@ -396,6 +396,7 @@ if cunit.found()
         'test-create',
         [ 'test-create.c',
           'test-main.c',
+          abspath_src,
           changelog_src,
           create_src,
           deps_src,

@@ -28,10 +28,10 @@ clean_test_create(void)
 void
 test_create_rpm_null(void)
 {
-    create_rpm(NULL, NULL, NULL);
-    create_rpm(NULL, "/tmp", "/tmp");
-    create_rpm("test.rpm", NULL, "/tmp");
-    create_rpm("test.rpm", "/tmp", NULL);
+    create_rpm(NULL, NULL, NULL, NULL);
+    create_rpm(NULL, "/tmp", "/tmp", NULL);
+    create_rpm("test.rpm", NULL, "/tmp", NULL);
+    create_rpm("test.rpm", "/tmp", NULL, NULL);
 
     return;
 }
