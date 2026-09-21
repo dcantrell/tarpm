@@ -12,6 +12,7 @@
 #include <locale.h>
 #include <libintl.h>
 #include <err.h>
+#include <sys/stat.h>
 
 #include "tarpm.h"
 
@@ -20,6 +21,71 @@ static bool t_flag = false;
 static bool x_flag = false;
 static bool c_flag = false;
 static bool v_flag = false;
+
+/*
+ * Work out where one of the JSON metadata files lives.  A relative
+ * path is taken from the current directory.  A path that ends with a
+ * slash or names a directory we already have gets the usual filename
+ * added to it.  Caller must free the returned string.
+ */
+static char *
+metadata_path(const char *path, const char *name)
+{
+    char *r = NULL;
+    char *full = NULL;
+    size_t len = 0;
+    struct stat sb;
+
+    if (path == NULL || name == NULL) {
+        return NULL;
+    }
+
+    full = abspath(path);
+
+    if (full == NULL) {
+        errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), path);
+    }
+
+    len = strlen(path);
+
+    if ((len > 0 && path[len - 1] == '/') || (stat(full, &sb) == 0 && S_ISDIR(sb.st_mode))) {
+        r = joinpath(full, name, NULL);
+        free(full);
+    } else {
+        r = full;
+    }
+
+    if (r == NULL) {
+        errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), path);
+    }
+
+    return r;
+}
+
+/*
+ * Make the directory a JSON metadata file goes in if it is not there
+ * already.  Exits if we cannot create it.
+ */
+static void
+make_metadata_dir(const char *path)
+{
+    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    char *dir = NULL;
+
+    if (path == NULL) {
+        return;
+    }
+
+    dir = dir_name(path);
+
+    if (mkdirp(dir, mode) == -1) {
+        errx(EXIT_FAILURE, _("*** unable to create %s"), dir);
+    }
+
+    free(dir);
+
+    return;
+}
 
 static void
 usage(void)
@@ -33,6 +99,9 @@ usage(void)
     printf(_("    -v, --verbose                     Verbose progress output\n"));
     printf(_("    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"));
     printf(_("    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"));
+    printf(_("    -L PATH, --lead=PATH              Use PATH for lead.json\n"));
+    printf(_("    -S PATH, --signature=PATH         Use PATH for signature.json\n"));
+    printf(_("    -H PATH, --header=PATH            Use PATH for header.json\n"));
     printf(_("    -V, --version                     Display version information\n"));
     printf(_("    -?, --help                        Display this screen\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
@@ -53,7 +122,8 @@ main(int argc, char **argv)
     char *output_dir = NULL;
     int flags = R_OK;
     char *opt = NULL;
-    char *short_opts = "txcvf:O:V?";
+    struct json_paths paths;
+    char *short_opts = "txcvf:O:L:S:H:V?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -61,10 +131,18 @@ main(int argc, char **argv)
         { "verbose", no_argument, 0, 'v' },
         { "filename", required_argument, 0, 'f' },
         { "output", required_argument, 0, 'O' },
+        { "lead", required_argument, 0, 'L' },
+        { "signature", required_argument, 0, 'S' },
+        { "header", required_argument, 0, 'H' },
         { "version", no_argument, 0, 'V' },
         { "help", no_argument, 0, '?' },
         { 0, 0, 0, 0 }
     };
+
+    /* the JSON metadata files land in the working directory by default */
+    paths.lead = NULL;
+    paths.signature = NULL;
+    paths.header = NULL;
 
     /* Allow users to do "tarpm ... 2>&1 | tee" */
     setlinebuf(stdout);
@@ -142,6 +220,27 @@ main(int argc, char **argv)
                 }
 
                 output_dir = abspath(optarg);
+                break;
+            case 'L':
+                if (paths.lead) {
+                    errx(EXIT_FAILURE, _("*** -L already specified; only allowed once"));
+                }
+
+                paths.lead = metadata_path(optarg, OUTPUT_LEAD);
+                break;
+            case 'S':
+                if (paths.signature) {
+                    errx(EXIT_FAILURE, _("*** -S already specified; only allowed once"));
+                }
+
+                paths.signature = metadata_path(optarg, OUTPUT_SIGNATURE);
+                break;
+            case 'H':
+                if (paths.header) {
+                    errx(EXIT_FAILURE, _("*** -H already specified; only allowed once"));
+                }
+
+                paths.header = metadata_path(optarg, OUTPUT_HEADER);
                 break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
@@ -244,6 +343,13 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
     }
 
+    /* Make the directories the JSON metadata files are written to */
+    if (x_flag) {
+        make_metadata_dir(paths.lead);
+        make_metadata_dir(paths.signature);
+        make_metadata_dir(paths.header);
+    }
+
     /* Reset librpm */
     reset_librpm();
 
@@ -251,14 +357,14 @@ main(int argc, char **argv)
     if (t_flag) {
         list_rpm(filename);
     } else if (x_flag) {
-        if (extract_rpm(filename, cwd, output_dir, v_flag)) {
+        if (extract_rpm(filename, cwd, output_dir, &paths, v_flag)) {
             r = EXIT_FAILURE;
         }
     } else if (c_flag) {
         if (input_dir == NULL) {
             warnx(_("*** missing input directory, unable to create RPM"));
         } else {
-            if (create_rpm(filename, cwd, input_dir)) {
+            if (create_rpm(filename, cwd, input_dir, &paths)) {
                 r = EXIT_FAILURE;
             }
         }
@@ -269,6 +375,9 @@ main(int argc, char **argv)
     free(cwd);
     free(output_dir);
     free(input_dir);
+    free(paths.lead);
+    free(paths.signature);
+    free(paths.header);
 
     return r;
 }

@@ -104,12 +104,11 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
         r = get_trailer_data(data, &trailer_data, &trailer_size);
 
         /*
-         * The region trailer records the size of the index entries it
-         * covers as a negative offset.  The trailer read from the JSON
-         * still describes the original header, so recompute the offset
-         * from the number of index entries actually written out (which
-         * excludes any read-only tags, such as the signatures on a
-         * signed package).
+         * The region trailer records the size of the index entries
+         * it covers as a negative offset.  The trailer from the JSON
+         * still describes the old header, so we work the offset out
+         * again from the entries we really wrote.  That leaves out
+         * read-only tags like the signatures on a signed package.
          */
         if (r == 0 && trailer_size == 16) {
             trailer_offset = htonl(-((int32_t) (nentries * sizeof(struct rpmhdrentry))));
@@ -152,8 +151,8 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
 /*
  * Build the name a file carries in the cpio payload.  Binary packages
  * prefix every path with "./".  Source RPMs have no directory prefix
- * at all; rpmbuild writes their bare filenames.  Caller must free the
- * returned string.
+ * at all.  rpmbuild writes their bare filenames.  Caller must free
+ * the returned string.
  */
 static char *
 payload_path(const char *dirname, const char *basename)
@@ -303,16 +302,14 @@ add_file_to_payload(const char *input_dir, const struct file_params *params)
 }
 
 /*
- * Helper function to compress a cpio archive with zstd without
- * checksum.  librpm has its own internal cpio code and uses zstd
- * directly.  tarpm uses libarchive and it handles creating the cpio
- * payload and zstd compression.  But librpm does not enable XXH64
- * checksums, but libarchive does.  To ensure librpm can read a zstd
- * compressed payload created by tarpm, we need our own zstd
- * compression function to do it the librpm way.
+ * Compress a cpio archive with zstd and no checksum.  librpm has its
+ * own cpio code and calls zstd itself, and it does not turn on XXH64
+ * checksums.  We use libarchive, which always does.  So we compress
+ * here the way librpm does to make sure librpm can read what we
+ * wrote.
  *
- * Reads from uncompressed_fd and writes compressed data to compressed_fd.
- * Returns 0 on success, -1 on failure.
+ * Reads from uncompressed_fd and writes to compressed_fd.  Returns 0
+ * on success, -1 on failure.
  */
 static int
 compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level)
@@ -465,13 +462,10 @@ is_ghost_file(const struct hdr_file_lists *hfl, const size_t i)
 }
 
 /*
- * Helper for create_rpm() that writes the payload data to a temporary
- * file.  Returns an open file descriptor that can then be used later
- * when putting together the final RPM.  Caller must close the file
- * descriptor when done which will remove the temporary file
- * associated with it.
- *
- * Returns -1 on failure.
+ * Helper for create_rpm() that writes the payload to a temporary
+ * file.  Returns an open file descriptor to use later when putting
+ * the RPM together, or -1 on failure.  Closing it removes the
+ * temporary file, and the caller has to do that.
  */
 static int
 create_payload(struct json_object *header, const char *input_dir, const char *payload_subdir)
@@ -636,10 +630,10 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
 
     /*
-     * For zstd, we need to compress manually without checksum for rpm compatibility.
-     * RPM's cpio reader cannot handle zstd frames with XXH64 checksums, but
-     * libarchive always enables them. Create uncompressed cpio first, then
-     * compress it manually with checksum disabled.
+     * For zstd we compress by hand with no checksum.  The rpm cpio
+     * reader cannot handle zstd frames with XXH64 checksums and
+     * libarchive always adds them.  So we write a plain cpio first
+     * and compress it ourselves after.
      */
     if (tag != NULL && !strcmp(tag, "zstd")) {
         use_zstd = true;
@@ -997,12 +991,12 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
 }
 
 /*
- * Called by create_rpm() to copy the payload from the specified file
- * descriptor to the current position in the RPM file.
+ * Called by create_rpm() to copy the payload from the given file
+ * descriptor to the current spot in the RPM file.
  *
  * NOTE:
- * This does close the file descriptor for the temporary payload which
- * does remove that temporary file.
+ * This closes the file descriptor, which removes the temporary
+ * payload file.
  */
 static int
 write_payload(FILE *rpm, int fd)
@@ -1050,12 +1044,12 @@ write_payload(FILE *rpm, int fd)
 
 /*
  * Compute the SHA-256 digest of the uncompressed payload, which is
- * what RPM records in RPMTAG_PAYLOADSHA256ALT.  The payload has
- * already been compressed in to payloadfd, so read it back through
- * libarchive's decompression filters to recover the cpio stream.
- * Returns the digest as an allocated hex string or NULL on failure.
- * Caller must free the returned string.  If size is not NULL, the
- * number of uncompressed payload bytes is stored there.
+ * what RPM records in RPMTAG_PAYLOADSHA256ALT.  We already wrote the
+ * compressed payload in to payloadfd, so we read it back through the
+ * libarchive filters to get the cpio stream again.  Returns the
+ * digest as an allocated hex string or NULL on failure.  Caller must
+ * free it.  If size is not NULL, the uncompressed byte count goes
+ * there.
  */
 static char *
 uncompressed_payload_digest(const int payloadfd, uint64_t *size)
@@ -1322,8 +1316,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     free(buf);
 
     /*
-     * update Payloadsize tag; this is the size of the uncompressed
-     * payload, not the size of what is written in to the RPM
+     * update the Payloadsize tag.  This is the size of the
+     * uncompressed payload, not of what we write in to the RPM
      */
     buf = uncompressed_payload_digest(payloadfd, &archivesize);
 
@@ -1425,11 +1419,14 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
 /* Handler for -c mode (create) */
 int
-create_rpm(const char *filename, const char *cwd, const char *input_dir)
+create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
 {
     FILE *rpm = NULL;
     int payloadfd = -1;
     struct stat sb;
+    char *header_dir = NULL;
+    const char *signature_path = OUTPUT_SIGNATURE;
+    const char *header_path = OUTPUT_HEADER;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
     struct json_object *tags = NULL;
@@ -1467,18 +1464,39 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
         return -1;
     }
 
-    /* read in signature.json and header.json */
-    signature = read_json_file(OUTPUT_SIGNATURE);
+    /* the caller may have named where the JSON metadata files are */
+    if (paths != NULL && paths->signature != NULL) {
+        signature_path = paths->signature;
+    }
 
-    if (signature == NULL) {
-        warnx(_("*** missing signature data"));
+    if (paths != NULL && paths->header != NULL) {
+        header_path = paths->header;
+
+        /* tag values kept in their own file sit next to header.json */
+        header_dir = dir_name(header_path);
+    } else {
+        header_dir = strdup(input_dir);
+    }
+
+    if (header_dir == NULL) {
+        warnx(_("*** unable to set header_dir"));
         return -1;
     }
 
-    header = read_json_file(OUTPUT_HEADER);
+    /* read in signature.json and header.json */
+    signature = read_json_file(signature_path);
+
+    if (signature == NULL) {
+        warnx(_("*** missing signature data"));
+        free(header_dir);
+        return -1;
+    }
+
+    header = read_json_file(header_path);
 
     if (header == NULL) {
         warnx(_("*** missing header data"));
+        free(header_dir);
         return -1;
     }
 
@@ -1492,12 +1510,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     if (rawlead == NULL) {
         warnx(_("*** unable to construct RPM lead"));
+        free(header_dir);
         return -1;
     }
 
     /* create the header (the main header) */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, header_dir, false) == -1) {
         warnx(_("*** unable to construct RPM header"));
+        free(header_dir);
         return -1;
     }
 
@@ -1506,12 +1526,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     if (payloadfd == -1) {
         warnx("create_payload");
+        free(header_dir);
         return -1;
     }
 
     /* create the signature */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, NULL, true) == -1) {
         warnx(_("*** unable to construct RPM signature"));
+        free(header_dir);
         return -1;
     }
 
@@ -1519,6 +1541,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     if (update_header_digests(header, hdr, hdrinfo, payloadfd) != 0) {
         close(payloadfd);
         warnx("update_header_digests");
+        free(header_dir);
         return -1;
     }
 
@@ -1526,8 +1549,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     free_header(hdr, hdrinfo);
 
     /* regenerate the header with updated digests */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, false) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, header_dir, false) == -1) {
         warnx(_("*** unable to reconstruct RPM header"));
+        free(header_dir);
         return -1;
     }
 
@@ -1535,6 +1559,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
         close(payloadfd);
         warnx("update_signature");
+        free(header_dir);
         return -1;
     }
 
@@ -1542,8 +1567,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
     free_header(sig, siginfo);
 
     /* regenerate the signature with updated digests */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, NULL, true) == -1) {
         warnx(_("*** unable to reconstruct RPM signature"));
+        free(header_dir);
         return -1;
     }
 
@@ -1552,6 +1578,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir)
 
     if (rpm == NULL) {
         warn("fopen");
+        free(header_dir);
         return -1;
     }
 
@@ -1581,6 +1608,7 @@ create_cleanup:
     free_header(sig, siginfo);
     free_header(hdr, hdrinfo);
     free(rawlead);
+    free(header_dir);
 
     /* close the RPM */
     if (fclose(rpm) != 0) {

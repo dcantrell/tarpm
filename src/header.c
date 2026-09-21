@@ -16,9 +16,8 @@
 #include "tarpm.h"
 
 /*
- * Structure to track size information for tags with data in an
- * external file.  This information is required when constructing an
- * RPM header structure.
+ * Tracks the size of tags whose data lives in an external file.  We
+ * need this when building the header.
  */
 struct tagfile {
     uint8_t *data;    /* file contents, always NUL terminated */
@@ -118,10 +117,9 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
     }
 
     /*
-     * read_file_bytes() reports a zero length file the same way it
-     * reports a failure, so handle an empty file here.  The tag value
-     * is the empty string, which still occupies the one byte its NUL
-     * terminator takes up.
+     * read_file_bytes() reports an empty file the same way it
+     * reports a failure, so we handle empty here.  The tag value is
+     * the empty string, which still takes the one byte of its NUL.
      */
     if (sb.st_size == 0) {
         *data = xalloc(1);
@@ -140,9 +138,8 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
     *len = filelen;
 
     /*
-     * rpm relies on strings being NUL terminated, so preserving NULs
-     * in a string we know the entire length of is not really
-     * supported.  Catch it here and tell the user and error out.
+     * rpm counts on a string ending at the first NUL, so we cannot
+     * keep a NUL inside one.  Catch it here, tell the user and stop.
      */
     if (memchr(*data, '\0', *len) != NULL) {
         warnx(_("*** %s contains a NUL byte and cannot be used as a tag value"), path);
@@ -157,17 +154,20 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
 
 /*
  * Read every file named by a file-backed tag so the sizing pass and
- * the write pass work from the same bytes.  Results are indexed by
- * position in the tags array.  Returns 0 on success, -1 if any named
- * file could not be read.
+ * the write pass work from the same bytes.  A relative filename is
+ * taken from tagfile_dir, which is where header.json sits.  Results
+ * are indexed by position in the tags array.  Returns 0 on success,
+ * -1 if any named file could not be read.
  */
 static int
-read_tag_files(struct json_object *tags, struct tagfile *tagfiles, bool is_signature)
+read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *tagfile_dir, bool is_signature)
 {
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     rpmTagVal tag_number = 0;
+    const char *name = NULL;
+    char *path = NULL;
 
     if (tags == NULL || tagfiles == NULL) {
         return -1;
@@ -190,11 +190,25 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, bool is_signa
             continue;
         }
 
-        if (read_tag_file(json_object_get_string(key), &tagfiles[i].data, &tagfiles[i].len) == -1) {
+        name = json_object_get_string(key);
+
+        if (name == NULL) {
+            continue;
+        }
+
+        if (tagfile_dir == NULL || name[0] == '/') {
+            path = strdup(name);
+        } else {
+            path = joinpath(tagfile_dir, name, NULL);
+        }
+
+        if (read_tag_file(path, &tagfiles[i].data, &tagfiles[i].len) == -1) {
             warnx(_("*** unable to read the value of the %s tag"), rpmTagGetName(tag_number));
+            free(path);
             return -1;
         }
 
+        free(path);
         tagfiles[i].present = true;
     }
 
@@ -726,11 +740,10 @@ read_header(const int fd, const char *dest_dir)
 }
 
 /*
- * rpm writes the header index entries sorted by tag number and lays
- * the data area out in that same order.  See headerSort() and
- * headerExport() in lib/header.cc in the rpm source.  Reorder the tags
- * array in place to match so the header tarpm builds is laid out the
- * way rpm would have written it.
+ * rpm sorts the header index entries by tag number and lays the data
+ * area out in the same order.  See headerSort() and headerExport() in
+ * lib/header.cc in the rpm source.  We sort the tags array in place
+ * to match so our header looks like one rpm wrote.
  */
 static void
 sort_header_tags(struct json_object *tags, bool is_signature)
@@ -795,21 +808,18 @@ sort_header_tags(struct json_object *tags, bool is_signature)
 }
 
 /*
- * Create a new header data structure for later writing to an RPM
- * output file.  Headers begin with the magic number, number of
- * records, and the size of the storage area.  The storage area is a
- * buffer of header index structs followed by the storage area for
- * that index record.  This function is really more of an
- * initialization of the header structure that you then follow up with
- * functions to add records to.
+ * Create a new header to write to an RPM file later.  A header
+ * starts with the magic number, the record count and the size of the
+ * storage area.  The storage area is a run of header index structs
+ * followed by the data those records point at.  This mostly sets the
+ * header up and the caller adds records to it after.
  *
- * Returns 0 on success, non-zero otherwise.  Pointers should be
- * passed in to structures the caller can use for the rpmhdr and
- * rpmhdrinfo.  Those will be allocated and modified by this function.
- * Caller must free memory associated with those structures.
+ * Returns 0 on success, non-zero otherwise.  The caller passes in
+ * pointers for the rpmhdr and the rpmhdrinfo, which we allocate and
+ * fill in.  Caller must free both.
  */
 int
-create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, bool is_signature)
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, const char *tagfile_dir, bool is_signature)
 {
     int r = 0;
     struct rpmhdr *s;
@@ -855,9 +865,9 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     /*
-     * Work on a mutable copy of the tags array; the generated tags get
-     * appended to it and it gets sorted below, neither of which should
-     * be visible to the caller.
+     * Work on a copy of the tags array.  We append the generated
+     * tags to it and sort it below, and the caller should see
+     * neither.
      */
     tags_copy = json_object_new_array();
 
@@ -904,7 +914,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (read_tag_files(tags, tagfiles, is_signature) == -1) {
+    if (read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);

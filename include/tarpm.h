@@ -18,6 +18,8 @@
 
 /* abspath.c */
 char *abspath(const char *path);
+char *dir_name(const char *path);
+char *base_name(const char *path);
 
 /* rpm.c */
 char *convert_payload(const char *rpm);
@@ -67,7 +69,7 @@ struct json_object *read_signature(const int fd);
 /* header.c */
 bool valid_header(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd, const char *dest_dir);
-int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, bool is_signature);
+int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, const char *tagfile_dir, bool is_signature);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
 
@@ -130,10 +132,10 @@ void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buf
 bool xread(int fd, void *buf, size_t count);
 
 /* extract.c */
-int extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose);
+int extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose);
 
 /* create.c */
-int create_rpm(const char *filename, const char *cwd, const char *input_dir);
+int create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths);
 
 /* list.c */
 void list_rpm(const char *rpm);

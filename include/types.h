@@ -165,6 +165,17 @@ struct file_params {
     const char *hardlink;
 };
 
+/*
+ * Where the JSON metadata files are read from or written to.  A NULL
+ * member means the usual filename in the working directory.  The
+ * paths here are absolute.
+ */
+struct json_paths {
+    char *lead;
+    char *signature;
+    char *header;
+};
+
 /* Dependency type definitions */
 struct dep_type {
     const char *key;

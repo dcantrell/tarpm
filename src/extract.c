@@ -14,9 +14,35 @@
 
 #include "tarpm.h"
 
+/*
+ * Write one of the JSON metadata files.  With no path given the file
+ * lands in dest_dir under its usual name.  Returns 0 on success, -1
+ * on error.
+ */
+static int
+write_metadata(struct json_object *data, const char *dest_dir, const char *path, const char *name)
+{
+    int r = 0;
+    char *dir = NULL;
+    char *base = NULL;
+
+    if (path == NULL) {
+        return write_json_file(data, dest_dir, name);
+    }
+
+    dir = dir_name(path);
+    base = base_name(path);
+    r = write_json_file(data, dir, base);
+
+    free(dir);
+    free(base);
+
+    return r;
+}
+
 /* Handler for -x mode (extract) */
 int
-extract_rpm(const char *filename, const char *cwd, const char *output_dir, const bool verbose)
+extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose)
 {
     int r = 0;
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
@@ -25,6 +51,10 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     char *tmp = NULL;
     char *payload_file = NULL;
     char *dest_dir = NULL;
+    char *header_dir = NULL;
+    const char *lead_path = NULL;
+    const char *signature_path = NULL;
+    const char *header_path = NULL;
     Header h;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
@@ -77,6 +107,25 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         return -1;
     }
 
+    /* where the caller asked us to put the JSON metadata files */
+    if (paths != NULL) {
+        lead_path = paths->lead;
+        signature_path = paths->signature;
+        header_path = paths->header;
+    }
+
+    /* tag values written to their own file sit next to header.json */
+    if (header_path == NULL) {
+        header_dir = strdup(dest_dir);
+    } else {
+        header_dir = dir_name(header_path);
+    }
+
+    if (header_dir == NULL) {
+        warnx(_("*** unable to set header_dir"));
+        return -1;
+    }
+
     /* open the RPM file (this handle will be passed around) */
     rpmfd = open(filename, O_RDONLY);
 
@@ -102,7 +151,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /* extract the RPM header -- the third header (used) */
-    header = read_header(rpmfd, dest_dir);
+    header = read_header(rpmfd, header_dir);
 
     if (header == NULL) {
         warnx("read_header");
@@ -115,15 +164,15 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /* write out the header metadata */
-    if (write_json_file(lead, dest_dir, OUTPUT_LEAD) != 0) {
+    if (write_metadata(lead, dest_dir, lead_path, OUTPUT_LEAD) != 0) {
         warn("write_json_file");
     }
 
-    if (write_json_file(signature, dest_dir, OUTPUT_SIGNATURE) != 0) {
+    if (write_metadata(signature, dest_dir, signature_path, OUTPUT_SIGNATURE) != 0) {
         warn("write_json_file");
     }
 
-    if (write_json_file(header, dest_dir, OUTPUT_HEADER) != 0) {
+    if (write_metadata(header, dest_dir, header_path, OUTPUT_HEADER) != 0) {
         warn("write_json_file");
     }
 
@@ -136,19 +185,18 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /*
-     * Try direct extraction from the RPM using our extract function
-     * that uses libarchive.  However, we do make use of librpm's
-     * Fdopen() call which can fail on some compression types
-     * depending on the version of librpm in use.
+     * Try to extract straight from the RPM with libarchive.  We
+     * still go through the Fdopen() call in librpm, which can fail
+     * on some compression types depending on the librpm version.
      */
     r = unpack_archive(filename, tmp, false, verbose);
 
     if (r != 0) {
         /*
-         * Direct extraction failed, so fall back to convert_payload
-         * approach.  The failure here would be from unpack_archive()
-         * failing to use libarchive on a file handle from Fdopen() from
-         * librpm.
+         * Direct extraction failed, so fall back to
+         * convert_payload().  The failure would be unpack_archive()
+         * not getting libarchive to take the file handle Fdopen() in
+         * librpm gave us.
          */
         if (chdir(dest_dir) == -1) {
             warn("chdir");
@@ -186,6 +234,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     json_object_put(lead);
     free(tmp);
     free(dest_dir);
+    free(header_dir);
     headerFree(h);
 
     return 0;

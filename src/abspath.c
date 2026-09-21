@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <libgen.h>
 
 #include "tarpm.h"
 
@@ -93,6 +94,50 @@ char *abspath(const char *path)
     list_free(newpath, free);
     free(p);
     free(workpath);
+
+    return r;
+}
+
+/*
+ * Return the directory part of a path.  dirname(3) may modify what we
+ * hand it, so it gets a copy.  Caller must free the returned string.
+ */
+char *dir_name(const char *path)
+{
+    char *r = NULL;
+    char *tmp = NULL;
+
+    if (path == NULL) {
+        return NULL;
+    }
+
+    tmp = strdup(path);
+    assert(tmp != NULL);
+    r = strdup(dirname(tmp));
+    assert(r != NULL);
+    free(tmp);
+
+    return r;
+}
+
+/*
+ * Return the last part of a path.  basename(3) may modify what we
+ * hand it, so it gets a copy.  Caller must free the returned string.
+ */
+char *base_name(const char *path)
+{
+    char *r = NULL;
+    char *tmp = NULL;
+
+    if (path == NULL) {
+        return NULL;
+    }
+
+    tmp = strdup(path);
+    assert(tmp != NULL);
+    r = strdup(basename(tmp));
+    assert(r != NULL);
+    free(tmp);
 
     return r;
 }
