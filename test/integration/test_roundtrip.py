@@ -1943,7 +1943,9 @@ class TestLeadToStdoutRoundTrip(RoundTrip, TestUnpackRPM):
             self.assertTrue(os.path.isfile(os.path.join(extract_dir, name)))
 
         self.assertTrue(
-            os.path.isfile(self.payload_path(extract_dir, "/usr/share/%s/README" % NAME))
+            os.path.isfile(
+                self.payload_path(extract_dir, "/usr/share/%s/README" % NAME)
+            )
         )
 
         # the lead read back from stdout recreates the same package
@@ -2007,7 +2009,9 @@ class TestMetadataToStdout(RoundTrip, TestUnpackRPM):
         # tag values kept in their own file and the payload are still there
         self.assertTrue(os.path.isfile(os.path.join(extract_dir, "description.txt")))
         self.assertTrue(
-            os.path.isfile(self.payload_path(extract_dir, "/usr/share/%s/README" % NAME))
+            os.path.isfile(
+                self.payload_path(extract_dir, "/usr/share/%s/README" % NAME)
+            )
         )
 
 

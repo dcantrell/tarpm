@@ -5,6 +5,7 @@ if python.found()
 
     test_suites = [
         'test_options.py',
+        'test_list.py',
         'test_lead.py',
         'test_signature.py',
         'test_header.py',
