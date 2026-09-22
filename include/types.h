@@ -130,9 +130,6 @@ struct file_params {
     /* from RPMTAG_BASENAMES */
     const char *basename;
 
-    /* location of the file in our payload subdir */
-    const char *payload_subdir;
-
     /* from RPMTAG_FILESIZES */
     uint64_t size;
 
@@ -165,14 +162,15 @@ struct file_params {
 };
 
 /*
- * Where the JSON metadata files are read from or written to.  A NULL
- * member means the usual filename in the working directory.  The
- * paths here are absolute.
+ * Where the JSON metadata files and the payload tree are read from or
+ * written to.  A NULL member means the usual name in the working
+ * directory.  The paths here are absolute.
  */
 struct json_paths {
     char *lead;
     char *signature;
     char *header;
+    char *payload;
 };
 
 /* Dependency type definitions */

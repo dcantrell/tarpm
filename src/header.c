@@ -807,7 +807,7 @@ sort_header_tags(struct json_object *tags, bool is_signature)
  * fill in.  Caller must free both.
  */
 int
-create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, const char *tagfile_dir, bool is_signature)
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature)
 {
     int r = 0;
     struct rpmhdr *s;
@@ -888,7 +888,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
          * as well because the depends dictionary rebuilt here holds
          * indexes in to them.
          */
-        add_file_list_tags(tags_copy, files, input_dir, payload_subdir, dependencies);
+        add_file_list_tags(tags_copy, files, payload_dir, dependencies);
     }
 
     /* lay the header out the way rpm would have written it */

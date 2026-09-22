@@ -93,17 +93,18 @@ usage(void)
     printf(_("RPM extraction and creation utility\n"));
     printf(_("Usage: %s [OPTIONS] [.rpm file] [directory]\n"), COMMAND_NAME);
     printf(_("Options:\n"));
-    printf(_("    -t, --list                        List RPM payload contents\n"));
-    printf(_("    -c, --create                      Create an RPM file\n"));
-    printf(_("    -x, --extract                     Extract RPM file\n"));
-    printf(_("    -v, --verbose                     Verbose progress output\n"));
-    printf(_("    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"));
-    printf(_("    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"));
-    printf(_("    -L PATH, --lead=PATH              Use PATH for lead.json\n"));
-    printf(_("    -S PATH, --signature=PATH         Use PATH for signature.json\n"));
-    printf(_("    -H PATH, --header=PATH            Use PATH for header.json\n"));
-    printf(_("    -V, --version                     Display version information\n"));
-    printf(_("    -?, --help                        Display this screen\n"));
+    printf(_("    -t, --list                  List RPM payload contents\n"));
+    printf(_("    -c, --create                Create an RPM file\n"));
+    printf(_("    -x, --extract               Extract RPM file\n"));
+    printf(_("    -v, --verbose               Verbose progress output\n"));
+    printf(_("    -f FILE, --filename=FILE    Use FILE as input or output RPM file\n"));
+    printf(_("    -O DIR, --output=DIR        Use DIR as output directory\n"));
+    printf(_("    -L FILE, --lead=FILE        Use FILE for lead.json\n"));
+    printf(_("    -S FILE, --signature=FILE   Use FILE for signature.json\n"));
+    printf(_("    -H FILE, --header=FILE      Use FILE for header.json\n"));
+    printf(_("    -P DIR, --payload=DIR       Use DIR for the payload tree\n"));
+    printf(_("    -V, --version               Display version information\n"));
+    printf(_("    -?, --help                  Display this screen\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -123,7 +124,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     char *opt = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:V?";
+    char *short_opts = "txcvf:O:L:S:H:P:V?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -134,15 +135,17 @@ main(int argc, char **argv)
         { "lead", required_argument, 0, 'L' },
         { "signature", required_argument, 0, 'S' },
         { "header", required_argument, 0, 'H' },
+        { "payload", required_argument, 0, 'P' },
         { "version", no_argument, 0, 'V' },
         { "help", no_argument, 0, '?' },
         { 0, 0, 0, 0 }
     };
 
-    /* the JSON metadata files land in the working directory by default */
+    /* the metadata and the payload land in the working directory by default */
     paths.lead = NULL;
     paths.signature = NULL;
     paths.header = NULL;
+    paths.payload = NULL;
 
     /* Allow users to do "tarpm ... 2>&1 | tee" */
     setlinebuf(stdout);
@@ -241,6 +244,18 @@ main(int argc, char **argv)
                 }
 
                 paths.header = metadata_path(optarg, OUTPUT_HEADER);
+                break;
+            case 'P':
+                if (paths.payload) {
+                    errx(EXIT_FAILURE, _("*** -P already specified; only allowed once"));
+                }
+
+                paths.payload = abspath(optarg);
+
+                if (paths.payload == NULL) {
+                    errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), optarg);
+                }
+
                 break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
@@ -377,6 +392,7 @@ main(int argc, char **argv)
     free(paths.lead);
     free(paths.signature);
     free(paths.header);
+    free(paths.payload);
 
     return r;
 }

@@ -1237,14 +1237,14 @@ cleanup_mkfiledigest:
  * header.  With no payload tree to look in, every entry is there.
  */
 static bool
-missing_from_payload(struct json_object *file, const char *path, const char *input_dir, const char *payload_subdir)
+missing_from_payload(struct json_object *file, const char *path, const char *payload_dir)
 {
     char *file_path = NULL;
     bool missing = false;
     struct json_object *flags = NULL;
     struct stat sb;
 
-    if (file == NULL || path == NULL || input_dir == NULL || payload_subdir == NULL) {
+    if (file == NULL || path == NULL || payload_dir == NULL) {
         return false;
     }
 
@@ -1252,7 +1252,7 @@ missing_from_payload(struct json_object *file, const char *path, const char *inp
         return false;
     }
 
-    file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+    file_path = joinpath(payload_dir, (path[0] == '/') ? path + 1 : path, NULL);
     missing = (lstat(file_path, &sb) != 0);
     free(file_path);
 
@@ -1471,14 +1471,13 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
  * payload lands in the file list of the new package.
  */
 void
-add_payload_files(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir)
+add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir)
 {
-    char *payload_dir = NULL;
     const char *algo = NULL;
     struct payload_scan scan = { 0 };
     struct stat sb;
 
-    if (tags == NULL || files == NULL || input_dir == NULL || payload_subdir == NULL) {
+    if (tags == NULL || files == NULL || payload_dir == NULL) {
         return;
     }
 
@@ -1486,10 +1485,7 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
         return;
     }
 
-    payload_dir = joinpath(input_dir, payload_subdir, NULL);
-
     if (lstat(payload_dir, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
-        free(payload_dir);
         return;
     }
 
@@ -1514,7 +1510,6 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
 
     scan_payload_dir(&scan, payload_dir, "");
 
-    free(payload_dir);
     return;
 }
 
@@ -1748,7 +1743,7 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
  * the tags array.
  */
 void
-add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies)
+add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies)
 {
     size_t i = 0;
     size_t j = 0;
@@ -1872,7 +1867,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
          * Files that have been removed from the payload tree since the
          * package was unpacked do not go in to the header.
          */
-        if (missing_from_payload(file, path, input_dir, payload_subdir)) {
+        if (missing_from_payload(file, path, payload_dir)) {
             warnx(_("*** %s is not in the payload, leaving it out of the file list"), path);
             continue;
         }
@@ -1885,9 +1880,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         file_path = NULL;
         have_stat = false;
 
-        if (input_dir != NULL && payload_subdir != NULL) {
+        if (payload_dir != NULL) {
             /* Strip leading slash from path for payload lookup */
-            file_path = joinpath(input_dir, payload_subdir, (path[0] == '/') ? path + 1 : path, NULL);
+            file_path = joinpath(payload_dir, (path[0] == '/') ? path + 1 : path, NULL);
             have_stat = (lstat(file_path, &sb) == 0);
         }
 

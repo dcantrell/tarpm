@@ -375,16 +375,16 @@ test_add_file_list_tags_null(void)
     struct json_object *files = NULL;
 
     /* all NULL should not crash */
-    add_file_list_tags(NULL, NULL, NULL, NULL, NULL);
+    add_file_list_tags(NULL, NULL, NULL, NULL);
 
     /* NULL files should add no tags */
     tags = json_object_new_array();
-    add_file_list_tags(tags, NULL, NULL, NULL, NULL);
+    add_file_list_tags(tags, NULL, NULL, NULL);
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
 
     /* NULL tags should not crash */
     files = json_object_new_array();
-    add_file_list_tags(NULL, files, NULL, NULL, NULL);
+    add_file_list_tags(NULL, files, NULL, NULL);
 
     json_object_put(tags);
     json_object_put(files);
@@ -402,7 +402,7 @@ test_add_file_list_tags_empty(void)
     tags = json_object_new_array();
     files = json_object_new_array();
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* an empty files array should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -423,7 +423,7 @@ test_add_file_list_tags_invalid_type(void)
     tags = json_object_new_array();
     files = json_object_new_string("not an array");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* an invalid type should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -454,7 +454,7 @@ test_add_file_list_tags_file_list(void)
     file = add_file(files, "/usr/share/man/man1/ls.1");
     json_object_object_add(file, "linkto", json_object_new_string("/usr/bin/ls"));
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* all nineteen file list tags should be present */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 19);
@@ -520,14 +520,14 @@ test_add_file_list_tags_file_list(void)
 
 /*
  * Helper for test_add_file_list_tags_sizes() below that creates a
- * directory in the payload tree of a test extraction directory.
+ * directory in a payload tree.
  */
 static void
-mkdir_payload(const char *input_dir, const char *path)
+mkdir_payload(const char *payload_dir, const char *path)
 {
     char *dir_path = NULL;
 
-    dir_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    dir_path = joinpath(payload_dir, path, NULL);
     TARPM_ASSERT_TRUE(mkdirp(dir_path, 0755) == 0);
     free(dir_path);
 
@@ -536,17 +536,16 @@ mkdir_payload(const char *input_dir, const char *path)
 
 /*
  * Helper for test_add_file_list_tags_sizes() below that writes a file
- * of the given size in to the payload tree of a test extraction
- * directory.
+ * of the given size in to a payload tree.
  */
 static void
-write_payload(const char *input_dir, const char *path, const size_t size)
+write_payload(const char *payload_dir, const char *path, const size_t size)
 {
     size_t i = 0;
     char *file_path = NULL;
     FILE *fp = NULL;
 
-    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    file_path = joinpath(payload_dir, path, NULL);
     fp = fopen(file_path, "wb");
     TARPM_ASSERT_PTR_NOT_NULL(fp);
 
@@ -562,14 +561,14 @@ write_payload(const char *input_dir, const char *path, const size_t size)
 
 /*
  * Helper for test_add_file_list_tags_sizes() below that creates a
- * symlink in the payload tree of a test extraction directory.
+ * symlink in a payload tree.
  */
 static void
-link_payload(const char *input_dir, const char *path, const char *target)
+link_payload(const char *payload_dir, const char *path, const char *target)
 {
     char *file_path = NULL;
 
-    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    file_path = joinpath(payload_dir, path, NULL);
     TARPM_ASSERT_TRUE(symlink(target, file_path) == 0);
     free(file_path);
 
@@ -578,14 +577,14 @@ link_payload(const char *input_dir, const char *path, const char *target)
 
 /*
  * Helper for test_add_file_list_tags_mismatch_rdev() below that
- * creates a pipe in the payload tree of a test extraction directory.
+ * creates a pipe in a payload tree.
  */
 static void
-fifo_payload(const char *input_dir, const char *path)
+fifo_payload(const char *payload_dir, const char *path)
 {
     char *file_path = NULL;
 
-    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    file_path = joinpath(payload_dir, path, NULL);
     TARPM_ASSERT_TRUE(mkfifo(file_path, 0600) == 0);
     free(file_path);
 
@@ -594,15 +593,15 @@ fifo_payload(const char *input_dir, const char *path)
 
 /*
  * Helper for test_add_file_list_tags_sizes() below that removes a file
- * or a directory from the payload tree of a test extraction directory.
+ * or a directory from a payload tree.
  */
 static void
-remove_payload(const char *input_dir, const char *path)
+remove_payload(const char *payload_dir, const char *path)
 {
     char *file_path = NULL;
     struct stat sb;
 
-    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, path, NULL);
+    file_path = joinpath(payload_dir, path, NULL);
     TARPM_ASSERT_TRUE(lstat(file_path, &sb) == 0);
 
     if (S_ISDIR(sb.st_mode)) {
@@ -629,12 +628,13 @@ test_add_file_list_tags_sizes(void)
     struct json_object *values = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
     /* the payload tree holds what the file list describes */
-    mkdir_payload(input_dir, "/usr/bin");
-    write_payload(input_dir, "/usr/bin/grown", 4096);
-    write_payload(input_dir, "/usr/bin/shrunk", 3);
-    link_payload(input_dir, "/usr/bin/link", "grown");
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/grown", 4096);
+    write_payload(payload_dir, "/usr/bin/shrunk", 3);
+    link_payload(payload_dir, "/usr/bin/link", "grown");
 
     tags = json_object_new_array();
     files = json_object_new_array();
@@ -662,7 +662,7 @@ test_add_file_list_tags_sizes(void)
     /* a directory carries no size at all */
     add_file(files, "/usr/bin");
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     /* the regular files are measured and everything else is left alone */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
@@ -678,13 +678,12 @@ test_add_file_list_tags_sizes(void)
     json_object_put(files);
 
     /* clean up the payload tree */
-    remove_payload(input_dir, "/usr/bin/grown");
-    remove_payload(input_dir, "/usr/bin/shrunk");
-    remove_payload(input_dir, "/usr/bin/link");
-    remove_payload(input_dir, "/usr/bin");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/bin/grown");
+    remove_payload(payload_dir, "/usr/bin/shrunk");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -713,7 +712,7 @@ test_add_file_list_tags_sizes_no_payload(void)
 
     add_file(files, "/usr/bin");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -756,7 +755,7 @@ test_add_file_list_tags_types(void)
     file = add_file(files, "notype");
     json_object_object_add(file, "mode", json_object_new_string("0755"));
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -791,10 +790,11 @@ test_add_file_list_tags_type_from_payload(void)
     struct json_object *values = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
-    mkdir_payload(input_dir, "/usr/bin");
-    write_payload(input_dir, "/usr/bin/plain", 3);
-    link_payload(input_dir, "/usr/bin/link", "plain");
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/plain", 3);
+    link_payload(payload_dir, "/usr/bin/link", "plain");
 
     tags = json_object_new_array();
     files = json_object_new_array();
@@ -823,7 +823,7 @@ test_add_file_list_tags_type_from_payload(void)
     json_object_array_add(flags, json_object_new_string("ghost"));
     json_object_object_add(file, "flags", flags);
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -836,12 +836,11 @@ test_add_file_list_tags_type_from_payload(void)
     json_object_put(tags);
     json_object_put(files);
 
-    remove_payload(input_dir, "/usr/bin/plain");
-    remove_payload(input_dir, "/usr/bin/link");
-    remove_payload(input_dir, "/usr/bin");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/bin/plain");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -866,10 +865,11 @@ test_add_file_list_tags_type_mismatch(void)
     struct json_object *values = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
-    mkdir_payload(input_dir, "/usr/bin");
-    write_payload(input_dir, "/usr/bin/plain", 3);
-    link_payload(input_dir, "/usr/bin/link", "plain");
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/plain", 3);
+    link_payload(payload_dir, "/usr/bin/link", "plain");
 
     tags = json_object_new_array();
     files = json_object_new_array();
@@ -890,7 +890,7 @@ test_add_file_list_tags_type_mismatch(void)
     json_object_object_add(file, "type", json_object_new_string("file"));
     json_object_object_add(file, "size", json_object_new_int64(3));
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     /* the file list now says what the payload holds */
     file = json_object_array_get_idx(files, 0);
@@ -916,12 +916,11 @@ test_add_file_list_tags_type_mismatch(void)
     json_object_put(tags);
     json_object_put(files);
 
-    remove_payload(input_dir, "/usr/bin/plain");
-    remove_payload(input_dir, "/usr/bin/link");
-    remove_payload(input_dir, "/usr/bin");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/bin/plain");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -948,11 +947,12 @@ test_add_file_list_tags_mismatch_values(void)
     struct json_object *linktos = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
-    mkdir_payload(input_dir, "/usr/share");
-    mkdir_payload(input_dir, "/usr/share/wasfile");
-    write_payload(input_dir, "/usr/share/waslink", 5);
-    link_payload(input_dir, "/usr/share/wasplain", "target");
+    mkdir_payload(payload_dir, "/usr/share");
+    mkdir_payload(payload_dir, "/usr/share/wasfile");
+    write_payload(payload_dir, "/usr/share/waslink", 5);
+    link_payload(payload_dir, "/usr/share/wasplain", "target");
 
     tags = json_object_new_array();
     files = json_object_new_array();
@@ -978,7 +978,7 @@ test_add_file_list_tags_mismatch_values(void)
     json_object_object_add(file, "size", json_object_new_int64(99));
     json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     /* the directory keeps none of what it carried as a file */
     file = json_object_array_get_idx(files, 0);
@@ -1027,13 +1027,12 @@ test_add_file_list_tags_mismatch_values(void)
     json_object_put(tags);
     json_object_put(files);
 
-    remove_payload(input_dir, "/usr/share/wasfile");
-    remove_payload(input_dir, "/usr/share/waslink");
-    remove_payload(input_dir, "/usr/share/wasplain");
-    remove_payload(input_dir, "/usr/share");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/share/wasfile");
+    remove_payload(payload_dir, "/usr/share/waslink");
+    remove_payload(payload_dir, "/usr/share/wasplain");
+    remove_payload(payload_dir, "/usr/share");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -1060,16 +1059,17 @@ test_add_file_list_tags_mismatch_rdev(void)
     bool have_dev = false;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
-    mkdir_payload(input_dir, "/dev");
-    fifo_payload(input_dir, "/dev/wasdev");
+    mkdir_payload(payload_dir, "/dev");
+    fifo_payload(payload_dir, "/dev/wasdev");
 
     /*
      * Making a device node takes privileges the test suite usually
      * does not have, so the half of this that needs one only runs
      * when the suite is run as root.
      */
-    file_path = joinpath(input_dir, PAYLOAD_SUBDIR, "/dev/isdev", NULL);
+    file_path = joinpath(payload_dir, "/dev/isdev", NULL);
     have_dev = (mknod(file_path, S_IFCHR | 0600, makedev(1, 3)) == 0);
     free(file_path);
 
@@ -1091,7 +1091,7 @@ test_add_file_list_tags_mismatch_rdev(void)
         json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
     }
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     rdevs = get_tag_values(tags, rpmTagGetName(RPMTAG_FILERDEVS));
     TARPM_ASSERT_PTR_NOT_NULL(rdevs);
@@ -1117,13 +1117,12 @@ test_add_file_list_tags_mismatch_rdev(void)
     json_object_put(files);
 
     if (have_dev) {
-        remove_payload(input_dir, "/dev/isdev");
+        remove_payload(payload_dir, "/dev/isdev");
     }
 
-    remove_payload(input_dir, "/dev/wasdev");
-    remove_payload(input_dir, "/dev");
+    remove_payload(payload_dir, "/dev/wasdev");
+    remove_payload(payload_dir, "/dev");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -1158,13 +1157,14 @@ test_add_file_list_tags_total_size(void)
     struct json_object *flags = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
-    mkdir_payload(input_dir, "/usr/bin");
-    write_payload(input_dir, "/usr/bin/one", 4096);
-    write_payload(input_dir, "/usr/bin/two", 3);
-    write_payload(input_dir, "/usr/bin/hard1", 100);
-    write_payload(input_dir, "/usr/bin/hard2", 100);
-    link_payload(input_dir, "/usr/bin/link", "one");
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/one", 4096);
+    write_payload(payload_dir, "/usr/bin/two", 3);
+    write_payload(payload_dir, "/usr/bin/hard1", 100);
+    write_payload(payload_dir, "/usr/bin/hard2", 100);
+    link_payload(payload_dir, "/usr/bin/link", "one");
 
     files = json_object_new_array();
 
@@ -1202,7 +1202,7 @@ test_add_file_list_tags_total_size(void)
     tags = json_object_new_array();
     add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "4279"));
 
@@ -1212,7 +1212,7 @@ test_add_file_list_tags_total_size(void)
     tags = json_object_new_array();
     add_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE), "1");
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "4279"));
 
@@ -1221,7 +1221,7 @@ test_add_file_list_tags_total_size(void)
     /* a header carrying neither tag does not gain one */
     tags = json_object_new_array();
 
-    add_file_list_tags(tags, files, input_dir, PAYLOAD_SUBDIR, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL);
 
     TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)) == NULL);
     TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)) == NULL);
@@ -1229,15 +1229,14 @@ test_add_file_list_tags_total_size(void)
     json_object_put(tags);
     json_object_put(files);
 
-    remove_payload(input_dir, "/usr/bin/one");
-    remove_payload(input_dir, "/usr/bin/two");
-    remove_payload(input_dir, "/usr/bin/hard1");
-    remove_payload(input_dir, "/usr/bin/hard2");
-    remove_payload(input_dir, "/usr/bin/link");
-    remove_payload(input_dir, "/usr/bin");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/bin/one");
+    remove_payload(payload_dir, "/usr/bin/two");
+    remove_payload(payload_dir, "/usr/bin/hard1");
+    remove_payload(payload_dir, "/usr/bin/hard2");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -1283,22 +1282,23 @@ void
 test_add_payload_files_null(void)
 {
     char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
     struct json_object *tags = NULL;
     struct json_object *files = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
     tags = json_object_new_array();
     files = json_object_new_array();
     add_file(files, "/usr/bin/ls");
 
-    add_payload_files(NULL, files, input_dir, PAYLOAD_SUBDIR);
-    add_payload_files(tags, NULL, input_dir, PAYLOAD_SUBDIR);
-    add_payload_files(tags, files, NULL, PAYLOAD_SUBDIR);
-    add_payload_files(tags, files, input_dir, NULL);
+    add_payload_files(NULL, files, payload_dir);
+    add_payload_files(tags, NULL, payload_dir);
+    add_payload_files(tags, files, NULL);
 
     /* and there is no payload tree here to walk */
-    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, payload_dir);
 
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 1);
 
@@ -1306,10 +1306,11 @@ test_add_payload_files_null(void)
 
     /* the files value has to be an array */
     files = json_object_new_object();
-    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, payload_dir);
 
     json_object_put(tags);
     json_object_put(files);
+    free(payload_dir);
 
     TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
 
@@ -1327,21 +1328,22 @@ test_add_payload_files_new(void)
     struct json_object *file = NULL;
 
     TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
 
     /* the payload tree holds more than the file list names */
-    mkdir_payload(input_dir, "/usr/bin");
-    write_payload(input_dir, "/usr/bin/known", 5);
-    write_payload(input_dir, "/usr/bin/added", 12);
-    link_payload(input_dir, "/usr/bin/link", "known");
-    mkdir_payload(input_dir, "/usr/share/newdir");
-    write_payload(input_dir, "/usr/share/newdir/note.txt", 3);
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/known", 5);
+    write_payload(payload_dir, "/usr/bin/added", 12);
+    link_payload(payload_dir, "/usr/bin/link", "known");
+    mkdir_payload(payload_dir, "/usr/share/newdir");
+    write_payload(payload_dir, "/usr/share/newdir/note.txt", 3);
 
     tags = json_object_new_array();
     files = json_object_new_array();
     add_file(files, "/usr/bin");
     add_file(files, "/usr/bin/known");
 
-    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, payload_dir);
 
     /*
      * The two entries the list had are joined by the five new ones.
@@ -1384,23 +1386,22 @@ test_add_payload_files_new(void)
     TARPM_ASSERT_STRING_EQUAL(file_str(json_object_array_get_idx(files, 6), "path"), "/usr/share/newdir/note.txt");
 
     /* a second run finds nothing new */
-    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, payload_dir);
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 7);
 
     json_object_put(tags);
     json_object_put(files);
 
     /* clean up the payload tree */
-    remove_payload(input_dir, "/usr/share/newdir/note.txt");
-    remove_payload(input_dir, "/usr/share/newdir");
-    remove_payload(input_dir, "/usr/share");
-    remove_payload(input_dir, "/usr/bin/known");
-    remove_payload(input_dir, "/usr/bin/added");
-    remove_payload(input_dir, "/usr/bin/link");
-    remove_payload(input_dir, "/usr/bin");
-    remove_payload(input_dir, "/usr");
+    remove_payload(payload_dir, "/usr/share/newdir/note.txt");
+    remove_payload(payload_dir, "/usr/share/newdir");
+    remove_payload(payload_dir, "/usr/share");
+    remove_payload(payload_dir, "/usr/bin/known");
+    remove_payload(payload_dir, "/usr/bin/added");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
 
-    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
@@ -1424,8 +1425,8 @@ test_add_payload_files_source(void)
     payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     TARPM_ASSERT_TRUE(mkdirp(payload_dir, 0755) == 0);
 
-    write_payload(input_dir, "/known.spec", 4);
-    write_payload(input_dir, "/added.tar.gz", 8);
+    write_payload(payload_dir, "/known.spec", 4);
+    write_payload(payload_dir, "/added.tar.gz", 8);
 
     /* a source package says so with a tag */
     tags = json_object_new_array();
@@ -1437,7 +1438,7 @@ test_add_payload_files_source(void)
     files = json_object_new_array();
     add_file(files, "known.spec");
 
-    add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+    add_payload_files(tags, files, payload_dir);
 
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
     TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "added.tar.gz"));
@@ -1446,13 +1447,64 @@ test_add_payload_files_source(void)
     json_object_put(tags);
     json_object_put(files);
 
-    remove_payload(input_dir, "/known.spec");
-    remove_payload(input_dir, "/added.tar.gz");
+    remove_payload(payload_dir, "/known.spec");
+    remove_payload(payload_dir, "/added.tar.gz");
 
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
 
     TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() and add_payload_files() with a payload
+ * tree that is not the usual subdirectory of an extraction directory.
+ */
+void
+test_payload_dir_elsewhere(void)
+{
+    char payload_dir[] = "/tmp/tarpm-test-payload-XXXXXX";
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    /* the caller named the payload tree, so it is the tree itself */
+    TARPM_ASSERT_TRUE(mkdtemp(payload_dir) != NULL);
+
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/known", 4096);
+    write_payload(payload_dir, "/usr/bin/added", 12);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/bin");
+    add_file(files, "/usr/bin/known");
+
+    /* the file put in the tree by hand joins the list */
+    add_payload_files(tags, files, payload_dir);
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 3);
+    TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "/usr/bin/added"));
+
+    /* and the sizes come from the tree the caller named */
+    add_file_list_tags(tags, files, payload_dir, NULL);
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 4096);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 12);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(payload_dir, "/usr/bin/known");
+    remove_payload(payload_dir, "/usr/bin/added");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
 
     return;
 }
@@ -1477,7 +1529,7 @@ test_add_file_list_tags_class(void)
 
     add_file(files, "/usr/share/doc");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* the class dictionary holds each unique class once */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_CLASSDICT));
@@ -1530,7 +1582,7 @@ test_add_file_list_tags_langs(void)
     /* a file with no languages at all */
     add_file(files, "/usr/bin/ls");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* languages are joined with a "|" and missing ones are empty strings */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELANGS));
@@ -1587,7 +1639,7 @@ test_add_file_list_tags_colors(void)
     /* an entry with no color at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* names turn back in to bits and missing colors are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILECOLORS));
@@ -1649,7 +1701,7 @@ test_add_file_list_tags_flags(void)
     /* an entry with no flags at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /* names turn back in to bits and missing flags are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEFLAGS));
@@ -1718,7 +1770,7 @@ test_add_file_list_tags_verifyflags(void)
     /* an entry that verifies nothing */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL);
 
     /*
      * Names turn back in to bits the way rpmbuild writes them, which is
@@ -1820,7 +1872,7 @@ test_add_file_list_tags_provides(void)
     /* a file that generated nothing */
     add_file(files, "/usr/share/doc/foo/README");
 
-    add_file_list_tags(tags, files, NULL, NULL, dependencies);
+    add_file_list_tags(tags, files, NULL, dependencies);
 
     /*
      * Every provides entry becomes one dictionary value holding the
@@ -1933,6 +1985,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||
+        CU_add_test(pSuite, "test a payload tree of its own", test_payload_dir_elsewhere) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||

@@ -180,7 +180,7 @@ payload_path(const char *dirname, const char *basename)
  * than walking the filesystem tree.
  */
 static int
-add_file_to_payload(const char *input_dir, const struct file_params *params)
+add_file_to_payload(const char *payload_dir, const struct file_params *params)
 {
     char *relative_path = NULL;
     char *full_path = NULL;
@@ -190,7 +190,7 @@ add_file_to_payload(const char *input_dir, const struct file_params *params)
     ssize_t len = 0;
     char buf[BUFSIZ];
 
-    if (input_dir == NULL || params == NULL) {
+    if (payload_dir == NULL || params == NULL) {
         return -1;
     }
 
@@ -198,7 +198,7 @@ add_file_to_payload(const char *input_dir, const struct file_params *params)
     relative_path = joinpath(params->dirname, params->basename, NULL);
 
     /* this is the actual location of the file going in the payload */
-    file_path = joinpath(input_dir, params->payload_subdir, relative_path, NULL);
+    file_path = joinpath(payload_dir, relative_path, NULL);
 
     /* start a new entry */
     entry = archive_entry_new();
@@ -468,7 +468,7 @@ is_ghost_file(const struct hdr_file_lists *hfl, const size_t i)
  * temporary file, and the caller has to do that.
  */
 static int
-create_payload(struct json_object *header, const char *input_dir, const char *payload_subdir)
+create_payload(struct json_object *header, const char *payload_dir)
 {
     int payloadfd = -1;
     int tmp_payloadfd = -1;
@@ -512,7 +512,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
     size_t ordered = 0;
     size_t n = 0;
 
-    if (header == NULL || payload_subdir == NULL) {
+    if (header == NULL || payload_dir == NULL) {
         return -1;
     }
 
@@ -543,7 +543,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             dependencies = NULL;
         }
 
-        add_file_list_tags(tags_with_files, files, input_dir, payload_subdir, dependencies);
+        add_file_list_tags(tags_with_files, files, payload_dir, dependencies);
 
         /* Use the copy for processing */
         tags = tags_with_files;
@@ -883,7 +883,6 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
         dirindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
         params.dirname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dirindex));
         params.basename = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
-        params.payload_subdir = payload_subdir;
         params.size = json_object_get_int64(json_object_array_get_idx(hfl.filesizes, i));
         params.mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
         params.rdev = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filerdevs, i));
@@ -930,7 +929,7 @@ create_payload(struct json_object *header, const char *input_dir, const char *pa
             }
         }
 
-        if (add_file_to_payload(input_dir, &params) != 0) {
+        if (add_file_to_payload(payload_dir, &params) != 0) {
             warnx("failed to add file: %s%s", params.dirname, params.basename);
         }
     }
@@ -1425,6 +1424,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     int payloadfd = -1;
     struct stat sb;
     char *header_dir = NULL;
+    char *payload_dir = NULL;
     const char *signature_path = OUTPUT_SIGNATURE;
     const char *header_path = OUTPUT_HEADER;
     struct json_object *signature = NULL;
@@ -1453,14 +1453,28 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
+    /* the caller may have named where the payload tree is */
+    if (paths != NULL && paths->payload != NULL) {
+        payload_dir = strdup(paths->payload);
+    } else {
+        payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+    }
+
+    if (payload_dir == NULL) {
+        warnx(_("*** unable to set payload_dir"));
+        return -1;
+    }
+
     /* make sure we have the payload subdirectory */
-    if (lstat(PAYLOAD_SUBDIR, &sb) == -1) {
+    if (lstat(payload_dir, &sb) == -1) {
         warn("lstat");
+        free(payload_dir);
         return -1;
     }
 
     if (!S_ISDIR(sb.st_mode)) {
-        warn(_("*** %s is not a directory"), PAYLOAD_SUBDIR);
+        warn(_("*** %s is not a directory"), payload_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1480,6 +1494,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (header_dir == NULL) {
         warnx(_("*** unable to set header_dir"));
+        free(payload_dir);
         return -1;
     }
 
@@ -1489,6 +1504,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (signature == NULL) {
         warnx(_("*** missing signature data"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1497,12 +1513,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (header == NULL) {
         warnx(_("*** missing header data"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
     /* pick up the files added to the payload tree */
     if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) && json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
-        add_payload_files(tags, files, input_dir, PAYLOAD_SUBDIR);
+        add_payload_files(tags, files, payload_dir);
     }
 
     /* create the lead from header metadata */
@@ -1511,29 +1528,33 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (rawlead == NULL) {
         warnx(_("*** unable to construct RPM lead"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
     /* create the header (the main header) */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, header_dir, false) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to construct RPM header"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
     /* create the payload */
-    payloadfd = create_payload(header, input_dir, PAYLOAD_SUBDIR);
+    payloadfd = create_payload(header, payload_dir);
 
     if (payloadfd == -1) {
         warnx("create_payload");
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
     /* create the signature */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, NULL, true) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         warnx(_("*** unable to construct RPM signature"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1542,6 +1563,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         close(payloadfd);
         warnx("update_header_digests");
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1549,9 +1571,10 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     free_header(hdr, hdrinfo);
 
     /* regenerate the header with updated digests */
-    if (create_header(header, &hdr, &hdrinfo, input_dir, PAYLOAD_SUBDIR, header_dir, false) == -1) {
+    if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to reconstruct RPM header"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1560,6 +1583,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         close(payloadfd);
         warnx("update_signature");
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1567,9 +1591,10 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     free_header(sig, siginfo);
 
     /* regenerate the signature with updated digests */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, NULL, true) == -1) {
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         warnx(_("*** unable to reconstruct RPM signature"));
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1579,6 +1604,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (rpm == NULL) {
         warn("fopen");
         free(header_dir);
+        free(payload_dir);
         return -1;
     }
 
@@ -1609,6 +1635,7 @@ create_cleanup:
     free_header(hdr, hdrinfo);
     free(rawlead);
     free(header_dir);
+    free(payload_dir);
 
     /* close the RPM */
     if (fclose(rpm) != 0) {

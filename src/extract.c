@@ -55,6 +55,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     const char *lead_path = NULL;
     const char *signature_path = NULL;
     const char *header_path = NULL;
+    const char *payload_path = NULL;
     Header h;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
@@ -112,6 +113,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         lead_path = paths->lead;
         signature_path = paths->signature;
         header_path = paths->header;
+        payload_path = paths->payload;
     }
 
     /* tag values written to their own file sit next to header.json */
@@ -176,11 +178,21 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         warn("write_json_file");
     }
 
-    /* unpack the RPM payload */
-    xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
+    /* unpack the RPM payload where the caller asked us to */
+    if (payload_path == NULL) {
+        xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
+    } else {
+        tmp = strdup(payload_path);
+    }
+
+    if (tmp == NULL) {
+        warnx(_("*** unable to set the payload directory"));
+        return -1;
+    }
 
     if (mkdirp(tmp, mode) == -1) {
         warnx("mkdirp");
+        free(tmp);
         return -1;
     }
 

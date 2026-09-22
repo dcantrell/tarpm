@@ -282,19 +282,19 @@ test_create_header_invalid(void)
     int r = 0;
 
     /* NULL data returns an error */
-    r = create_header(NULL, &hdr, &hdrinfo, NULL, NULL, NULL, false);
+    r = create_header(NULL, &hdr, &hdrinfo, NULL, NULL, false);
     TARPM_ASSERT_EQUAL(r, -1);
 
     /* data with no tags array returns an error */
     data = json_object_new_object();
-    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, NULL, false);
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
     /* tags that are not an array returns an error */
     data = json_object_new_object();
     json_object_object_add(data, "tags", json_object_new_string("not an array"));
-    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, NULL, false);
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -329,7 +329,7 @@ test_create_header_valid(void)
 
     json_object_object_add(data, "tags", tags);
 
-    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, NULL, false);
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
     TARPM_ASSERT_EQUAL(r, 0);
     TARPM_ASSERT_PTR_NOT_NULL(hdr);
     TARPM_ASSERT_PTR_NOT_NULL(hdrinfo);

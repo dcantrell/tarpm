@@ -1752,3 +1752,135 @@ class TestMetadataPathsAreRelative(RoundTrip, TestUnpackRPM):
         self.assertEqual(rc, 0, "Create failed: %s" % err)
 
         self.assertIdentical(original, pkg)
+
+
+class TestPayloadPathRoundTrip(RoundTrip, TestUnpackRPM):
+    """The payload tree lands where the command line says"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = os.path.join(self.output_dir, "extracted")
+        payload_dir = os.path.join(self.output_dir, "tree", "files")
+
+        # the payload directory is not there yet
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-x", "-f", original, "-O", extract_dir, "--payload", payload_dir],
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        # the payload went where we asked and the usual tree was left out
+        self.assertTrue(
+            os.path.isfile(os.path.join(payload_dir, "usr", "share", NAME, "README")),
+            "the payload is not under %s" % payload_dir,
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(extract_dir, "payload")),
+            "a payload subdirectory was made anyway",
+        )
+
+        # the JSON metadata keeps its usual home
+        for name in ["lead.json", "signature.json", "header.json"]:
+            self.assertTrue(os.path.isfile(os.path.join(extract_dir, name)))
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-c", "-f", pkg, "--payload", payload_dir, extract_dir],
+        )
+        self.assertEqual(rc, 0, "Create failed: %s" % err)
+
+        self.assertIdentical(original, pkg)
+
+
+class TestPayloadPathIsRelative(RoundTrip, TestUnpackRPM):
+    """A payload path is taken from the directory tarpm runs in"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-x", "-f", original, "-O", "extracted", "-P", "tree"],
+            cwd=self.output_dir,
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        tree = os.path.join(self.output_dir, "tree")
+        self.assertTrue(
+            os.path.isfile(os.path.join(tree, "usr", "share", NAME, "README"))
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.output_dir, "extracted", "payload"))
+        )
+
+        # a file added to the tree lands in the file list of the new package
+        f = open(os.path.join(tree, "usr", "share", NAME, "NOTES"), "w")
+        f.write("notes\n")
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-c", "-f", "recreated.rpm", "-P", "tree", "extracted"],
+            cwd=self.output_dir,
+        )
+        self.assertEqual(rc, 0, "Create failed: %s" % err)
+
+        self.assertTrue("/usr/share/%s/NOTES" % NAME in file_list(pkg))
+        self.assertVerifies(pkg)
+
+
+class TestPayloadPathMissing(RoundTrip, TestUnpackRPM):
+    """tarpm says so when the payload tree named is not there"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+
+        # a payload directory we cannot create stops the extraction
+        blocker = os.path.join(self.output_dir, "blocker")
+        f = open(blocker, "w")
+        f.write("not a directory\n")
+        f.close()
+
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-x", "-f", original, "-O", extract_dir, "-P", os.path.join(blocker, "p")],
+        )
+        self.assertNotEqual(rc, 0, "Extract unexpectedly succeeded")
+
+        # and a payload directory that is not there stops the creation
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-c", "-f", pkg, "-P", os.path.join(self.output_dir, "gone"), extract_dir],
+        )
+        self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
+        self.assertFalse(os.path.exists(pkg), "A package was written anyway")

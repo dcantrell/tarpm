@@ -69,7 +69,7 @@ struct json_object *read_signature(const int fd);
 /* header.c */
 bool valid_header(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd, const char *dest_dir);
-int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *input_dir, const char *payload_subdir, const char *tagfile_dir, bool is_signature);
+int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
 
@@ -88,8 +88,8 @@ int dependency_index(struct json_object *dependencies, const char *key, struct j
 
 /* files.c */
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
-void add_payload_files(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir);
-void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies);
+void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
+void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies);
 bool is_file_list_tag(rpmTagVal tag);
 
 /* joinpath.c */
