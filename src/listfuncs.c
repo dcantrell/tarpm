@@ -12,16 +12,14 @@
 /**
  * @brief Join all members of a str_list_t in to a single string.
  *
- * Given a str_list_t, combine all the members in to a newly
- * allocated string.  An optional delimiter can be provided by passing
- * a string as the delimiter argument.  If NULL given as the
- * delimited, all strings will be concatenated together.  Caller is
- * responsible for freeing memory allocated by this function.
+ * Combine all the members of a str_list_t in to a newly allocated
+ * string.  The delimiter goes between each member, or pass NULL to
+ * run them together.  Caller must free the string.
  *
  * @param list str_list_t containing members to join
  * @param delimiter Optional delimiter string to put between each list
  *        member (NULL to disable)
- * @return Newly allocated string of concatenated list members; caller
+ * @return Newly allocated string of concatenated list members.  Caller
  *         must free.
  */
 char *
@@ -82,11 +80,10 @@ list_free(str_list_t *list, list_entry_data_free_func free_func)
 }
 
 /*
- * Append the string to the str_list_t and return the
- * str_list_t.  A NULL string is not added and the caller just gets
- * back a pointer to the same str_list_t.  A NULL list may be
- * specified, in which case the function will start a new list and add
- * the string to it.  Caller responsible for all memory management.
+ * Append the string to the str_list_t and return the list.  A NULL
+ * string is not added and the caller gets the same list back.  A NULL
+ * list starts a new list with the string in it.  Caller handles all
+ * memory management.
  */
 str_list_t *
 list_add(str_list_t *list, const char *s)
@@ -138,9 +135,8 @@ uint32_list_free(uint32_list_t *list)
 }
 
 /*
- * Append the value to the uint32_list_t and return the uint32_list_t.
- * A NULL list may be specified, in which case the function will start
- * a new list and add the value to it.  Caller responsible for all
+ * Append the value to the uint32_list_t and return the list.  A NULL
+ * list starts a new list with the value in it.  Caller handles all
  * memory management.
  */
 uint32_list_t *

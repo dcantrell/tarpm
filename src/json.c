@@ -98,10 +98,9 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 
     /*
-     * Mark cryptographic signature tags as read-only since they cannot be
-     * recreated without the private signing keys. However, digest and size
-     * tags that are recalculated by update_signature() should NOT be marked
-     * as read-only.
+     * Mark the signature tags read-only because we cannot make them
+     * again without the private signing key.  The digest and size
+     * tags are not read-only since update_signature() redoes them.
      */
     if (signature) {
         /*

@@ -12,17 +12,15 @@
 #include "tarpm.h"
 
 /*
- * Compute digests for the signature header, which are of the header
- * header plus the package payload.  The signature header records the
- * MD5 digest, SHA-1 digest, and SHA-256.  This is a function called
- * multiple times depending on the algorithm needed.
+ * Compute a digest over the header and the payload, which is what
+ * the signature header records.  It holds an MD5, a SHA-1 and a
+ * SHA-256 digest, so we call this once per algorithm we need.
  *
- * This is not a general purpose digest computation function.  It's
- * specifically for feeding in two parts of an RPM in to the algorithm
- * to compute a digest.
+ * This is not a general purpose digest function.  It only feeds those
+ * two parts of an RPM in to the algorithm.
  *
- * Returns an allocated computed digest or NULL on failure.  Caller
- * must free the returned buffer.
+ * Returns an allocated digest or NULL on failure.  Caller must free
+ * the buffer.
  */
 unsigned char *
 mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd)

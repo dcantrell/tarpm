@@ -441,10 +441,9 @@ get_tag_number(struct json_object *entry, bool signature)
 }
 
 /*
- * Given a json_object representing a "tags" array from a header JSON
- * file, search for the array entry where the "tag" field matches the
- * name parameter on this function.  Return the tag value as a string
- * or NULL if not found.  Caller must not free the returned string.
+ * Given a "tags" array from a header JSON file, find the entry whose
+ * "tag" field matches name and return its value as a string.  Returns
+ * NULL if there is no match.  Caller must not free the string.
  */
 const char *
 get_tag_value(const struct json_object *tags, const char *tag)
@@ -492,10 +491,9 @@ get_tag_value(const struct json_object *tags, const char *tag)
 }
 
 /*
- * Given a json_object representing a "tags" array from a header JSON
- * file, search for the array entry where the "tag" field matches the
- * name parameter on this function, and update its value with the
- * new_value parameter.  Returns 0 on success, -1 on failure.
+ * Given a "tags" array from a header JSON file, find the entry whose
+ * "tag" field matches name and set its value to new_value.  Returns 0
+ * on success, -1 on failure.
  */
 int
 set_tag_value(struct json_object *tags, const char *tag, const char *new_value)
