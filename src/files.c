@@ -23,9 +23,8 @@
 #include "tarpm.h"
 
 /*
- * Holds the raw file lists read out of the header while
- * generate_files() restructures them in to the "files" JSON array.
- * Every list carries one entry per file in the same order as the
+ * The raw file lists we read out of the header to build the "files"
+ * array.  Every list has one entry per file, in the order of the
  * header tag it came from.
  */
 struct file_metadata {
@@ -52,17 +51,16 @@ struct file_metadata {
     uint32_list_t *filedependsn;
 
     /*
-     * The one list here that is not per-file.  DEPENDSDICT is a single
-     * array shared by every file; FILEDEPENDSX and FILEDEPENDSN give
-     * the start and length of each file's slice of it.  Track it here
-     * since it is part of file metadata.
+     * The one list here that is not per-file.  Every file shares
+     * DEPENDSDICT.  FILEDEPENDSX and FILEDEPENDSN give the start and
+     * the length of each file's slice of it.
      */
     uint32_list_t *dependsdict;
 };
 
 /*
- * Holds what a walk of the payload tree needs to add entries to the
- * "files" array for the files it finds there.
+ * What a walk of the payload tree needs to add entries to the
+ * "files" array.
  */
 struct payload_scan {
     struct json_object *files;
@@ -71,11 +69,10 @@ struct payload_scan {
 };
 
 /*
- * Helper struct for the add_file_list_tags() function.
- * There is one array per file list tag and they all stay parallel to
- * the file list.  The rest of it tracks the things rpm stores once
- * and has each file point at: the directory names, the file classes
- * and the hard link groups.
+ * Helper struct for add_file_list_tags().  One array per file list
+ * tag, all of them parallel to the file list.  The rest tracks what
+ * rpm stores once and has each file point at: the directory names,
+ * the file classes and the hard link groups.
  */
 struct file_list_tags {
     struct json_object *dirnames;
@@ -142,23 +139,19 @@ static const struct file_flag_name file_flag_names[] = {
 
 /*
  * Maps a single RPMVERIFY_* bit to the name it carries in the "files"
- * array.  The names come from the enum constant names from
- * rpmVerifyAttrs_e with the RPMVERIFY_ prefix trimmed and lowercased.
- * This is also close to how it would appear in a spec file, just
- * without the '%' prefix.
+ * array.  The names come from the rpmVerifyAttrs_e constants with the
+ * RPMVERIFY_ prefix cut off and lowercased, which is how a spec file
+ * writes them without the '%'.
  *
- * Only bits 0 through 8 appear here because those are the only ones a
- * spec file can specify; they are what %verify() accepts.  The higher
- * bits rpmVerifyAttrs_e defines are used internally by rpm and are
- * never read back out of this tag.  They are in the stored value
- * though: rpmbuild defaults every file to RPMVERIFY_ALL, which is ~0,
- * and writes %verify(not ...) as the complement of the listed bits,
- * so a file that verifies everything carries 0xffffffff rather than
- * an explicit list of the attributes it wants checked.  Fun.
+ * Only bits 0 through 8 are here because those are the ones
+ * %verify() takes.  rpm uses the higher bits itself and we never read
+ * them back.  They are still in the stored value.  rpmbuild starts
+ * every file at RPMVERIFY_ALL, which is ~0, so a file that verifies
+ * everything carries 0xffffffff.
  *
- * RPMVERIFY_MD5 is left out here because it is an obsolete spelling
- * of RPMVERIFY_FILEDIGEST and shares the same bit; it is still
- * accepted when reading.
+ * RPMVERIFY_MD5 is left out because it is an old name for
+ * RPMVERIFY_FILEDIGEST and shares the same bit.  We still take it
+ * when reading.
  */
 static const struct file_flag_name file_verify_names[] = {
     { RPMVERIFY_FILEDIGEST, RPM_FILE_VERIFY_FILEDIGEST },
@@ -195,9 +188,9 @@ static const struct file_type_name file_type_names[] = {
 };
 
 /*
- * Returns the name for the file type bits of a mode.  rpmfiWhatis()
- * decides which type it is so tarpm reads a mode the way rpm does.
- * Anything that is not one of the types rpm knows is a regular file.
+ * Returns the name for the file type bits of a mode.  We let
+ * rpmfiWhatis() pick the type so we read a mode the way rpm does.
+ * Anything rpm does not know is a regular file.
  */
 static const char *
 type_name(rpm_mode_t mode)
@@ -293,11 +286,10 @@ free_file_metadata(struct file_metadata *fmd)
 }
 
 /*
- * Convert a FILECOLORS value in to an array of color name strings.
- * Bit 0 marks a 32-bit ELF object and bit 1 marks a 64-bit ELF object.
- * Any remaining bits have no name, so they are carried as a single
- * decimal number to keep the value intact across a round trip.
- * Returns NULL for a color of zero, which callers use to omit the key.
+ * Turn a FILECOLORS value in to an array of color names.  Bit 0 is a
+ * 32-bit ELF object and bit 1 is a 64-bit one.  Bits with no name go
+ * in as one decimal number so a round trip keeps the value.  Returns
+ * NULL for a color of zero and the caller leaves the key off.
  */
 static struct json_object *
 color_names(uint32_t color)
@@ -381,12 +373,11 @@ color_value(struct json_object *names)
 }
 
 /*
- * Convert a FILEFLAGS value in to an array of flag name strings.  The
- * names come from the rpmfileAttrs_e constants with the RPMFILE_
- * prefix trimmed and lowercased.  Bits with no name are carried as a
- * single decimal number to keep the value intact across a round trip.
- * Returns NULL for a flags value of zero, which callers use to omit
- * the key.
+ * Turn a FILEFLAGS value in to an array of flag names.  The names
+ * come from the rpmfileAttrs_e constants with the RPMFILE_ prefix cut
+ * off and lowercased.  Bits with no name go in as one decimal number
+ * so a round trip keeps the value.  Returns NULL for flags of zero
+ * and the caller leaves the key off.
  */
 static struct json_object *
 flag_names(uint32_t flags)
@@ -478,13 +469,12 @@ flag_value(struct json_object *names)
 }
 
 /*
- * Convert a FILEVERIFYFLAGS value in to an array of verify flag name
- * strings.  The names come from the rpmVerifyAttrs_e constants with
- * the RPMVERIFY_ prefix trimmed and lowercased.  Only the named bits
- * are reported; anything above them is dropped rather than carried
- * along as a number, so what lands in header.json is the list of
- * attributes rpm will actually check.  Returns NULL when none of the
- * named bits are set, which callers use to omit the key.
+ * Turn a FILEVERIFYFLAGS value in to an array of verify flag names.
+ * The names come from the rpmVerifyAttrs_e constants with the
+ * RPMVERIFY_ prefix cut off and lowercased.  We keep only the named
+ * bits and drop the rest, so header.json lists what rpm really
+ * checks.  Returns NULL when no named bit is set and the caller
+ * leaves the key off.
  */
 static struct json_object *
 verifyflag_names(uint32_t verifyflags)
@@ -506,14 +496,13 @@ verifyflag_names(uint32_t verifyflags)
 }
 
 /*
- * Convert an array of verify flag name strings back in to a
- * FILEVERIFYFLAGS value.  Only the names verifyflag_names() emits are
- * understood, plus "md5" as the obsolete spelling of "filedigest".
- * rpmbuild starts every file at RPMVERIFY_ALL and clears the bits the
- * spec file asked it to skip, so the value is built the same way here:
- * every bit outside the named ones stays set and the named bits the
- * array does not list are cleared.  A missing or empty array means
- * none of the named attributes are verified.
+ * Turn an array of verify flag names back in to a FILEVERIFYFLAGS
+ * value.  We take the names verifyflag_names() writes plus "md5", the
+ * old name for "filedigest".  rpmbuild starts at RPMVERIFY_ALL and
+ * clears the bits the spec file skips, so we build the value the same
+ * way: every bit outside the named ones stays set and the named bits
+ * the array leaves out are cleared.  A missing or empty array
+ * verifies none of the named attributes.
  */
 static uint32_t
 verifyflag_value(struct json_object *names)
@@ -566,21 +555,19 @@ verifyflag_value(struct json_object *names)
 }
 
 /*
- * Convert one file's slice of the depends dictionary in to an array
- * of the dependencies that file generated.  Each dictionary value
- * names a dependency type in its high byte and an index in to that
- * type's array in the "dependencies" object in the rest, so every
- * value resolves to exactly one dependency.  The resolved dependency
- * is copied verbatim and given a "type" key naming the array it came
- * from.
+ * Turn one file's slice of the depends dictionary in to an array of
+ * the dependencies that file generated.  Each value names a
+ * dependency type in its high byte and an index in to that type's
+ * array in "dependencies" in the rest, so every value resolves to one
+ * dependency.  We copy the dependency as-is and add a "type" key
+ * naming the array it came from.
  *
- * The order of the slice is kept as-is because rpm records these in
- * whatever order the dependency generators produced them, which means
- * the types can interleave and the same dependency can appear more
- * than once.  Reproducing the tag on create needs that order back.
+ * We keep the order of the slice because rpm records these in the
+ * order the generators made them, so the types can mix and the same
+ * dependency can show up twice.  Create mode needs that order back.
  *
- * Returns NULL when the slice is empty or nothing in it resolves,
- * which callers use to omit the key.
+ * Returns NULL when the slice is empty or nothing in it resolves and
+ * the caller leaves the key off.
  */
 static struct json_object *
 file_dependencies(struct json_object *dependencies, const uint32_list_t *dependsdict, uint32_t start, uint32_t count)
@@ -938,10 +925,10 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
             json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
 
             /*
-             * Add size for regular files and symlinks.  RPM stores the
-             * length of a symlink's target string in FILESIZES, and the
-             * payload reader consumes that many bytes for the target, so
-             * the value must be preserved for symlinks too.
+             * Add size for regular files and symlinks.  RPM keeps
+             * the length of a symlink target in FILESIZES and the
+             * payload reader eats that many bytes, so symlinks need
+             * it too.
              */
             if (filesize != NULL && filemode != NULL) {
                 if (S_ISREG(filemode->value) || S_ISLNK(filemode->value)) {
@@ -1013,9 +1000,9 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
             }
 
             /*
-             * Add inode for every entry.  RPM assigns these numbers itself
-             * (starting at 1 and incrementing) to track hard links; files
-             * that share an inode number are hard links of one another.
+             * Add inode for every entry.  RPM numbers these itself
+             * starting at 1 to track hard links.  Files that share a
+             * number are hard links of one another.
              */
             if (fileinode != NULL) {
                 json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int(fileinode->value));
@@ -1243,26 +1230,25 @@ cleanup_mkfiledigest:
 }
 
 /*
- * Returns true if the file an entry in the "files" array describes is
- * gone from the payload tree.  %ghost files are never carried in the
- * payload, so those are always reported as present; anything else that
- * is not there was removed from the unpacked package and should not go
- * in to the header.  Entries are also reported as present when there is
- * no payload tree to look in.
+ * Returns true if the file an entry in the "files" array names is
+ * gone from the payload tree.  %ghost files are never in the payload,
+ * so we always report those as present.  Anything else that is not
+ * there was taken out of the unpacked package and stays out of the
+ * header.  With no payload tree to look in, every entry is there.
  */
 static bool
 missing_from_payload(struct json_object *file, const char *path, const char *input_dir, const char *payload_subdir)
 {
     char *file_path = NULL;
     bool missing = false;
-    struct json_object *flags_obj = NULL;
+    struct json_object *flags = NULL;
     struct stat sb;
 
     if (file == NULL || path == NULL || input_dir == NULL || payload_subdir == NULL) {
         return false;
     }
 
-    if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags_obj) && (flag_value(flags_obj) & RPMFILE_GHOST)) {
+    if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags) && (flag_value(flags) & RPMFILE_GHOST)) {
         return false;
     }
 
@@ -1276,8 +1262,8 @@ missing_from_payload(struct json_object *file, const char *path, const char *inp
 /*
  * Returns true if the "files" array needs an entry for this file in
  * the payload tree.  Paths the list already names do not need one.
- * Neither do the directories that lead to a file the list names; the
- * payload tree has to have them to hold the files under them, but the
+ * Neither do the directories leading to a file the list names.  The
+ * payload tree needs those to hold the files under them, but the
  * package never owned them.
  */
 static bool
@@ -1288,7 +1274,7 @@ new_in_payload(struct json_object *files, const char *path, const struct stat *s
     size_t count = 0;
     const char *s = NULL;
     struct json_object *file = NULL;
-    struct json_object *path_obj = NULL;
+    struct json_object *entry_path = NULL;
 
     count = json_object_array_length(files);
     len = strlen(path);
@@ -1296,11 +1282,11 @@ new_in_payload(struct json_object *files, const char *path, const struct stat *s
     for (i = 0; i < count; i++) {
         file = json_object_array_get_idx(files, i);
 
-        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &path_obj)) {
+        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &entry_path)) {
             continue;
         }
 
-        s = json_object_get_string(path_obj);
+        s = json_object_get_string(entry_path);
 
         /* the list already names it */
         if (!strcmp(s, path)) {
@@ -1375,9 +1361,9 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
     }
 
     /*
-     * The payload tree is unpacked as whoever ran tarpm, so who owns
-     * the file now says nothing about who should own it once the
-     * package is installed.  Added files go to the default owner.
+     * Who owns the file now is whoever ran tarpm, which is not who
+     * should own it once the package is installed, so added files
+     * get the default owner.
      */
     json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(RPM_FILE_DEFAULT_USER));
     json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(RPM_FILE_DEFAULT_GROUP));
@@ -1400,9 +1386,9 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
     }
 
     /*
-     * Files that are hard links of one another share an inode number,
-     * which is the only thing the "inode" key is read for.  Entries
-     * with a link count of one do not need it.
+     * Hard links of one another share an inode number, which is all
+     * the "inode" key is read for.  A file with one link does not
+     * need it.
      */
     if (sb->st_nlink > 1) {
         json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
@@ -1533,14 +1519,10 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
 }
 
 /*
- * Update any inconsistencies with file metadata in the JSON
- * structures with what is on the actual files in the payload
- * subdirectory.
- *
- * The metadata checked and updated if necessary is size, type, linkto
- * (for symbolic links), and rdev.  For payload members that
- * completely change types, the metadata is adjusted accordingly to
- * match the new type.
+ * Make the metadata in the JSON match the real files in the payload
+ * subdirectory.  We check the size, the type, the linkto of a symlink
+ * and the rdev.  When a payload member changes type, we fix up the
+ * rest of its metadata to suit the new type.
  */
 static void
 fix_type_mismatch(struct json_object *file, const char *path, const char *file_path, const struct stat *sb, const uint32_t digestalgo)
@@ -1548,15 +1530,15 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
     ssize_t len = 0;
     char *target = NULL;
     char *digest = NULL;
-    struct json_object *type_obj = NULL;
+    struct json_object *type = NULL;
     const char *entry_type = NULL;
     const char *payload_type = NULL;
 
-    if (!json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &type_obj)) {
+    if (!json_object_object_get_ex(file, RPM_FILE_TYPE_DESC, &type)) {
         return;
     }
 
-    entry_type = json_object_get_string(type_obj);
+    entry_type = json_object_get_string(type);
     payload_type = type_name(sb->st_mode);
 
     if (!strcmp(entry_type, payload_type)) {
@@ -1762,9 +1744,8 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
 }
 
 /*
- * Reconstruct the file list tag entries from the files array.
- * Adds the file list tag entries (DIRNAMES, BASENAMES, DIRINDEXES, FILESIZES, FILEMODES, FILEMTIMES)
- * to the provided tags array.
+ * Rebuild the file list tags from the "files" array and add them to
+ * the tags array.
  */
 void
 add_file_list_tags(struct json_object *tags, struct json_object *files, const char *input_dir, const char *payload_subdir, struct json_object *dependencies)
@@ -1835,10 +1816,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
 
     /*
-     * The file digests are recomputed from the actual contents of the
-     * payload, so the algorithm the header names for them is needed
-     * up front.  rpm defaults to MD5 for packages missing the
-     * RPMTAG_FILEDIGESTALGO tag.
+     * We recompute the digests from the payload, so we need the
+     * algorithm the header names up front.  rpm falls back to MD5
+     * when RPMTAG_FILEDIGESTALGO is missing.
      */
     str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
 
@@ -1899,8 +1879,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         /*
          * Where this entry lands in the payload tree and what is
-         * sitting there.  The type, the size and the digest all come
-         * from it below, so look it up the once.
+         * there now.  The type, the size and the digest all come from
+         * it below, so we look it up once.
          */
         file_path = NULL;
         have_stat = false;
@@ -1925,9 +1905,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
         if (separator == NULL) {
             /*
-             * No directory separator.  Source RPMs are stored this way;
-             * they carry a single empty dirname and the bare filenames
-             * as the basenames.
+             * No directory separator.  Source RPMs look like this.
+             * They carry one empty dirname and bare filenames as the
+             * basenames.
              */
             dirname = "";
             basename = path;
@@ -2092,10 +2072,9 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         /*
-         * Entries carrying a digest get it recomputed from the file in
-         * the payload so an edited payload lands a correct digest in
-         * the header.  The digest header.json recorded is kept if
-         * there is no regular file in the payload to read.
+         * We recompute the digest from the payload so an edited
+         * file lands a correct one in the header.  With no regular
+         * file in the payload we keep what header.json had.
          */
         if (str != NULL && str[0] != '\0' && digestalgo != 0 && have_stat && S_ISREG(sb.st_mode)) {
             computed_digest = mkfiledigest(file_path, digestalgo);
@@ -2131,13 +2110,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         }
 
         /*
-         * Assign the inode.  RPM numbers these itself: an entry gets
-         * its one based position in the file list, and entries that are
-         * hard links of one another all carry the number the first of
-         * them got.  Numbering here rather than carrying the value in
-         * header.json over keeps the numbers right when entries have
-         * been left out, so the "inode" key is only read to tell which
-         * entries were hard links of one another.
+         * Assign the inode.  RPM numbers these itself: an entry
+         * gets its place in the file list counting from one, and hard
+         * links of one another all get the number the first one got.
+         * We number them here instead of keeping what header.json
+         * had, so the numbers stay right when entries drop out.  That
+         * leaves the "inode" key as only a way to tell which entries
+         * were hard links.
          */
         inode = (int) (nkept + 1);
 
@@ -2353,11 +2332,10 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     free(out.classes);
 
     /*
-     * Update the installed size of the package.  Files may have been
-     * added to, edited in or taken out of the payload tree since it
-     * was unpacked, so the size header.json carries is out of date.
-     * Whichever of the two size tags the header has gets the new
-     * number and a header without either one is left alone.
+     * Update the installed size.  The payload tree may have gained,
+     * lost or changed files since we unpacked it, so the size in
+     * header.json is stale.  Whichever of the two size tags the
+     * header has gets the new number.
      */
     snprintf(sizebuf, sizeof(sizebuf), "%" PRId64, totalsize);
     set_tag_value(tags, rpmTagGetName(RPMTAG_SIZE), sizebuf);
@@ -2507,10 +2485,10 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 
     /*
      * Add the RPMTAG_DEPENDSDICT, RPMTAG_FILEDEPENDSX, and
-     * RPMTAG_FILEDEPENDSN tags.  rpmbuild only writes these three when
-     * at least one file generated a dependency, so do the same and
-     * drop them when the dictionary came out empty.  Source RPMs are
-     * the common case for that.
+     * RPMTAG_FILEDEPENDSN tags.  rpmbuild only writes these three
+     * when a file generated a dependency, so we do the same and drop
+     * them when the dictionary came out empty.  Source RPMs usually
+     * do.
      */
     if (json_object_array_length(out.dependsdict) > 0) {
         /* Add RPMTAG_DEPENDSDICT tag */
