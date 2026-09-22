@@ -462,6 +462,243 @@ is_ghost_file(const struct hdr_file_lists *hfl, const size_t i)
 }
 
 /*
+ * Give back the payload path of the file at index i in the header
+ * file lists.  The caller has to free it.
+ */
+static char *
+file_list_path(const struct hdr_file_lists *hfl, const size_t i)
+{
+    int dindex = 0;
+    const char *dname = NULL;
+    const char *bname = NULL;
+
+    if (hfl == NULL) {
+        return NULL;
+    }
+
+    dindex = json_object_get_int(json_object_array_get_idx(hfl->dirindexes, i));
+    dname = json_object_get_string(json_object_array_get_idx(hfl->dirnames, dindex));
+    bname = json_object_get_string(json_object_array_get_idx(hfl->basenames, i));
+
+    return payload_path(dname, bname);
+}
+
+/*
+ * Grab the file list tags we need from the header tags array.  Tags
+ * we do not find stay NULL.
+ */
+static void
+collect_file_list_tags(struct json_object *tags, struct hdr_file_lists *hfl)
+{
+    size_t i = 0;
+    int tagnum = 0;
+    struct json_object *entry = NULL;
+    struct json_object *tagname = NULL;
+    struct json_object *value = NULL;
+
+    if (tags == NULL || hfl == NULL) {
+        return;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tagname)) {
+            tagnum = rpmTagGetValue(json_object_get_string(tagname));
+
+            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+                if (tagnum == RPMTAG_BASENAMES) {
+                    hfl->basenames = value;
+                } else if (tagnum == RPMTAG_DIRNAMES) {
+                    hfl->dirnames = value;
+                } else if (tagnum == RPMTAG_DIRINDEXES) {
+                    hfl->dirindexes = value;
+                } else if (tagnum == RPMTAG_FILESIZES) {
+                    hfl->filesizes = value;
+                } else if (tagnum == RPMTAG_FILEMODES) {
+                    hfl->filemodes = value;
+                } else if (tagnum == RPMTAG_FILEUIDS) {
+                    hfl->fileuids = value;
+                } else if (tagnum == RPMTAG_FILEGIDS) {
+                    hfl->filegids = value;
+                } else if (tagnum == RPMTAG_FILERDEVS) {
+                    hfl->filerdevs = value;
+                } else if (tagnum == RPMTAG_FILEMTIMES) {
+                    hfl->filemtimes = value;
+                } else if (tagnum == RPMTAG_FILELINKTOS) {
+                    hfl->filelinktos = value;
+                } else if (tagnum == RPMTAG_FILEINODES) {
+                    hfl->fileinodes = value;
+                } else if (tagnum == RPMTAG_FILEFLAGS) {
+                    hfl->fileflags = value;
+                }
+            }
+        }
+    }
+
+    return;
+}
+
+/*
+ * Find the hardlink groups in the file list.  RPM wants the last file
+ * in a group to hold the data and the ones before it to link to it,
+ * so we keep the last path we see for each group.  We allocate the
+ * arrays here and free_hardlink_groups() frees them.
+ */
+static void
+find_hardlink_groups(const struct hdr_file_lists *hfl, const size_t numfiles, struct hardlink_groups *hl)
+{
+    size_t i = 0;
+    size_t j = 0;
+    uint32_t inode = 0;
+    uint16_t mode = 0;
+    bool found = false;
+
+    if (hfl == NULL || hl == NULL) {
+        return;
+    }
+
+    hl->paths = xcalloc(numfiles, sizeof(char *));
+    hl->inodes = xcalloc(numfiles, sizeof(uint32_t));
+    hl->nlinks = xcalloc(numfiles, sizeof(uint32_t));
+
+    for (i = 0; i < numfiles; i++) {
+        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
+
+        /* only regular files can be hardlinks */
+        if (!S_ISREG(mode)) {
+            continue;
+        }
+
+        /* ghost files never make it in to the payload */
+        if (is_ghost_file(hfl, i)) {
+            continue;
+        }
+
+        found = false;
+
+        /* have we seen this inode? */
+        for (j = 0; j < hl->count; j++) {
+            if (hl->inodes[j] == inode) {
+                found = true;
+                hl->nlinks[j]++;
+
+                /*
+                 * This is now the last occurrence of the hardlink, so
+                 * update our tracking structure.
+                 */
+                free(hl->paths[j]);
+                hl->paths[j] = file_list_path(hfl, i);
+                break;
+            }
+        }
+
+        /* new inode, so this is the first occurrence */
+        if (!found) {
+            hl->paths[hl->count] = file_list_path(hfl, i);
+            hl->inodes[hl->count] = inode;
+            hl->nlinks[hl->count] = 1;
+            hl->count++;
+        }
+    }
+
+    return;
+}
+
+/*
+ * Free what find_hardlink_groups() allocated.
+ */
+static void
+free_hardlink_groups(struct hardlink_groups *hl)
+{
+    size_t i = 0;
+
+    if (hl == NULL) {
+        return;
+    }
+
+    if (hl->paths) {
+        for (i = 0; i < hl->count; i++) {
+            free(hl->paths[i]);
+        }
+
+        free(hl->paths);
+    }
+
+    free(hl->inodes);
+    free(hl->nlinks);
+
+    return;
+}
+
+/*
+ * Work out the order we write the payload entries in.  rpmbuild
+ * writes the files that are not in a hardlink group first, then each
+ * hardlink group in the order the groups show up in the file list.
+ * We put the indexes in order, which holds numfiles of them, and give
+ * back how many we used.
+ */
+static size_t
+order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, const struct hardlink_groups *hl, size_t *order)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t ordered = 0;
+    uint32_t inode = 0;
+    uint16_t mode = 0;
+    bool found = false;
+
+    if (hfl == NULL || hl == NULL || order == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < numfiles; i++) {
+        if (is_ghost_file(hfl, i)) {
+            continue;
+        }
+
+        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
+        found = false;
+
+        if (S_ISREG(mode)) {
+            for (j = 0; j < hl->count; j++) {
+                if (hl->inodes[j] == inode && hl->nlinks[j] > 1) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            order[ordered++] = i;
+        }
+    }
+
+    for (j = 0; j < hl->count; j++) {
+        if (hl->nlinks[j] < 2) {
+            continue;
+        }
+
+        for (i = 0; i < numfiles; i++) {
+            if (is_ghost_file(hfl, i)) {
+                continue;
+            }
+
+            inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+            mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
+
+            if (S_ISREG(mode) && inode == hl->inodes[j]) {
+                order[ordered++] = i;
+            }
+        }
+    }
+
+    return ordered;
+}
+
+/*
  * Helper for create_rpm() that writes the payload to a temporary
  * file.  Returns an open file descriptor to use later when putting
  * the RPM together, or -1 on failure.  Closing it removes the
@@ -472,45 +709,27 @@ create_payload(struct json_object *header, const char *payload_dir)
 {
     int payloadfd = -1;
     int tmp_payloadfd = -1;
-    char *template = NULL;
-    const char *tag = NULL;
-    const char *level = NULL;
-    char *opts = NULL;
-    struct hdr_file_lists hfl;
-    struct json_object *tags = NULL;
-    struct json_object *files = NULL;
-    struct json_object *dependencies = NULL;
-    struct json_object *tags_with_files = NULL;
-    struct json_object *entry = NULL;
-    struct json_object *tagname = NULL;
-    struct json_object *value = NULL;
     int dirindex = 0;
     bool need_free_tags = false;
     size_t i = 0;
     size_t j = 0;
-    size_t numfiles = 0;
-    int tagnum = 0;
-    struct file_params params;
-    bool use_zstd = false;
-    int zstd_level = 3;
-    int zstd_pipefd[2];
-    pid_t zstd_pid = 0;
-    int status = 0;
-    char **hardlink_paths = NULL;
-    uint32_t *hardlink_inodes = NULL;
-    uint32_t *hardlink_nlinks = NULL;
-    size_t hardlink_count = 0;
-    char *path = NULL;
-    char *current_path = NULL;
-    uint32_t inode = 0;
-    uint16_t mode = 0;
-    int dindex = 0;
-    const char *dname = NULL;
-    const char *bname = NULL;
-    bool found = false;
-    size_t *order = NULL;
-    size_t ordered = 0;
     size_t n = 0;
+    size_t numfiles = 0;
+    size_t ordered = 0;
+    size_t *order = NULL;
+    char *template = NULL;
+    char *opts = NULL;
+    char *current_path = NULL;
+    const char *tag = NULL;
+    const char *level = NULL;
+    struct hdr_file_lists hfl;
+    struct hardlink_groups hl;
+    struct zstd_payload zstd;
+    struct file_params params;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *dependencies = NULL;
+    struct json_object *tags_with_files = NULL;
 
     if (header == NULL || payload_dir == NULL) {
         return -1;
@@ -524,6 +743,9 @@ create_payload(struct json_object *header, const char *payload_dir)
 
     /* initialize */
     memset(&hfl, '\0', sizeof(hfl));
+    memset(&hl, '\0', sizeof(hl));
+    memset(&zstd, '\0', sizeof(zstd));
+    zstd.level = 3;
 
     /* Check if there's a files array that needs to be converted to tags */
     if (json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
@@ -551,41 +773,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* Get file lists from header */
-    for (i = 0; i < json_object_array_length(tags); i++) {
-        entry = json_object_array_get_idx(tags, i);
-
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tagname)) {
-            tagnum = rpmTagGetValue(json_object_get_string(tagname));
-
-            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
-                if (tagnum == RPMTAG_BASENAMES) {
-                    hfl.basenames = value;
-                } else if (tagnum == RPMTAG_DIRNAMES) {
-                    hfl.dirnames = value;
-                } else if (tagnum == RPMTAG_DIRINDEXES) {
-                    hfl.dirindexes = value;
-                } else if (tagnum == RPMTAG_FILESIZES) {
-                    hfl.filesizes = value;
-                } else if (tagnum == RPMTAG_FILEMODES) {
-                    hfl.filemodes = value;
-                } else if (tagnum == RPMTAG_FILEUIDS) {
-                    hfl.fileuids = value;
-                } else if (tagnum == RPMTAG_FILEGIDS) {
-                    hfl.filegids = value;
-                } else if (tagnum == RPMTAG_FILERDEVS) {
-                    hfl.filerdevs = value;
-                } else if (tagnum == RPMTAG_FILEMTIMES) {
-                    hfl.filemtimes = value;
-                } else if (tagnum == RPMTAG_FILELINKTOS) {
-                    hfl.filelinktos = value;
-                } else if (tagnum == RPMTAG_FILEINODES) {
-                    hfl.fileinodes = value;
-                } else if (tagnum == RPMTAG_FILEFLAGS) {
-                    hfl.fileflags = value;
-                }
-            }
-        }
-    }
+    collect_file_list_tags(tags, &hfl);
 
     if (!hfl.basenames || !hfl.dirnames || !hfl.dirindexes) {
         warnx(_("*** missing file list tags in header"));
@@ -636,7 +824,7 @@ create_payload(struct json_object *header, const char *payload_dir)
      * and compress it ourselves after.
      */
     if (tag != NULL && !strcmp(tag, "zstd")) {
-        use_zstd = true;
+        zstd.used = true;
         archive_write_add_filter_none(payload);
 
         /*
@@ -652,17 +840,17 @@ create_payload(struct json_object *header, const char *payload_dir)
 
         if (level != NULL) {
             errno = 0;
-            zstd_level = strtol(level, NULL, 10);
+            zstd.level = strtol(level, NULL, 10);
 
             if (errno == EINVAL || errno == ERANGE) {
                 warn("strtol");
-                zstd_level = 3;
+                zstd.level = 3;
             }
 
-            if (zstd_level < 1) {
-                zstd_level = 1;
-            } else if (zstd_level > 22) {
-                zstd_level = 22;
+            if (zstd.level < 1) {
+                zstd.level = 1;
+            } else if (zstd.level > 22) {
+                zstd.level = 22;
             }
         }
     } else if (tag == NULL || !strcmp(tag, "none")) {
@@ -698,7 +886,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* set the compression level for non-zstd compressors */
-    if (!use_zstd) {
+    if (!zstd.used) {
         tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
 
         if (tag != NULL) {
@@ -709,47 +897,47 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* open the payload for writing - use pipe for zstd to avoid single-segment mode */
-    if (use_zstd) {
-        if (pipe(zstd_pipefd) == -1) {
+    if (zstd.used) {
+        if (pipe(zstd.pipefd) == -1) {
             warn("pipe");
             return -1;
         }
 
-        tmp_payloadfd = zstd_pipefd[1];
+        tmp_payloadfd = zstd.pipefd[1];
 
         /* fork a process to compress from pipe to final fd */
-        zstd_pid = fork();
+        zstd.pid = fork();
 
-        if (zstd_pid == -1) {
+        if (zstd.pid == -1) {
             warn("fork");
 
-            if (close(zstd_pipefd[0]) == -1) {
+            if (close(zstd.pipefd[0]) == -1) {
                 warn("close");
             }
 
-            if (close(zstd_pipefd[1]) == -1) {
+            if (close(zstd.pipefd[1]) == -1) {
                 warn("close");
             }
 
             return -1;
-        } else if (zstd_pid == 0) {
+        } else if (zstd.pid == 0) {
             /* read from pipe, compress, write to payloadfd */
-            if (close(zstd_pipefd[1]) == -1) {
+            if (close(zstd.pipefd[1]) == -1) {
                 warn("close");
             }
 
-            if (compress_with_zstd_no_checksum(zstd_pipefd[0], payloadfd, zstd_level) != 0) {
+            if (compress_with_zstd_no_checksum(zstd.pipefd[0], payloadfd, zstd.level) != 0) {
                 _exit(1);
             }
 
-            if (close(zstd_pipefd[0]) == -1) {
+            if (close(zstd.pipefd[0]) == -1) {
                 warn("close");
             }
 
             _exit(0);
         }
 
-        if (close(zstd_pipefd[0]) == -1) {
+        if (close(zstd.pipefd[0]) == -1) {
             warn("close");
         }
     } else {
@@ -760,122 +948,12 @@ create_payload(struct json_object *header, const char *payload_dir)
         errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
     }
 
-    /*
-     * Hardlink tracking structure.  We have to track hardlinks by
-     * inode number and link count.
-     */
-    hardlink_paths = xcalloc(numfiles, sizeof(char *));
-    hardlink_inodes = xcalloc(numfiles, sizeof(uint32_t));
-    hardlink_nlinks = xcalloc(numfiles, sizeof(uint32_t));
+    /* we have to track hardlinks by inode number and link count */
+    find_hardlink_groups(&hfl, numfiles, &hl);
 
-    /*
-     * RPM expects the last file in each hardlink group to have the
-     * data, with earlier files as hardlinks to it.  Find the last
-     * occurrence of each inode.
-     */
-    for (i = 0; i < numfiles; i++) {
-        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
-        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
-
-        /* only regular files can be hardlinks */
-        if (!S_ISREG(mode)) {
-            continue;
-        }
-
-        /* ghost files never make it in to the payload */
-        if (is_ghost_file(&hfl, i)) {
-            continue;
-        }
-
-        found = false;
-
-        /* have we seen this inode? */
-        for (j = 0; j < hardlink_count; j++) {
-            if (hardlink_inodes[j] == inode) {
-                found = true;
-                hardlink_nlinks[j]++;
-
-                /*
-                 * This is now the last occurrence of the hardlink, so
-                 * update our tracking structure.
-                 */
-                dindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
-                dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
-                bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
-
-                path = payload_path(dname, bname);
-
-                /* replace the old path */
-                free(hardlink_paths[j]);
-                hardlink_paths[j] = path;
-                break;
-            }
-        }
-
-        /* new inode, so this is the first occurrence */
-        if (!found) {
-            dindex = json_object_get_int(json_object_array_get_idx(hfl.dirindexes, i));
-            dname = json_object_get_string(json_object_array_get_idx(hfl.dirnames, dindex));
-            bname = json_object_get_string(json_object_array_get_idx(hfl.basenames, i));
-
-            path = payload_path(dname, bname);
-
-            hardlink_paths[hardlink_count] = path;
-            hardlink_inodes[hardlink_count] = inode;
-            hardlink_nlinks[hardlink_count] = 1;
-            hardlink_count++;
-        }
-    }
-
-    /*
-     * rpmbuild writes all of the files that are not part of a hardlink
-     * group first and then appends each hardlink group, with the
-     * groups themselves in the order they first appear in the file
-     * list.  Work out that order before writing anything.
-     */
+    /* we do not write the payload entries in file list order */
     order = xcalloc(numfiles, sizeof(size_t));
-
-    for (i = 0; i < numfiles; i++) {
-        if (is_ghost_file(&hfl, i)) {
-            continue;
-        }
-
-        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
-        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
-        found = false;
-
-        if (S_ISREG(mode)) {
-            for (j = 0; j < hardlink_count; j++) {
-                if (hardlink_inodes[j] == inode && hardlink_nlinks[j] > 1) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        if (!found) {
-            order[ordered++] = i;
-        }
-    }
-
-    for (j = 0; j < hardlink_count; j++) {
-        if (hardlink_nlinks[j] < 2) {
-            continue;
-        }
-
-        for (i = 0; i < numfiles; i++) {
-            if (is_ghost_file(&hfl, i)) {
-                continue;
-            }
-
-            inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
-            mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
-
-            if (S_ISREG(mode) && inode == hardlink_inodes[j]) {
-                order[ordered++] = i;
-            }
-        }
-    }
+    ordered = order_payload_files(&hfl, numfiles, &hl, order);
 
     /* Write each file from the header to the payload */
     for (n = 0; n < ordered; n++) {
@@ -911,16 +989,16 @@ create_payload(struct json_object *header, const char *payload_dir)
 
         if (S_ISREG(params.mode)) {
             /* find the first occurrence of this inode */
-            for (j = 0; j < hardlink_count; j++) {
-                if (hardlink_inodes[j] == params.inode) {
-                    params.nlink = hardlink_nlinks[j];
+            for (j = 0; j < hl.count; j++) {
+                if (hl.inodes[j] == params.inode) {
+                    params.nlink = hl.nlinks[j];
 
                     /* build current file path */
                     current_path = payload_path(params.dirname, params.basename);
 
                     /* set hardlink target */
-                    if (strcmp(current_path, hardlink_paths[j]) != 0) {
-                        params.hardlink = hardlink_paths[j];
+                    if (strcmp(current_path, hl.paths[j]) != 0) {
+                        params.hardlink = hl.paths[j];
                     }
 
                     free(current_path);
@@ -948,30 +1026,21 @@ create_payload(struct json_object *header, const char *payload_dir)
 #endif
 
     /* clean up hardlink tracking */
-    if (hardlink_paths) {
-        for (i = 0; i < hardlink_count; i++) {
-            free(hardlink_paths[i]);
-        }
-
-        free(hardlink_paths);
-    }
-
-    free(hardlink_inodes);
-    free(hardlink_nlinks);
+    free_hardlink_groups(&hl);
     free(order);
 
     /* when using zstd, close pipe and wait for compression child */
-    if (use_zstd) {
+    if (zstd.used) {
         /* closing the pipe tells child EOF */
         if (close(tmp_payloadfd) == -1) {
             warn("close");
         }
 
-        if (waitpid(zstd_pid, &status, 0) == -1) {
+        if (waitpid(zstd.pid, &zstd.status, 0) == -1) {
             warn("waitpid");
         }
 
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        if (!WIFEXITED(zstd.status) || WEXITSTATUS(zstd.status) != 0) {
             errx(EXIT_FAILURE, "zstd compression child failed");
         }
     }

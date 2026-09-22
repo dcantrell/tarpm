@@ -116,6 +116,32 @@ struct hdr_file_lists {
 };
 
 /*
+ * The hardlink groups we find in the header file lists.  A group is
+ * one inode, how many file list entries use it, and the payload path
+ * of the last entry we saw.  That last one holds the file data.  All
+ * three arrays use the same index and hold 'count' entries.
+ */
+struct hardlink_groups {
+    char **paths;
+    uint32_t *inodes;
+    uint32_t *nlinks;
+    size_t count;
+};
+
+/*
+ * What we need to compress the payload with zstd on our own.  We
+ * write the cpio stream to the pipe and a child process compresses it
+ * in to the payload file.
+ */
+struct zstd_payload {
+    bool used;
+    int level;
+    int pipefd[2];
+    pid_t pid;
+    int status;
+};
+
+/*
  * Payload entries need all of these values from the RPM header
  * metadata.  This struct is to help get that info over to libarchive.
  * The entries in this struct match entries from RPM header tags for
