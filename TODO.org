@@ -27,12 +27,18 @@ Core functionality that still needs to happen:
         [*] rdev
         [*] linkto
 
-    [ ] Missing metadata should be picked up from the system:
-        [ ] mtime
-        [ ] User?
-        [ ] Group?
-        [ ] Type (regular file, devnode, link)
-        [ ] Linkto
+    [*] Missing metadata should be picked up from the system:
+        [*] mtime
+        [*] User?
+        [*] Group?
+        [*] Type (regular file, devnode, link)
+        [*] Linkto
+        [*] Size
+        [*] Mode
+        [*] Digest
+        [*] rdev
+        [*] Device
+        [*] Inode
 
     [ ] Command line switches to force updating metadata from the
         payload subdir and ignoring header.json:
@@ -97,19 +103,16 @@ Core functionality that still needs to happen:
     [*] Data in the JSON files that is read-only should be marked
         as such so the reader knows.
 
-[ ] Command line
-    [ ] Add option to specify output files for each JSON file
+[*] Command line
+    [*] Add option to specify output files for each JSON file
 
-    [ ] Add option to specify payload output subdirectory path
+    [*] Add option to specify payload output subdirectory path
 
-    [ ] Add option to specify input JSON file paths
+    [*] Add option to specify input JSON file paths
 
-    [ ] Add option to specify input payload subdirectory path
+    [*] Add option to specify input payload subdirectory path
 
-    [ ] Add option to dump header data to stdout or a file
-
-    [ ] Add option to suppress writing some tag values to text
-        files.
+    [*] Add option to dump header data to stdout or a file
 
 [ ] Man page needs to document all options and explain how the the
     program works.
@@ -119,4 +122,44 @@ Core functionality that still needs to happen:
 [ ] More test cases.
     [*] Unit tests
     [*] Integration tests for create mode
-    [ ] Integration tests for list mode
+    [*] Integration tests for list mode
+
+[ ] Followups
+    [ ] Verbose messages.  Restrict informational messages to -v being
+        specified and make sure output goes to stdout, not warnx().
+
+    [ ] Add command line option to suppress writing some tag values to
+        text files.
+        [ ] This will require dumping a list of tag names, so an
+            option for that separately.
+
+[ ] signature.json
+    [ ] Unknown signature tags in signature.json -- figure these out
+        from rpm source and update tarpm to make them symbolic.
+
+    [ ] Mark tags as read-only, similar to lead.json.
+
+    [ ] Exclude GPG/PGP tags when creating an RPM.  Even if they are
+        specified in signature.json, do not carry them over.
+
+        [ ] Command line option to override and do it anyway?
+
+[ ] Document creating an RPM from scratch
+    [ ] Source RPM
+        [ ] First off, why?
+
+        [ ] Minimum set of tags required.
+
+        [ ] What would be in the spec file?
+
+    [ ] Binary RPM
+        [ ] Minimum required for lead.json
+
+        [ ] Do we need signature.json?
+
+        [ ] Minimum required for header.json
+
+        [ ] How to specify dependencies
+            [ ] Run find-provides
+
+            [ ] Run find-requires
