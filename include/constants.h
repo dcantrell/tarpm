@@ -15,6 +15,9 @@
 /* the subdirectory where the RPM payload is unpacked */
 #define PAYLOAD_SUBDIR                 "payload"
 
+/* the path meaning stdout rather than a file */
+#define OUTPUT_STDOUT                  "-"
+
 /* output filenames for headers */
 #define OUTPUT_LEAD                    "lead.json"
 #define OUTPUT_SIGNATURE               "signature.json"

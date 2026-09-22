@@ -46,7 +46,87 @@ test_generate_json_entries(void)
 void
 test_write_json_file(void)
 {
-    TARPM_ASSERT_TRUE(write_json_file(NULL, NULL, NULL) == -1);
+    char tmpfile[] = "/tmp/tarpm-test-json-XXXXXX";
+    int fd = -1;
+    struct json_object *data = NULL;
+    struct json_object *value = NULL;
+
+    TARPM_ASSERT_TRUE(write_json_file(NULL, NULL) == -1);
+
+    data = json_object_new_object();
+    json_object_object_add(data, "name", json_object_new_string("tarpm"));
+
+    /* a missing path is an error */
+    TARPM_ASSERT_TRUE(write_json_file(data, NULL) == -1);
+
+    /* the JSON lands in the file named */
+    fd = mkstemp(tmpfile);
+    TARPM_ASSERT_FALSE(fd == -1);
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    TARPM_ASSERT_TRUE(write_json_file(data, tmpfile) == 0);
+
+    json_object_put(data);
+
+    data = read_json_file(tmpfile);
+    TARPM_ASSERT_PTR_NOT_NULL(data);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "name", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "tarpm");
+
+    json_object_put(data);
+    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
+
+    return;
+}
+
+void
+test_write_json_file_stdout(void)
+{
+    char tmpfile[] = "/tmp/tarpm-test-json-XXXXXX";
+    char buf[BUFSIZ];
+    int fd = -1;
+    int saved = -1;
+    size_t len = 0;
+    FILE *fp = NULL;
+    struct json_object *data = NULL;
+
+    TARPM_ASSERT_TRUE(write_json_file(NULL, OUTPUT_STDOUT) == -1);
+
+    /* catch what goes to stdout in a temporary file */
+    fd = mkstemp(tmpfile);
+    TARPM_ASSERT_FALSE(fd == -1);
+
+    saved = dup(STDOUT_FILENO);
+    TARPM_ASSERT_FALSE(saved == -1);
+    TARPM_ASSERT_TRUE(fflush(stdout) == 0);
+    TARPM_ASSERT_FALSE(dup2(fd, STDOUT_FILENO) == -1);
+
+    data = json_object_new_object();
+    json_object_object_add(data, "name", json_object_new_string("tarpm"));
+
+    TARPM_ASSERT_TRUE(write_json_file(data, OUTPUT_STDOUT) == 0);
+
+    json_object_put(data);
+
+    /* put stdout back the way it was */
+    TARPM_ASSERT_FALSE(dup2(saved, STDOUT_FILENO) == -1);
+    TARPM_ASSERT_TRUE(close(saved) == 0);
+    TARPM_ASSERT_TRUE(close(fd) == 0);
+
+    /* the JSON landed on stdout rather than in a file named "-" */
+    memset(buf, '\0', sizeof(buf));
+    fp = fopen(tmpfile, "r");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    len = fread(buf, 1, sizeof(buf) - 1, fp);
+    TARPM_ASSERT_TRUE(len > 0);
+    TARPM_ASSERT_TRUE(fclose(fp) == 0);
+
+    TARPM_ASSERT_TRUE(strstr(buf, "\"name\"") != NULL);
+    TARPM_ASSERT_TRUE(strstr(buf, "\"tarpm\"") != NULL);
+
+    TARPM_ASSERT_FALSE(access(OUTPUT_STDOUT, F_OK) == 0);
+
+    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
 
     return;
 }
@@ -346,6 +426,7 @@ get_suite(void)
     if (CU_add_test(pSuite, "test generate_json()", test_generate_json) == NULL ||
         CU_add_test(pSuite, "test generate_json_entries()", test_generate_json_entries) == NULL ||
         CU_add_test(pSuite, "test write_json_file()", test_write_json_file) == NULL ||
+        CU_add_test(pSuite, "test write_json_file() to stdout", test_write_json_file_stdout) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with NULL", test_create_json_entry_null) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with non-signature", test_create_json_entry_non_signature) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature digest tags", test_create_json_entry_signature_digest_tags) == NULL ||

@@ -7,6 +7,7 @@
 #define _TARPM_TARPM_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <rpm/header.h>
 #include <json.h>
@@ -100,7 +101,7 @@ struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const 
 struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 struct json_object *read_json_file(const char *input_file);
-int write_json_file(struct json_object *data, const char *output_dir, const char *output_file);
+int write_json_file(struct json_object *data, const char *path);
 
 /* tags.c */
 const char *strtagtype(rpmTagType type);

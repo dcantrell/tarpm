@@ -238,62 +238,60 @@ read_json_file(const char *input_file)
 }
 
 /*
- * Takes the JSON data and writes it to the output_file in output_dir.
- * Returns 0 on success, -1 on error.
+ * Takes the JSON data and writes it to the file named by path.  A
+ * path of a single hyphen sends the JSON to stdout, which the caller
+ * keeps.  Returns 0 on success, -1 on error.
  */
 int
-write_json_file(struct json_object *data, const char *output_dir, const char *output_file)
+write_json_file(struct json_object *data, const char *path)
 {
-    char *s = NULL;
     const char *js = NULL;
-    FILE *fp = NULL;
+    int flags = JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY;
     int r = 0;
     int q = 0;
-    int flags = JSON_C_TO_STRING_SPACED | JSON_C_TO_STRING_PRETTY;
+    bool tostdout = false;
+    FILE *fp = NULL;
 
-    if (data == NULL || output_dir == NULL || output_file == NULL) {
+    if (data == NULL || path == NULL) {
         return -1;
     }
 
-    /* write the JSON data for a file */
-    s = joinpath(output_dir, output_file, NULL);
-
-    if (s == NULL) {
-        warn("joinpath");
-        return -1;
-    }
-
-    fp = fopen(s, "w");
-
-    if (fp == NULL) {
-        warn("fopen");
-        free(s);
-        return -1;
-    }
-
-    free(s);
     js = json_object_to_json_string_ext(data, flags);
 
     if (js == NULL) {
         errx(EXIT_FAILURE, "unable to turn JSON object in to string");
     }
 
+    tostdout = !strcmp(path, OUTPUT_STDOUT);
+
+    if (tostdout) {
+        fp = stdout;
+    } else {
+        fp = fopen(path, "w");
+
+        if (fp == NULL) {
+            warn("fopen");
+            return -1;
+        }
+    }
+
     if (fprintf(fp, "%s\n", js) < 0) {
         warn("fprintf");
-        fclose(fp);
-        return -1;
+        r = -1;
     }
 
-    r = fflush(fp);
-
-    if (r != 0) {
+    if (fflush(fp) != 0) {
         warn("fflush");
+        r = -1;
     }
 
-    q = fclose(fp);
+    /* stdout is not ours to close */
+    if (!tostdout) {
+        q = fclose(fp);
 
-    if (q != 0) {
-        warn("fclose");
+        if (q != 0) {
+            warn("fclose");
+        }
     }
 
     if (r || q) {

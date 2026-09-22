@@ -163,6 +163,25 @@ def get_tag(header, name):
     return None
 
 
+def json_documents(text):
+    """Return the JSON documents found in a run of text"""
+    decoder = json.JSONDecoder()
+    docs = []
+    i = 0
+
+    while i < len(text):
+        while i < len(text) and text[i].isspace():
+            i += 1
+
+        if i >= len(text):
+            break
+
+        doc, i = decoder.raw_decode(text, i)
+        docs.append(doc)
+
+    return docs
+
+
 def utc_seconds(year, month, day, hour=12, minute=0, second=0):
     """Return the Unix time of a moment in UTC, noon by default"""
     return int(
@@ -1884,3 +1903,131 @@ class TestPayloadPathMissing(RoundTrip, TestUnpackRPM):
         )
         self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
         self.assertFalse(os.path.exists(pkg), "A package was written anyway")
+
+
+class TestLeadToStdoutRoundTrip(RoundTrip, TestUnpackRPM):
+    """A metadata path of a single hyphen writes the JSON to stdout"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = os.path.join(self.output_dir, "extracted")
+
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            ["-x", "-f", original, "-O", extract_dir, "--lead", "-"],
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        # the lead came back on stdout rather than in a file
+        docs = json_documents(out)
+        self.assertEqual(len(docs), 1, "stdout does not hold one JSON document")
+        self.assertTrue("lead magic" in docs[0], "stdout does not hold the lead")
+        self.assertEqual(docs[0]["name"], "%s-%s-%s" % (NAME, VER, REL))
+
+        self.assertFalse(
+            os.path.exists(os.path.join(extract_dir, "lead.json")),
+            "lead.json was written anyway",
+        )
+
+        # everything else keeps its usual home
+        for name in ["signature.json", "header.json", "description.txt"]:
+            self.assertTrue(os.path.isfile(os.path.join(extract_dir, name)))
+
+        self.assertTrue(
+            os.path.isfile(self.payload_path(extract_dir, "/usr/share/%s/README" % NAME))
+        )
+
+        # the lead read back from stdout recreates the same package
+        f = open(os.path.join(extract_dir, "lead.json"), "w")
+        f.write(out)
+        f.close()
+
+        pkg = self.create(extract_dir)
+        self.assertIdentical(original, pkg)
+
+
+class TestMetadataToStdout(RoundTrip, TestUnpackRPM):
+    """All three metadata files can go to stdout at once"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = os.path.join(self.output_dir, "extracted")
+
+        rc, out, err = run_tarpm(
+            self.tarpm,
+            [
+                "-x",
+                "-f",
+                original,
+                "-O",
+                extract_dir,
+                "-L",
+                "-",
+                "-S",
+                "-",
+                "-H",
+                "-",
+            ],
+        )
+        self.assertEqual(rc, 0, "Extract failed: %s" % err)
+
+        # the lead, the signature, and the header came back in that order
+        docs = json_documents(out)
+        self.assertEqual(len(docs), 3, "stdout does not hold three JSON documents")
+        self.assertTrue("lead magic" in docs[0], "the lead is not first")
+        self.assertTrue("tags" in docs[1], "the signature is not second")
+        self.assertTrue("tags" in docs[2], "the header is not third")
+        self.assertEqual(get_tag(docs[2], "Name")["value"], NAME)
+
+        # no JSON file was written and no temporary file was left behind
+        self.assertEqual(
+            [f for f in os.listdir(extract_dir) if f.endswith(".json")],
+            [],
+            "a JSON file landed in the extraction directory",
+        )
+
+        # tag values kept in their own file and the payload are still there
+        self.assertTrue(os.path.isfile(os.path.join(extract_dir, "description.txt")))
+        self.assertTrue(
+            os.path.isfile(self.payload_path(extract_dir, "/usr/share/%s/README" % NAME))
+        )
+
+
+class TestMetadataStdoutRejectedOnCreate(RoundTrip, TestUnpackRPM):
+    """Creating an RPM reads the metadata from files, not stdin"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+
+        for opt in ["--lead", "--signature", "--header", "-L", "-S", "-H"]:
+            rc, out, err = run_tarpm(
+                self.tarpm, ["-c", "-f", pkg, opt, "-", extract_dir]
+            )
+            self.assertNotEqual(rc, 0, "Create with %s - unexpectedly succeeded" % opt)
+            self.assertTrue(
+                "may not be used when creating an RPM" in err,
+                "Create with %s - said: %s" % (opt, err),
+            )
+            self.assertFalse(os.path.exists(pkg), "A package was written anyway")

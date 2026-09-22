@@ -16,26 +16,29 @@
 
 /*
  * Write one of the JSON metadata files.  With no path given the file
- * lands in dest_dir under its usual name.  Returns 0 on success, -1
- * on error.
+ * lands in dest_dir under its usual name.  A path of a single hyphen
+ * sends the JSON to stdout.  Returns 0 on success, -1 on error.
  */
 static int
 write_metadata(struct json_object *data, const char *dest_dir, const char *path, const char *name)
 {
     int r = 0;
-    char *dir = NULL;
-    char *base = NULL;
+    char *file = NULL;
 
-    if (path == NULL) {
-        return write_json_file(data, dest_dir, name);
+    if (path != NULL) {
+        return write_json_file(data, path);
     }
 
-    dir = dir_name(path);
-    base = base_name(path);
-    r = write_json_file(data, dir, base);
+    file = joinpath(dest_dir, name, NULL);
 
-    free(dir);
-    free(base);
+    if (file == NULL) {
+        warn("joinpath");
+        return -1;
+    }
+
+    r = write_json_file(data, file);
+
+    free(file);
 
     return r;
 }
@@ -116,8 +119,11 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         payload_path = paths->payload;
     }
 
-    /* tag values written to their own file sit next to header.json */
-    if (header_path == NULL) {
+    /*
+     * Tag values written to their own file sit next to header.json.
+     * With the header going to stdout they keep their usual home.
+     */
+    if (header_path == NULL || !strcmp(header_path, OUTPUT_STDOUT)) {
         header_dir = strdup(dest_dir);
     } else {
         header_dir = dir_name(header_path);

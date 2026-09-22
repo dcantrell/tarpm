@@ -23,10 +23,11 @@ static bool c_flag = false;
 static bool v_flag = false;
 
 /*
- * Work out where one of the JSON metadata files lives.  A relative
- * path is taken from the current directory.  A path that ends with a
- * slash or names a directory we already have gets the usual filename
- * added to it.  Caller must free the returned string.
+ * Work out where one of the JSON metadata files lives.  A single
+ * hyphen means stdout and is kept as it is.  A relative path is taken
+ * from the current directory.  A path that ends with a slash or names
+ * a directory we already have gets the usual filename added to it.
+ * Caller must free the returned string.
  */
 static char *
 metadata_path(const char *path, const char *name)
@@ -38,6 +39,17 @@ metadata_path(const char *path, const char *name)
 
     if (path == NULL || name == NULL) {
         return NULL;
+    }
+
+    /* the JSON goes to stdout rather than a file */
+    if (!strcmp(path, OUTPUT_STDOUT)) {
+        r = strdup(path);
+
+        if (r == NULL) {
+            err(EXIT_FAILURE, "strdup");
+        }
+
+        return r;
     }
 
     full = abspath(path);
@@ -64,7 +76,8 @@ metadata_path(const char *path, const char *name)
 
 /*
  * Make the directory a JSON metadata file goes in if it is not there
- * already.  Exits if we cannot create it.
+ * already.  Nothing to make when the JSON goes to stdout.  Exits if
+ * we cannot create it.
  */
 static void
 make_metadata_dir(const char *path)
@@ -72,7 +85,7 @@ make_metadata_dir(const char *path)
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     char *dir = NULL;
 
-    if (path == NULL) {
+    if (path == NULL || !strcmp(path, OUTPUT_STDOUT)) {
         return;
     }
 
@@ -105,6 +118,8 @@ usage(void)
     printf(_("    -P DIR, --payload=DIR       Use DIR for the payload tree\n"));
     printf(_("    -V, --version               Display version information\n"));
     printf(_("    -?, --help                  Display this screen\n"));
+    printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
+    printf(_("It may only be used when extracting an RPM.\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -355,6 +370,11 @@ main(int argc, char **argv)
 
     if (filename == NULL) {
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
+    }
+
+    /* Creating an RPM reads the JSON metadata from files, not stdin */
+    if (c_flag && ((paths.lead != NULL && !strcmp(paths.lead, OUTPUT_STDOUT)) || (paths.signature != NULL && !strcmp(paths.signature, OUTPUT_STDOUT)) || (paths.header != NULL && !strcmp(paths.header, OUTPUT_STDOUT)))) {
+        errx(EXIT_FAILURE, _("*** \"%s\" may not be used when creating an RPM"), OUTPUT_STDOUT);
     }
 
     /* Make the directories the JSON metadata files are written to */
