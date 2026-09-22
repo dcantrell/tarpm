@@ -95,7 +95,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
  * exist before calling this function.
  */
 int
-unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose)
+unpack_archive(const char *archive, const char *dest, const bool verbose)
 {
     int flags = 0;
     int r = 0;
@@ -137,25 +137,22 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
         return -1;
     }
 
-    if (list == false) {
-        /* change to dest */
-        if (getcwd(cwd, PATH_MAX) == NULL) {
-            archive_read_free(input);
-            err(EXIT_FAILURE, "getcwd");
-        }
-
-        if (chdir(dest) != 0) {
-            warn("chdir");
-            archive_read_free(input);
-            return -1;
-        }
-
-        /* handler to write archive members to disk */
-        output = archive_write_disk_new();
-        archive_write_disk_set_options(output, flags);
-        archive_write_disk_set_standard_lookup(output);
+    /* change to dest */
+    if (getcwd(cwd, PATH_MAX) == NULL) {
+        archive_read_free(input);
+        err(EXIT_FAILURE, "getcwd");
     }
 
+    if (chdir(dest) != 0) {
+        warn("chdir");
+        archive_read_free(input);
+        return -1;
+    }
+
+    /* handler to write archive members to disk */
+    output = archive_write_disk_new();
+    archive_write_disk_set_options(output, flags);
+    archive_write_disk_set_standard_lookup(output);
 
     /* extract each archive member */
     while ((r = archive_read_next_header(input, &entry)) != ARCHIVE_EOF) {
@@ -177,7 +174,7 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
             p = archive_entry_pathname(entry);
 
             if (p != NULL) {
-                while (p != NULL && (*p == '.' || *p == '/')) {
+                while (*p == '.' || *p == '/') {
                     p++;
                 }
 
@@ -185,27 +182,23 @@ unpack_archive(const char *archive, const char *dest, const bool list, const boo
             }
         }
 
-        if (list == false) {
-            if (extract_entry(input, output, entry)) {
-                ret = -1;
-            }
+        if (extract_entry(input, output, entry)) {
+            ret = -1;
         }
     }
 
     archive_read_free(input);
 
-    if (list == false) {
 #if ARCHIVE_VERSION_NUMBER < 3000000
-        archive_write_finish(output);
+    archive_write_finish(output);
 #else
-        archive_write_free(output);
+    archive_write_free(output);
 #endif
 
-        /* change back to original directory */
-        if (chdir(cwd) != 0) {
-            warn("chdir");
-            return -1;
-        }
+    /* change back to original directory */
+    if (chdir(cwd) != 0) {
+        warn("chdir");
+        return -1;
     }
 
     return ret;

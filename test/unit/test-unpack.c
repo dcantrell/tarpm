@@ -23,10 +23,8 @@ clean_test_unpack(void)
 void
 test_unpack_archive(void)
 {
-    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, true, true) == -1);
-    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, false, true) == -1);
-    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, true, false) == -1);
-    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, false, false) == -1);
+    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, true) == -1);
+    TARPM_ASSERT_TRUE(unpack_archive(NULL, NULL, false) == -1);
 
     return;
 }

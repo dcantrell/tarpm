@@ -24,7 +24,6 @@
 /* libarchive compatibility */
 #if ARCHIVE_VERSION_NUMBER < 3000000
 #define archive_write_add_filter_bzip2 archive_write_set_compression_bzip2
-#define archive_write_add_filter_compress archive_write_set_compression_compress
 #define archive_write_add_filter_gzip archive_write_set_compression_gzip
 #define archive_write_add_filter_zstd archive_write_set_compression_zstd
 #define archive_write_add_filter_lzma archive_write_set_compression_lzma

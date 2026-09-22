@@ -291,9 +291,7 @@ get_item_size(size_t index, struct json_object *entry, const struct tagfile *tag
         }
     } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
         /* string array: sum of all string lengths + NULs */
-        j = 0;
         len = json_object_array_length(key);
-        s = NULL;
 
         for (j = 0; j < len; j++) {
             s = json_object_array_get_idx(key, j);
@@ -478,9 +476,7 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
                     }
                 } else if (v->entry->type == RPM_INT8_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
-                        j = 0;
                         v->entry->count = json_object_array_length(key);
-                        obj = NULL;
 
                         for (j = 0; j < v->entry->count; j++) {
                             obj = json_object_array_get_idx(key, j);
@@ -498,9 +494,7 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
                     }
                 } else if (v->entry->type == RPM_INT16_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
-                        j = 0;
                         v->entry->count = json_object_array_length(key);
-                        obj = NULL;
 
                         for (j = 0; j < v->entry->count; j++) {
                             obj = json_object_array_get_idx(key, j);
@@ -518,9 +512,7 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
                     }
                 } else if (v->entry->type == RPM_INT32_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
-                        j = 0;
                         v->entry->count = json_object_array_length(key);
-                        obj = NULL;
 
                         for (j = 0; j < v->entry->count; j++) {
                             obj = json_object_array_get_idx(key, j);
@@ -548,9 +540,7 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
                     }
                 } else if (v->entry->type == RPM_INT64_TYPE) {
                     if (json_object_get_type(key) == json_type_array) {
-                        j = 0;
                         v->entry->count = json_object_array_length(key);
-                        obj = NULL;
 
                         for (j = 0; j < v->entry->count; j++) {
                             obj = json_object_array_get_idx(key, j);
@@ -568,8 +558,6 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
                     }
                 } else if (v->entry->type == RPM_STRING_ARRAY_TYPE) {
                     /* string array: write each string with NUL terminator */
-                    j = 0;
-                    obj = NULL;
                     v->entry->count = json_object_array_length(key);
 
                     for (j = 0; j < v->entry->count; j++) {

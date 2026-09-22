@@ -64,7 +64,6 @@
 #define RPM_DEPENDENCIES_DESC          "dependencies"
 #define RPM_FILES_DESC                 "files"
 #define RPM_DEPENDENCY_NAME_DESC       "name"
-#define RPM_DEPENDENCY_FLAGS_DESC      "flags"
 #define RPM_DEPENDENCY_COMPARISON_DESC "comparison"
 #define RPM_DEPENDENCY_VERSION_DESC    "version"
 #define RPM_DEPENDENCY_TYPE_DESC       "type"

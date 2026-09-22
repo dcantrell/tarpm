@@ -262,7 +262,6 @@ main(int argc, char **argv)
     if ((optind + 1) != argc) {
         /* process common short syntax options that may exist */
         opt = argv[optind];
-        havefilename = false;
 
         while (opt && *opt != '\0') {
             if (*opt == 't') {

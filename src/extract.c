@@ -189,7 +189,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
      * still go through the Fdopen() call in librpm, which can fail
      * on some compression types depending on the librpm version.
      */
-    r = unpack_archive(filename, tmp, false, verbose);
+    r = unpack_archive(filename, tmp, verbose);
 
     if (r != 0) {
         /*
@@ -215,7 +215,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
             return -1;
         }
 
-        if (unpack_archive(payload_file, tmp, false, verbose) != 0) {
+        if (unpack_archive(payload_file, tmp, verbose) != 0) {
             warnx("unpack_archive");
             return -1;
         }

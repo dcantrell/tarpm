@@ -57,7 +57,7 @@ void *xrealloc(void *p, size_t s);
 int mkdirp(const char *path, mode_t mode);
 
 /* unpack.c */
-int unpack_archive(const char *archive, const char *dest, const bool list, const bool verbose);
+int unpack_archive(const char *archive, const char *dest, const bool verbose);
 
 /* lead.c */
 struct json_object *read_lead(const int fd);
@@ -148,6 +148,5 @@ void strmode(mode_t mode, char *p);
 
 /* readfile.c */
 void *read_file_bytes(const char *path, off_t *len);
-char *read_file(const char *path);
 
 #endif /* _TARPM_TARPM_H */

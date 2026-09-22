@@ -64,45 +64,6 @@ test_read_file_bytes(void)
     return;
 }
 
-void
-test_read_file(void)
-{
-    char *data = NULL;
-    int fd = -1;
-    char tmpfile[] = "/tmp/tarpm-test-XXXXXX";
-    char tmpfile2[] = "/tmp/tarpm-test-XXXXXX";
-    char *expected = "test content\n";
-
-    /* test non-existent file */
-    data = read_file("/nonexistent/file/path");
-    TARPM_ASSERT_TRUE(data == NULL);
-
-    /* create a temporary test file */
-    fd = mkstemp(tmpfile);
-    TARPM_ASSERT_FALSE(fd == -1);
-    TARPM_ASSERT_TRUE(write(fd, expected, strlen(expected)) == (ssize_t)strlen(expected));
-    TARPM_ASSERT_TRUE(close(fd) == 0);
-
-    /* test reading a real file */
-    data = read_file(tmpfile);
-    TARPM_ASSERT_TRUE(data != NULL);
-    TARPM_ASSERT_TRUE(strcmp(data, expected) == 0);
-    free(data);
-
-    /* clean up */
-    TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);
-
-    /* test empty file - should return NULL */
-    fd = mkstemp(tmpfile2);
-    TARPM_ASSERT_FALSE(fd == -1);
-    TARPM_ASSERT_TRUE(close(fd) == 0);
-    data = read_file(tmpfile2);
-    TARPM_ASSERT_TRUE(data == NULL);
-    TARPM_ASSERT_TRUE(unlink(tmpfile2) == 0);
-
-    return;
-}
-
 CU_pSuite
 get_suite(void)
 {
@@ -116,8 +77,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test read_file_bytes()", test_read_file_bytes) == NULL ||
-        CU_add_test(pSuite, "test read_file()", test_read_file) == NULL) {
+    if (CU_add_test(pSuite, "test read_file_bytes()", test_read_file_bytes) == NULL) {
         return NULL;
     }
 

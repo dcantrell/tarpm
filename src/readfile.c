@@ -81,25 +81,3 @@ read_file_bytes(const char *path, off_t *len)
 
     return data;
 }
-
-/*
- * Open and read the contents of a file line by line in to a string_list_t.
- * Each line is a separate entry.  Caller must call listfree() on the list
- * returned.  NULL returned indicates the file could not be read.  An empty
- * file still returns an empty string_list_t that must be freed.
- */
-char *
-read_file(const char *path)
-{
-    off_t len;
-    char *buf = NULL;
-
-    /* read the file */
-    buf = read_file_bytes(path, &len);
-
-    if (buf == NULL) {
-        return NULL;
-    }
-
-    return buf;
-}

@@ -46,7 +46,6 @@ struct rpmhdr {
  * Computed values for an rpmhdr.
  */
 struct rpmhdrinfo {
-    uint32_t ilen;
     uint32_t hlen;
     struct rpmhdrentry *estart;
     struct rpmhdrentry *entry;
