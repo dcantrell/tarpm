@@ -440,30 +440,102 @@ dependency_index(struct json_object *dependencies, const char *key, struct json_
     return -1;
 }
 
-/* Cleanup function called by generate_formatted_dependencies() */
+/*
+ * Read the name, flags, and version arrays for one dependency type
+ * out of the header data.  Arrays we do not find stay NULL with a
+ * count of zero.
+ */
 static void
-cleanup_deps(char **names, uint32_t nnames, uint32_t *flags_array, char **versions, uint32_t nversions)
+collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct dep_type *dep, struct dep_arrays *da)
+{
+    uint32_t i = 0;
+    uint32_t j = 0;
+    uint32_t offset = 0;
+    uint32_t count = 0;
+    uint32_t flag = 0;
+    rpmTagVal tag = 0;
+    rpmTagType datatype = 0;
+    uint8_t *data = NULL;
+    uint8_t *p = NULL;
+    struct rpmhdrentry *hdrentry = NULL;
+
+    if (hdr == NULL || hdrinfo == NULL || dep == NULL || da == NULL) {
+        return;
+    }
+
+    hdrentry = hdrinfo->estart;
+
+    for (i = 0; i < hdr->nentries; i++) {
+        tag = ntohl(hdrentry[i].tag);
+        offset = ntohl(hdrentry[i].offset);
+        datatype = ntohl(hdrentry[i].type);
+        count = ntohl(hdrentry[i].count);
+        data = hdrinfo->datastart + offset;
+
+        if (tag == dep->name && datatype == RPM_STRING_ARRAY_TYPE) {
+            da->nnames = count;
+            da->names = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                da->names[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
+        } else if (tag == dep->flags && datatype == RPM_INT32_TYPE) {
+            da->nflags = count;
+            da->flags = xalloc(count * sizeof(uint32_t));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                memcpy(&flag, p, sizeof(uint32_t));
+                da->flags[j] = ntohl(flag);
+                p += sizeof(uint32_t);
+            }
+        } else if (tag == dep->version && datatype == RPM_STRING_ARRAY_TYPE) {
+            da->nversions = count;
+            da->versions = xalloc(count * sizeof(char *));
+            p = data;
+
+            for (j = 0; j < count; j++) {
+                da->versions[j] = strdup((char *) p);
+                p += strlen((char *) p) + 1;
+            }
+        }
+    }
+
+    return;
+}
+
+/*
+ * Free what collect_dep_arrays() allocated.
+ */
+static void
+free_dep_arrays(struct dep_arrays *da)
 {
     uint32_t i = 0;
 
-    if (names != NULL) {
-        for (i = 0; i < nnames; i++) {
-            free(names[i]);
-        }
-
-        free(names);
+    if (da == NULL) {
+        return;
     }
 
-    if (flags_array != NULL) {
-        free(flags_array);
-    }
-
-    if (versions != NULL) {
-        for (i = 0; i < nversions; i++) {
-            free(versions[i]);
+    if (da->names != NULL) {
+        for (i = 0; i < da->nnames; i++) {
+            free(da->names[i]);
         }
 
-        free(versions);
+        free(da->names);
+    }
+
+    if (da->flags != NULL) {
+        free(da->flags);
+    }
+
+    if (da->versions != NULL) {
+        for (i = 0; i < da->nversions; i++) {
+            free(da->versions[i]);
+        }
+
+        free(da->versions);
     }
 
     return;
@@ -476,91 +548,42 @@ cleanup_deps(char **names, uint32_t nnames, uint32_t *flags_array, char **versio
 static struct json_object *
 generate_formatted_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct dep_type *dep)
 {
-    uint32_t i = 0;
     uint32_t j = 0;
-    rpmTagVal tag = 0;
-    uint32_t offset = 0;
-    uint32_t count = 0;
-    rpmTagType datatype = 0;
-    struct rpmhdrentry *hdrentry = NULL;
-    uint8_t *data = NULL;
+    char *comparison = NULL;
+    struct dep_arrays da;
     struct json_object *deps = NULL;
     struct json_object *entry = NULL;
-    char **names = NULL;
-    uint32_t nnames = 0;
-    uint32_t *flags = NULL;
-    uint32_t nflags = 0;
-    char **versions = NULL;
-    uint32_t nversions = 0;
-    uint8_t *p = NULL;
-    uint32_t flag = 0;
     struct json_object *sense_flags = NULL;
-    char *comparison = NULL;
 
     if (hdr == NULL || hdrinfo == NULL || dep == NULL) {
         return NULL;
     }
 
-    hdrentry = hdrinfo->estart;
+    /* initialize */
+    memset(&da, '\0', sizeof(da));
 
-    /* First pass: collect the three dependency arrays */
-    for (i = 0; i < hdr->nentries; i++) {
-        tag = ntohl(hdrentry[i].tag);
-        offset = ntohl(hdrentry[i].offset);
-        datatype = ntohl(hdrentry[i].type);
-        count = ntohl(hdrentry[i].count);
-        data = hdrinfo->datastart + offset;
-
-        if (tag == dep->name && datatype == RPM_STRING_ARRAY_TYPE) {
-            nnames = count;
-            names = xalloc(count * sizeof(char *));
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                names[j] = strdup((char *) p);
-                p += strlen((char *) p) + 1;
-            }
-        } else if (tag == dep->flags && datatype == RPM_INT32_TYPE) {
-            nflags = count;
-            flags = xalloc(count * sizeof(uint32_t));
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&flag, p, sizeof(uint32_t));
-                flags[j] = ntohl(flag);
-                p += sizeof(uint32_t);
-            }
-        } else if (tag == dep->version && datatype == RPM_STRING_ARRAY_TYPE) {
-            nversions = count;
-            versions = xalloc(count * sizeof(char *));
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                versions[j] = strdup((char *) p);
-                p += strlen((char *) p) + 1;
-            }
-        }
-    }
+    /* read the three dependency arrays out of the header */
+    collect_dep_arrays(hdr, hdrinfo, dep, &da);
 
     /* No dependency found */
-    if (names == NULL) {
-        cleanup_deps(names, nnames, flags, versions, nversions);
+    if (da.names == NULL) {
+        free_dep_arrays(&da);
         return NULL;
     }
 
     /* Build the dependency array */
     deps = json_object_new_array();
 
-    for (j = 0; j < nnames; j++) {
+    for (j = 0; j < da.nnames; j++) {
         entry = json_object_new_object();
 
         /* Add name */
-        json_object_object_add(entry, RPM_DEPENDENCY_NAME_DESC, json_object_new_string(names[j]));
+        json_object_object_add(entry, RPM_DEPENDENCY_NAME_DESC, json_object_new_string(da.names[j]));
 
         /* Build comparison and sense flags */
-        if (flags != NULL && j < nflags) {
-            comparison = comparison_to_str(flags[j]);
-            sense_flags = generate_sense_flags(flags[j]);
+        if (da.flags != NULL && j < da.nflags) {
+            comparison = comparison_to_str(da.flags[j]);
+            sense_flags = generate_sense_flags(da.flags[j]);
         }
 
         /* Add the comparison, version, and sense_flags */
@@ -570,8 +593,8 @@ generate_formatted_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinf
             comparison = NULL;
         }
 
-        if (versions != NULL && j < nversions && versions[j] != NULL && versions[j][0] != '\0') {
-            json_object_object_add(entry, RPM_DEPENDENCY_VERSION_DESC, json_object_new_string(versions[j]));
+        if (da.versions != NULL && j < da.nversions && da.versions[j] != NULL && da.versions[j][0] != '\0') {
+            json_object_object_add(entry, RPM_DEPENDENCY_VERSION_DESC, json_object_new_string(da.versions[j]));
         }
 
         if (sense_flags != NULL) {
@@ -584,7 +607,7 @@ generate_formatted_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinf
     }
 
     /* Cleanup */
-    cleanup_deps(names, nnames, flags, versions, nversions);
+    free_dep_arrays(&da);
 
     return deps;
 }

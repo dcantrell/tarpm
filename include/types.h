@@ -210,6 +210,21 @@ struct dep_type {
     char abbrev;
 };
 
+/*
+ * The three tag arrays we read for one dependency type.  The names
+ * and the versions are strings and the flags are numbers.  Each array
+ * carries its own count because the header does not have to give us
+ * all three.
+ */
+struct dep_arrays {
+    char **names;
+    uint32_t nnames;
+    uint32_t *flags;
+    uint32_t nflags;
+    char **versions;
+    uint32_t nversions;
+};
+
 /* Function pointers */
 typedef void (*list_entry_data_free_func)(void *);
 
