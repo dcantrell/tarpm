@@ -59,6 +59,33 @@ struct file_metadata {
 };
 
 /*
+ * Where we are in each of the file lists.  We walk all of them at the
+ * same time, one step per file, so a cursor is NULL when that list is
+ * missing or when we run off the end of it.
+ */
+struct file_cursors {
+    str_entry_t *basename;
+    str_entry_t *username;
+    str_entry_t *groupname;
+    str_entry_t *digest;
+    str_entry_t *linkto;
+    str_entry_t *filelang;
+    uint32_entry_t *dirindex;
+    uint32_entry_t *filesize;
+    uint32_entry_t *filemode;
+    uint32_entry_t *filemtime;
+    uint32_entry_t *filerdev;
+    uint32_entry_t *filedevice;
+    uint32_entry_t *fileinode;
+    uint32_entry_t *fileclass;
+    uint32_entry_t *filecolor;
+    uint32_entry_t *fileflag;
+    uint32_entry_t *fileverifyflag;
+    uint32_entry_t *filedependsx;
+    uint32_entry_t *filedependsn;
+};
+
+/*
  * What a walk of the payload tree needs to add entries to the
  * "files" array.
  */
@@ -652,70 +679,85 @@ file_dependencies(struct json_object *dependencies, const uint32_list_t *depends
 }
 
 /*
- * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
- * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
- * optionally "size" for regular files.
- * Returns NULL if the required tags are not found.
+ * Read count strings out of the header data and add them to the list.
+ * A header can carry the same tag more than once, so we add to what
+ * is there rather than start over.
  */
-struct json_object *
-generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies)
+static str_list_t *
+read_str_list(str_list_t *list, const uint8_t *data, const uint32_t count)
 {
     uint32_t i = 0;
-    uint32_t j = 0;
+    const uint8_t *p = data;
+
+    for (i = 0; i < count; i++) {
+        list = list_add(list, (const char *) p);
+        p += strlen((const char *) p) + 1;
+    }
+
+    return list;
+}
+
+/*
+ * Read count 32 bit numbers out of the header data and add them to
+ * the list in host order.
+ */
+static uint32_list_t *
+read_uint32_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
+{
+    uint32_t i = 0;
+    uint32_t value = 0;
+    const uint8_t *p = data;
+
+    for (i = 0; i < count; i++) {
+        memcpy(&value, p, sizeof(value));
+        list = uint32_list_add(list, ntohl(value));
+        p += sizeof(value);
+    }
+
+    return list;
+}
+
+/*
+ * Read count 16 bit numbers out of the header data and add them to
+ * the list in host order.
+ */
+static uint32_list_t *
+read_uint16_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
+{
+    uint32_t i = 0;
+    uint16_t value = 0;
+    const uint8_t *p = data;
+
+    for (i = 0; i < count; i++) {
+        memcpy(&value, p, sizeof(value));
+        list = uint32_list_add(list, ntohs(value));
+        p += sizeof(value);
+    }
+
+    return list;
+}
+
+/*
+ * Read the file lists we need out of the header data.  Tags the
+ * header does not carry leave their list NULL.
+ */
+static void
+collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct file_metadata *fmd)
+{
+    uint32_t i = 0;
     uint32_t tag = 0;
     uint32_t offset = 0;
     uint32_t count = 0;
     rpmTagType datatype = 0;
-    struct rpmhdrentry *hdrentry = NULL;
     uint8_t *data = NULL;
-    struct json_object *files = NULL;
-    struct json_object *file = NULL;
-    struct file_metadata fmd = { 0 };
-    uint8_t *p = NULL;
-    uint32_t val32 = 0;
-    uint16_t val16 = 0;
-    uint32_t ndirnames = 0;
-    const char *dirname = NULL;
-    const char *classname = NULL;
-    str_entry_t *basename = NULL;
-    str_entry_t *username = NULL;
-    str_entry_t *groupname = NULL;
-    str_entry_t *digest = NULL;
-    str_entry_t *linkto = NULL;
-    str_entry_t *filelang = NULL;
-    str_entry_t *lang = NULL;
-    str_list_t *langs = NULL;
-    struct json_object *langs_array = NULL;
-    struct json_object *colors_array = NULL;
-    struct json_object *flags_array = NULL;
-    struct json_object *verifyflags_array = NULL;
-    struct json_object *provides_array = NULL;
-    uint32_entry_t *dirindex = NULL;
-    uint32_entry_t *filesize = NULL;
-    uint32_entry_t *filemode = NULL;
-    uint32_entry_t *filemtime = NULL;
-    uint32_entry_t *filerdev = NULL;
-    uint32_entry_t *filedevice = NULL;
-    uint32_entry_t *fileinode = NULL;
-    uint32_entry_t *fileclass = NULL;
-    uint32_entry_t *filecolor = NULL;
-    uint32_entry_t *fileflag = NULL;
-    uint32_entry_t *fileverifyflag = NULL;
-    uint32_entry_t *filedependsx = NULL;
-    uint32_entry_t *filedependsn = NULL;
-    char mode_str[5];
-    char mtime_str[32];
-    time_t mtime = 0;
-    struct tm *tm_info = NULL;
-    char *path = NULL;
+    struct rpmhdrentry *hdrentry = NULL;
 
-    if (hdr == NULL || hdrinfo == NULL) {
-        return NULL;
+    if (hdr == NULL || hdrinfo == NULL || fmd == NULL) {
+        return;
     }
 
     hdrentry = hdrinfo->estart;
 
-    /* First pass: collect the file list arrays */
     for (i = 0; i < hdr->nentries; i++) {
         tag = ntohl(hdrentry[i].tag);
         offset = ntohl(hdrentry[i].offset);
@@ -724,175 +766,358 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
         data = hdrinfo->datastart + offset;
 
         if (tag == RPMTAG_DIRNAMES && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.dirnames = list_add(fmd.dirnames, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->dirnames = read_str_list(fmd->dirnames, data, count);
         } else if (tag == RPMTAG_BASENAMES && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.basenames = list_add(fmd.basenames, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->basenames = read_str_list(fmd->basenames, data, count);
         } else if (tag == RPMTAG_DIRINDEXES && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.dirindexes = uint32_list_add(fmd.dirindexes, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->dirindexes = read_uint32_list(fmd->dirindexes, data, count);
         } else if (tag == RPMTAG_FILESIZES && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filesizes = uint32_list_add(fmd.filesizes, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filesizes = read_uint32_list(fmd->filesizes, data, count);
         } else if (tag == RPMTAG_FILEMODES && datatype == RPM_INT16_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val16, p, sizeof(uint16_t));
-                fmd.filemodes = uint32_list_add(fmd.filemodes, ntohs(val16));
-                p += sizeof(uint16_t);
-            }
+            fmd->filemodes = read_uint16_list(fmd->filemodes, data, count);
         } else if (tag == RPMTAG_FILEMTIMES && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filemtimes = uint32_list_add(fmd.filemtimes, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filemtimes = read_uint32_list(fmd->filemtimes, data, count);
         } else if (tag == RPMTAG_FILEUSERNAME && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.fileusernames = list_add(fmd.fileusernames, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->fileusernames = read_str_list(fmd->fileusernames, data, count);
         } else if (tag == RPMTAG_FILEGROUPNAME && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.filegroupnames = list_add(fmd.filegroupnames, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->filegroupnames = read_str_list(fmd->filegroupnames, data, count);
         } else if (tag == RPMTAG_FILERDEVS && datatype == RPM_INT16_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val16, p, sizeof(uint16_t));
-                fmd.filerdevs = uint32_list_add(fmd.filerdevs, ntohs(val16));
-                p += sizeof(uint16_t);
-            }
+            fmd->filerdevs = read_uint16_list(fmd->filerdevs, data, count);
         } else if (tag == RPMTAG_FILEDEVICES && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filedevices = uint32_list_add(fmd.filedevices, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filedevices = read_uint32_list(fmd->filedevices, data, count);
         } else if (tag == RPMTAG_FILEDIGESTS && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.filedigests = list_add(fmd.filedigests, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->filedigests = read_str_list(fmd->filedigests, data, count);
         } else if (tag == RPMTAG_FILELINKTOS && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.filelinktos = list_add(fmd.filelinktos, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->filelinktos = read_str_list(fmd->filelinktos, data, count);
         } else if (tag == RPMTAG_FILEINODES && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.fileinodes = uint32_list_add(fmd.fileinodes, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->fileinodes = read_uint32_list(fmd->fileinodes, data, count);
         } else if (tag == RPMTAG_FILECLASS && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.fileclass = uint32_list_add(fmd.fileclass, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->fileclass = read_uint32_list(fmd->fileclass, data, count);
         } else if (tag == RPMTAG_CLASSDICT && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.classdict = list_add(fmd.classdict, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->classdict = read_str_list(fmd->classdict, data, count);
         } else if (tag == RPMTAG_FILELANGS && datatype == RPM_STRING_ARRAY_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                fmd.filelangs = list_add(fmd.filelangs, (char *) p);
-                p += strlen((char *) p) + 1;
-            }
+            fmd->filelangs = read_str_list(fmd->filelangs, data, count);
         } else if (tag == RPMTAG_FILECOLORS && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filecolors = uint32_list_add(fmd.filecolors, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filecolors = read_uint32_list(fmd->filecolors, data, count);
         } else if (tag == RPMTAG_FILEFLAGS && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.fileflags = uint32_list_add(fmd.fileflags, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->fileflags = read_uint32_list(fmd->fileflags, data, count);
         } else if (tag == RPMTAG_FILEVERIFYFLAGS && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.fileverifyflags = uint32_list_add(fmd.fileverifyflags, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->fileverifyflags = read_uint32_list(fmd->fileverifyflags, data, count);
         } else if (tag == RPMTAG_FILEDEPENDSX && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filedependsx = uint32_list_add(fmd.filedependsx, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filedependsx = read_uint32_list(fmd->filedependsx, data, count);
         } else if (tag == RPMTAG_FILEDEPENDSN && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.filedependsn = uint32_list_add(fmd.filedependsn, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->filedependsn = read_uint32_list(fmd->filedependsn, data, count);
         } else if (tag == RPMTAG_DEPENDSDICT && datatype == RPM_INT32_TYPE) {
-            p = data;
-
-            for (j = 0; j < count; j++) {
-                memcpy(&val32, p, sizeof(uint32_t));
-                fmd.dependsdict = uint32_list_add(fmd.dependsdict, ntohl(val32));
-                p += sizeof(uint32_t);
-            }
+            fmd->dependsdict = read_uint32_list(fmd->dependsdict, data, count);
         }
     }
+
+    return;
+}
+
+/*
+ * Point every cursor at the first entry of its list.
+ */
+static void
+first_file_cursors(const struct file_metadata *fmd, struct file_cursors *fc)
+{
+    if (fmd == NULL || fc == NULL) {
+        return;
+    }
+
+    fc->basename = first_str(fmd->basenames);
+    fc->username = first_str(fmd->fileusernames);
+    fc->groupname = first_str(fmd->filegroupnames);
+    fc->digest = first_str(fmd->filedigests);
+    fc->linkto = first_str(fmd->filelinktos);
+    fc->filelang = first_str(fmd->filelangs);
+    fc->dirindex = first_uint32(fmd->dirindexes);
+    fc->filesize = first_uint32(fmd->filesizes);
+    fc->filemode = first_uint32(fmd->filemodes);
+    fc->filemtime = first_uint32(fmd->filemtimes);
+    fc->filerdev = first_uint32(fmd->filerdevs);
+    fc->filedevice = first_uint32(fmd->filedevices);
+    fc->fileinode = first_uint32(fmd->fileinodes);
+    fc->fileclass = first_uint32(fmd->fileclass);
+    fc->filecolor = first_uint32(fmd->filecolors);
+    fc->fileflag = first_uint32(fmd->fileflags);
+    fc->fileverifyflag = first_uint32(fmd->fileverifyflags);
+    fc->filedependsx = first_uint32(fmd->filedependsx);
+    fc->filedependsn = first_uint32(fmd->filedependsn);
+
+    return;
+}
+
+/*
+ * Step every cursor on to the next file.
+ */
+static void
+next_file_cursors(struct file_cursors *fc)
+{
+    if (fc == NULL) {
+        return;
+    }
+
+    fc->basename = next_str(fc->basename);
+    fc->username = next_str(fc->username);
+    fc->groupname = next_str(fc->groupname);
+    fc->digest = next_str(fc->digest);
+    fc->linkto = next_str(fc->linkto);
+    fc->filelang = next_str(fc->filelang);
+    fc->dirindex = next_uint32(fc->dirindex);
+    fc->filesize = next_uint32(fc->filesize);
+    fc->filemode = next_uint32(fc->filemode);
+    fc->filemtime = next_uint32(fc->filemtime);
+    fc->filerdev = next_uint32(fc->filerdev);
+    fc->filedevice = next_uint32(fc->filedevice);
+    fc->fileinode = next_uint32(fc->fileinode);
+    fc->fileclass = next_uint32(fc->fileclass);
+    fc->filecolor = next_uint32(fc->filecolor);
+    fc->fileflag = next_uint32(fc->fileflag);
+    fc->fileverifyflag = next_uint32(fc->fileverifyflag);
+    fc->filedependsx = next_uint32(fc->filedependsx);
+    fc->filedependsn = next_uint32(fc->filedependsn);
+
+    return;
+}
+
+/*
+ * Build the JSON entry for the file the cursors point at.  The keys
+ * we have nothing to say about are left off.  The caller frees what
+ * comes back by way of the files array it goes in to.
+ */
+static struct json_object *
+file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struct json_object *dependencies, const char *path)
+{
+    char mode_str[5];
+    char mtime_str[32];
+    time_t mtime = 0;
+    struct tm *tm_info = NULL;
+    const char *classname = NULL;
+    str_entry_t *lang = NULL;
+    str_list_t *langs = NULL;
+    struct json_object *file = NULL;
+    struct json_object *langs_array = NULL;
+    struct json_object *colors_array = NULL;
+    struct json_object *flags_array = NULL;
+    struct json_object *verifyflags_array = NULL;
+    struct json_object *provides_array = NULL;
+
+    if (fmd == NULL || fc == NULL || path == NULL) {
+        return NULL;
+    }
+
+    /* Create file entry with path */
+    file = json_object_new_object();
+    json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
+
+    /*
+     * Add size for regular files and symlinks.  RPM keeps the length
+     * of a symlink target in FILESIZES and the payload reader eats
+     * that many bytes, so symlinks need it too.
+     */
+    if (fc->filesize != NULL && fc->filemode != NULL) {
+        if (S_ISREG(fc->filemode->value) || S_ISLNK(fc->filemode->value)) {
+            json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64(fc->filesize->value));
+        }
+    }
+
+    /*
+     * Add mode if available (as octal string of permission bits
+     * only).  The file type bits of the mode go alongside it under
+     * their own name.
+     */
+    if (fc->filemode != NULL) {
+        snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, fc->filemode->value & ALLPERMS);
+        json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
+        json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(fc->filemode->value)));
+    }
+
+    /* Add mtime if available (as ISO 8601 timestamp) */
+    if (fc->filemtime != NULL) {
+        mtime = (time_t) fc->filemtime->value;
+        tm_info = gmtime(&mtime);
+
+        if (tm_info != NULL) {
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+            json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
+        }
+    }
+
+    /* Add user if available */
+    if (fc->username != NULL) {
+        json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(fc->username->str));
+    }
+
+    /* Add group if available */
+    if (fc->groupname != NULL) {
+        json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(fc->groupname->str));
+    }
+
+    /* Add rdev if available (only for device nodes with non-zero values) */
+    if (fc->filerdev != NULL && fc->filemode != NULL) {
+        if ((S_ISCHR(fc->filemode->value) || S_ISBLK(fc->filemode->value)) && fc->filerdev->value != 0) {
+            json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int(fc->filerdev->value));
+        }
+    }
+
+    /* Add device if available */
+    if (fc->filedevice != NULL) {
+        json_object_object_add(file, RPM_FILE_DEVICE_DESC, json_object_new_int64(fc->filedevice->value));
+    }
+
+    /*
+     * Add digest for regular files that have one.  RPM stores an
+     * empty string for entries without a digest (directories,
+     * symlinks, device nodes, etc.), so only emit the key when the
+     * digest is non-empty.
+     */
+    if (fc->digest != NULL && fc->digest->str[0] != '\0') {
+        json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(fc->digest->str));
+    }
+
+    /*
+     * Add linkto for symbolic links.  RPM stores an empty string for
+     * entries that are not symlinks, so only emit the key when the
+     * target is non-empty.
+     */
+    if (fc->linkto != NULL && fc->linkto->str[0] != '\0') {
+        json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(fc->linkto->str));
+    }
+
+    /*
+     * Add inode for every entry.  RPM numbers these itself starting
+     * at 1 to track hard links.  Files that share a number are hard
+     * links of one another.
+     */
+    if (fc->fileinode != NULL) {
+        json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int(fc->fileinode->value));
+    }
+
+    /*
+     * Add class for entries that have one.  FILECLASS holds an index
+     * into the CLASSDICT string array (libmagic-style type
+     * descriptions), so resolve the index to its string here.  Skip
+     * the key when the resolved class is an empty string.
+     */
+    if (fc->fileclass != NULL) {
+        classname = str_list_nth(fmd->classdict, fc->fileclass->value);
+
+        if (classname != NULL && classname[0] != '\0') {
+            json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(classname));
+        }
+    }
+
+    /*
+     * Add langs for entries that carry one.  RPM stores the languages
+     * of a file as a single string with each language separated by a
+     * "|", so split that in to an array here.  Entries with no
+     * language carry an empty string.
+     */
+    if (fc->filelang != NULL && fc->filelang->str[0] != '\0') {
+        langs = strsplit(fc->filelang->str, RPM_FILE_LANG_SEPARATOR);
+
+        if (langs != NULL) {
+            langs_array = json_object_new_array();
+
+            TAILQ_FOREACH(lang, langs, items) {
+                json_object_array_add(langs_array, json_object_new_string(lang->str));
+            }
+
+            json_object_object_add(file, RPM_FILE_LANGS_DESC, langs_array);
+            list_free(langs, free);
+        }
+    }
+
+    /*
+     * Add colors for entries that carry one.  RPM records the ELF
+     * class of a file as a bitfield, so turn that in to an array of
+     * names here.  Entries with no color carry a zero, which
+     * color_names() reports as NULL so the key is left off.
+     */
+    if (fc->filecolor != NULL) {
+        colors_array = color_names(fc->filecolor->value);
+
+        if (colors_array != NULL) {
+            json_object_object_add(file, RPM_FILE_COLORS_DESC, colors_array);
+        }
+    }
+
+    /*
+     * Add flags for entries that carry one.  RPM records the %config,
+     * %doc, %ghost and similar markings of a file as a bitfield, so
+     * turn that in to an array of names here.  Entries with no flags
+     * carry a zero, which flag_names() reports as NULL so the key is
+     * left off.
+     */
+    if (fc->fileflag != NULL) {
+        flags_array = flag_names(fc->fileflag->value);
+
+        if (flags_array != NULL) {
+            json_object_object_add(file, RPM_FILE_FLAGS_DESC, flags_array);
+        }
+    }
+
+    /*
+     * Add verifyflags for entries that carry one.  RPM records the
+     * %verify() settings of a file as a bitfield, so turn that in to
+     * an array of names here.  Entries that verify nothing carry a
+     * zero, which verifyflag_names() reports as NULL so the key is
+     * left off.
+     */
+    if (fc->fileverifyflag != NULL) {
+        verifyflags_array = verifyflag_names(fc->fileverifyflag->value);
+
+        if (verifyflags_array != NULL) {
+            json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags_array);
+        }
+    }
+
+    /*
+     * Add provides for entries that generated dependencies.
+     * FILEDEPENDSX and FILEDEPENDSN hold the start and the length of
+     * this file's slice of the depends dictionary, so resolve that
+     * slice to the dependencies it names here.  Entries that
+     * generated nothing carry a length of zero, so the key is left
+     * off for them.
+     */
+    if (fc->filedependsx != NULL && fc->filedependsn != NULL && fc->filedependsn->value > 0) {
+        provides_array = file_dependencies(dependencies, fmd->dependsdict, fc->filedependsx->value, fc->filedependsn->value);
+
+        if (provides_array != NULL) {
+            json_object_object_add(file, RPM_FILE_PROVIDES_DESC, provides_array);
+        }
+    }
+
+    return file;
+}
+
+/*
+ * Generate a "files" array from the DIRNAMES, BASENAMES, and DIRINDEXES tags.
+ * Returns a JSON array where each entry is {"path": "/full/path/to/file"} and
+ * optionally "size" for regular files.
+ * Returns NULL if the required tags are not found.
+ */
+struct json_object *
+generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies)
+{
+    uint32_t ndirnames = 0;
+    char *path = NULL;
+    const char *dirname = NULL;
+    struct file_metadata fmd;
+    struct file_cursors fc;
+    struct json_object *files = NULL;
+
+    if (hdr == NULL || hdrinfo == NULL) {
+        return NULL;
+    }
+
+    /* start with empty lists and cursors */
+    memset(&fmd, '\0', sizeof(fmd));
+    memset(&fc, '\0', sizeof(fc));
+
+    /* read the file lists out of the header */
+    collect_file_metadata(hdr, hdrinfo, &fmd);
 
     /* No file list found */
     if (fmd.dirnames == NULL || fmd.basenames == NULL || fmd.dirindexes == NULL) {
@@ -910,249 +1135,25 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
     /* Build the files array */
     files = json_object_new_array();
     ndirnames = str_list_len(fmd.dirnames);
-    basename = first_str(fmd.basenames);
-    username = first_str(fmd.fileusernames);
-    groupname = first_str(fmd.filegroupnames);
-    digest = first_str(fmd.filedigests);
-    linkto = first_str(fmd.filelinktos);
-    filelang = first_str(fmd.filelangs);
-    dirindex = first_uint32(fmd.dirindexes);
-    filesize = first_uint32(fmd.filesizes);
-    filemode = first_uint32(fmd.filemodes);
-    filemtime = first_uint32(fmd.filemtimes);
-    filerdev = first_uint32(fmd.filerdevs);
-    filedevice = first_uint32(fmd.filedevices);
-    fileinode = first_uint32(fmd.fileinodes);
-    fileclass = first_uint32(fmd.fileclass);
-    filecolor = first_uint32(fmd.filecolors);
-    fileflag = first_uint32(fmd.fileflags);
-    fileverifyflag = first_uint32(fmd.fileverifyflags);
-    filedependsx = first_uint32(fmd.filedependsx);
-    filedependsn = first_uint32(fmd.filedependsn);
+    first_file_cursors(&fmd, &fc);
 
-    while (basename != NULL && dirindex != NULL) {
+    while (fc.basename != NULL && fc.dirindex != NULL) {
         /* Verify dirindex is valid */
-        dirname = str_list_nth(fmd.dirnames, dirindex->value);
+        dirname = str_list_nth(fmd.dirnames, fc.dirindex->value);
 
         if (dirname == NULL) {
-            warnx(_("*** invalid dirindex %u (max %u)"), dirindex->value, ndirnames - 1);
+            warnx(_("*** invalid dirindex %u (max %u)"), fc.dirindex->value, ndirnames - 1);
         } else {
             /* Combine dirname and basename */
-            xasprintf(&path, "%s%s", dirname, basename->str);
+            xasprintf(&path, "%s%s", dirname, fc.basename->str);
 
-            /* Create file entry with path */
-            file = json_object_new_object();
-            json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
-
-            /*
-             * Add size for regular files and symlinks.  RPM keeps
-             * the length of a symlink target in FILESIZES and the
-             * payload reader eats that many bytes, so symlinks need
-             * it too.
-             */
-            if (filesize != NULL && filemode != NULL) {
-                if (S_ISREG(filemode->value) || S_ISLNK(filemode->value)) {
-                    json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64(filesize->value));
-                }
-            }
-
-            /*
-             * Add mode if available (as octal string of permission bits
-             * only).  The file type bits of the mode go alongside it
-             * under their own name.
-             */
-            if (filemode != NULL) {
-                snprintf(mode_str, sizeof(mode_str), RPM_FILE_MODE_FORMAT, filemode->value & ALLPERMS);
-                json_object_object_add(file, RPM_FILE_MODE_DESC, json_object_new_string(mode_str));
-                json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(filemode->value)));
-            }
-
-            /* Add mtime if available (as ISO 8601 timestamp) */
-            if (filemtime != NULL) {
-                mtime = (time_t) filemtime->value;
-                tm_info = gmtime(&mtime);
-
-                if (tm_info != NULL) {
-                    strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
-                    json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
-                }
-            }
-
-            /* Add user if available */
-            if (username != NULL) {
-                json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(username->str));
-            }
-
-            /* Add group if available */
-            if (groupname != NULL) {
-                json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(groupname->str));
-            }
-
-            /* Add rdev if available (only for device nodes with non-zero values) */
-            if (filerdev != NULL && filemode != NULL) {
-                if ((S_ISCHR(filemode->value) || S_ISBLK(filemode->value)) && filerdev->value != 0) {
-                    json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int(filerdev->value));
-                }
-            }
-
-            /* Add device if available */
-            if (filedevice != NULL) {
-                json_object_object_add(file, RPM_FILE_DEVICE_DESC, json_object_new_int64(filedevice->value));
-            }
-
-            /*
-             * Add digest for regular files that have one.  RPM stores an
-             * empty string for entries without a digest (directories,
-             * symlinks, device nodes, etc.), so only emit the key when the
-             * digest is non-empty.
-             */
-            if (digest != NULL && digest->str[0] != '\0') {
-                json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest->str));
-            }
-
-            /*
-             * Add linkto for symbolic links.  RPM stores an empty string
-             * for entries that are not symlinks, so only emit the key when
-             * the target is non-empty.
-             */
-            if (linkto != NULL && linkto->str[0] != '\0') {
-                json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(linkto->str));
-            }
-
-            /*
-             * Add inode for every entry.  RPM numbers these itself
-             * starting at 1 to track hard links.  Files that share a
-             * number are hard links of one another.
-             */
-            if (fileinode != NULL) {
-                json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int(fileinode->value));
-            }
-
-            /*
-             * Add class for entries that have one.  FILECLASS holds an index
-             * into the CLASSDICT string array (libmagic-style type
-             * descriptions), so resolve the index to its string here.  Skip
-             * the key when the resolved class is an empty string.
-             */
-            if (fileclass != NULL) {
-                classname = str_list_nth(fmd.classdict, fileclass->value);
-
-                if (classname != NULL && classname[0] != '\0') {
-                    json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(classname));
-                }
-            }
-
-            /*
-             * Add langs for entries that carry one.  RPM stores the
-             * languages of a file as a single string with each language
-             * separated by a "|", so split that in to an array here.
-             * Entries with no language carry an empty string.
-             */
-            if (filelang != NULL && filelang->str[0] != '\0') {
-                langs = strsplit(filelang->str, RPM_FILE_LANG_SEPARATOR);
-
-                if (langs != NULL) {
-                    langs_array = json_object_new_array();
-
-                    TAILQ_FOREACH(lang, langs, items) {
-                        json_object_array_add(langs_array, json_object_new_string(lang->str));
-                    }
-
-                    json_object_object_add(file, RPM_FILE_LANGS_DESC, langs_array);
-                    list_free(langs, free);
-                    langs = NULL;
-                }
-            }
-
-            /*
-             * Add colors for entries that carry one.  RPM records the
-             * ELF class of a file as a bitfield, so turn that in to an
-             * array of names here.  Entries with no color carry a zero,
-             * which color_names() reports as NULL so the key is left off.
-             */
-            if (filecolor != NULL) {
-                colors_array = color_names(filecolor->value);
-
-                if (colors_array != NULL) {
-                    json_object_object_add(file, RPM_FILE_COLORS_DESC, colors_array);
-                    colors_array = NULL;
-                }
-            }
-
-            /*
-             * Add flags for entries that carry one.  RPM records the
-             * %config, %doc, %ghost and similar markings of a file as a
-             * bitfield, so turn that in to an array of names here.
-             * Entries with no flags carry a zero, which flag_names()
-             * reports as NULL so the key is left off.
-             */
-            if (fileflag != NULL) {
-                flags_array = flag_names(fileflag->value);
-
-                if (flags_array != NULL) {
-                    json_object_object_add(file, RPM_FILE_FLAGS_DESC, flags_array);
-                    flags_array = NULL;
-                }
-            }
-
-            /*
-             * Add verifyflags for entries that carry one.  RPM records
-             * the %verify() settings of a file as a bitfield, so turn
-             * that in to an array of names here.  Entries that verify
-             * nothing carry a zero, which verifyflag_names() reports as
-             * NULL so the key is left off.
-             */
-            if (fileverifyflag != NULL) {
-                verifyflags_array = verifyflag_names(fileverifyflag->value);
-
-                if (verifyflags_array != NULL) {
-                    json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags_array);
-                    verifyflags_array = NULL;
-                }
-            }
-
-            /*
-             * Add provides for entries that generated dependencies.
-             * FILEDEPENDSX and FILEDEPENDSN hold the start and the
-             * length of this file's slice of the depends dictionary,
-             * so resolve that slice to the dependencies it names here.
-             * Entries that generated nothing carry a length of zero,
-             * so the key is left off for them.
-             */
-            if (filedependsx != NULL && filedependsn != NULL && filedependsn->value > 0) {
-                provides_array = file_dependencies(dependencies, fmd.dependsdict, filedependsx->value, filedependsn->value);
-
-                if (provides_array != NULL) {
-                    json_object_object_add(file, RPM_FILE_PROVIDES_DESC, provides_array);
-                    provides_array = NULL;
-                }
-            }
-
-            json_object_array_add(files, file);
+            json_object_array_add(files, file_entry(&fmd, &fc, dependencies, path));
 
             free(path);
             path = NULL;
         }
 
-        basename = next_str(basename);
-        username = next_str(username);
-        groupname = next_str(groupname);
-        digest = next_str(digest);
-        linkto = next_str(linkto);
-        filelang = next_str(filelang);
-        dirindex = next_uint32(dirindex);
-        filesize = next_uint32(filesize);
-        filemode = next_uint32(filemode);
-        filemtime = next_uint32(filemtime);
-        filerdev = next_uint32(filerdev);
-        filedevice = next_uint32(filedevice);
-        fileinode = next_uint32(fileinode);
-        fileclass = next_uint32(fileclass);
-        filecolor = next_uint32(filecolor);
-        fileflag = next_uint32(fileflag);
-        fileverifyflag = next_uint32(fileverifyflag);
-        filedependsx = next_uint32(filedependsx);
-        filedependsn = next_uint32(filedependsn);
+        next_file_cursors(&fc);
     }
 
     /* Cleanup */
