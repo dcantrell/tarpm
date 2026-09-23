@@ -43,94 +43,57 @@ write_metadata(struct json_object *data, const char *dest_dir, const char *path,
     return r;
 }
 
-/* Handler for -x mode (extract) */
-int
-extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose)
+/*
+ * Work out where the extracted RPM goes.  We use the directory the
+ * caller gave us or we make a name from the NEVRA.  The caller has to
+ * free it.
+ */
+static char *
+extract_dir(Header h, const char *cwd, const char *output_dir)
 {
-    int r = 0;
-    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    char *nevra = NULL;
+    char *path = NULL;
+    char *dir = NULL;
+
+    if (output_dir != NULL) {
+        return strdup(output_dir);
+    }
+
+    nevra = get_nevra(h);
+
+    if (nevra == NULL) {
+        warnx(_("unable to read NEVRA from RPM header"));
+        return NULL;
+    }
+
+    path = joinpath(cwd, nevra, NULL);
+    free(nevra);
+
+    if (path == NULL) {
+        warn("joinpath");
+        return NULL;
+    }
+
+    dir = abspath(path);
+    free(path);
+
+    return dir;
+}
+
+/*
+ * Read the lead, the signature, and the header out of the RPM and
+ * write each one to its JSON file.  Returns 0 if that worked and -1
+ * if it did not.
+ */
+static int
+extract_metadata(const char *filename, const char *dest_dir, const char *header_dir, const struct json_paths *paths)
+{
     int rpmfd = -1;
-    char *candidate_path = NULL;
-    char *tmp = NULL;
-    char *payload_file = NULL;
-    char *dest_dir = NULL;
-    char *header_dir = NULL;
-    const char *lead_path = NULL;
-    const char *signature_path = NULL;
-    const char *header_path = NULL;
-    const char *payload_path = NULL;
-    Header h;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
 
-    if (cwd == NULL) {
-        warnx(_("missing cwd in %s call"), __func__);
-        return -1;
-    }
-
-    if (filename == NULL) {
-        warnx(_("missing filename in %s call"), __func__);
-        return -1;
-    }
-
-    /* validate the specified file is an RPM */
-    h = get_header(filename);
-
-    if (h == NULL) {
-        warnx(_("*** %s is not a valid RPM"), filename);
-        return -1;
-    }
-
-    /* make a unique output directory name if we need to */
-    if (output_dir == NULL) {
-        tmp = get_nevra(h);
-
-        if (tmp == NULL) {
-            warnx(_("unable to read NEVRA from RPM header"));
-            return -1;
-        }
-
-        xasprintf(&candidate_path, "%s/%s", cwd, tmp);
-        dest_dir = abspath(candidate_path);
-
-        free(candidate_path);
-        free(tmp);
-    } else {
-        dest_dir = strdup(output_dir);
-    }
-
-    if (dest_dir == NULL) {
-        warnx(_("*** unable to set dest_dir"));
-        return -1;
-    }
-
-    /* create the output directory */
-    if (mkdirp(dest_dir, mode) == -1) {
-        warnx("mkdirp");
-        return -1;
-    }
-
-    /* where the caller asked us to put the JSON metadata files */
-    if (paths != NULL) {
-        lead_path = paths->lead;
-        signature_path = paths->signature;
-        header_path = paths->header;
-        payload_path = paths->payload;
-    }
-
-    /*
-     * Tag values written to their own file sit next to header.json.
-     * With the header going to stdout they keep their usual home.
-     */
-    if (header_path == NULL || !strcmp(header_path, OUTPUT_STDOUT)) {
-        header_dir = strdup(dest_dir);
-    } else {
-        header_dir = dir_name(header_path);
-    }
-
-    if (header_dir == NULL) {
-        warnx(_("*** unable to set header_dir"));
+    if (filename == NULL || dest_dir == NULL || header_dir == NULL || paths == NULL) {
         return -1;
     }
 
@@ -172,85 +135,193 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /* write out the header metadata */
-    if (write_metadata(lead, dest_dir, lead_path, OUTPUT_LEAD) != 0) {
+    if (write_metadata(lead, dest_dir, paths->lead, OUTPUT_LEAD) != 0) {
         warn("write_json_file");
     }
 
-    if (write_metadata(signature, dest_dir, signature_path, OUTPUT_SIGNATURE) != 0) {
+    if (write_metadata(signature, dest_dir, paths->signature, OUTPUT_SIGNATURE) != 0) {
         warn("write_json_file");
     }
 
-    if (write_metadata(header, dest_dir, header_path, OUTPUT_HEADER) != 0) {
+    if (write_metadata(header, dest_dir, paths->header, OUTPUT_HEADER) != 0) {
         warn("write_json_file");
     }
 
-    /* unpack the RPM payload where the caller asked us to */
+    json_object_put(header);
+    json_object_put(signature);
+    json_object_put(lead);
+
+    return 0;
+}
+
+/*
+ * Make the directory we unpack the payload in to.  We use the one the
+ * caller gave us or we put it under dest_dir.  The caller has to free
+ * it.
+ */
+static char *
+make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mode)
+{
+    char *dir = NULL;
+
     if (payload_path == NULL) {
-        xasprintf(&tmp, "%s/%s", dest_dir, PAYLOAD_SUBDIR);
+        dir = joinpath(dest_dir, PAYLOAD_SUBDIR, NULL);
     } else {
-        tmp = strdup(payload_path);
+        dir = strdup(payload_path);
     }
 
-    if (tmp == NULL) {
+    if (dir == NULL) {
         warnx(_("*** unable to set the payload directory"));
-        return -1;
+        return NULL;
     }
 
-    if (mkdirp(tmp, mode) == -1) {
+    if (mkdirp(dir, mode) == -1) {
         warnx("mkdirp");
-        free(tmp);
-        return -1;
+        free(dir);
+        return NULL;
     }
+
+    return dir;
+}
+
+/*
+ * Unpack the RPM payload in to payload_dir.  We hand the RPM to
+ * libarchive first and pull the payload out to a file of its own if
+ * that does not work.  Returns 0 if it worked and -1 if it did not.
+ */
+static int
+extract_payload(const char *filename, const char *cwd, const char *dest_dir, const char *payload_dir, const bool verbose)
+{
+    char *payload_file = NULL;
 
     /*
      * Try to extract straight from the RPM with libarchive.  We
      * still go through the Fdopen() call in librpm, which can fail
      * on some compression types depending on the librpm version.
      */
-    r = unpack_archive(filename, tmp, verbose);
+    if (unpack_archive(filename, payload_dir, verbose) == 0) {
+        return 0;
+    }
 
-    if (r != 0) {
-        /*
-         * Direct extraction failed, so fall back to
-         * convert_payload().  The failure would be unpack_archive()
-         * not getting libarchive to take the file handle Fdopen() in
-         * librpm gave us.
-         */
-        if (chdir(dest_dir) == -1) {
-            warn("chdir");
-            return -1;
-        }
+    /*
+     * Direct extraction failed, so fall back to convert_payload().
+     * The failure would be unpack_archive() not getting libarchive to
+     * take the file handle Fdopen() in librpm gave us.
+     */
+    if (chdir(dest_dir) == -1) {
+        warn("chdir");
+        return -1;
+    }
 
-        payload_file = convert_payload(filename);
+    payload_file = convert_payload(filename);
 
-        if (payload_file == NULL) {
-            warnx("convert_payload");
-            return -1;
-        }
+    if (payload_file == NULL) {
+        warnx("convert_payload");
+        return -1;
+    }
 
-        if (chdir(cwd) == -1) {
-            warn("chdir");
-            return -1;
-        }
+    if (chdir(cwd) == -1) {
+        warn("chdir");
+        return -1;
+    }
 
-        if (unpack_archive(payload_file, tmp, verbose) != 0) {
-            warnx("unpack_archive");
-            return -1;
-        }
+    if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
+        warnx("unpack_archive");
+        return -1;
+    }
 
-        if (unlink(payload_file) == -1) {
-            warn("unlink");
-            return -1;
-        }
+    if (unlink(payload_file) == -1) {
+        warn("unlink");
+        return -1;
+    }
 
-        free(payload_file);
+    free(payload_file);
+
+    return 0;
+}
+
+/* Handler for -x mode (extract) */
+int
+extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose)
+{
+    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    char *dest_dir = NULL;
+    char *header_dir = NULL;
+    char *payload_dir = NULL;
+    struct json_paths nopaths;
+    Header h;
+
+    if (cwd == NULL) {
+        warnx(_("missing cwd in %s call"), __func__);
+        return -1;
+    }
+
+    if (filename == NULL) {
+        warnx(_("missing filename in %s call"), __func__);
+        return -1;
+    }
+
+    /* a caller with nothing to say still gets the usual names */
+    if (paths == NULL) {
+        memset(&nopaths, '\0', sizeof(nopaths));
+        paths = &nopaths;
+    }
+
+    /* validate the specified file is an RPM */
+    h = get_header(filename);
+
+    if (h == NULL) {
+        warnx(_("*** %s is not a valid RPM"), filename);
+        return -1;
+    }
+
+    /* make a unique output directory name if we need to */
+    dest_dir = extract_dir(h, cwd, output_dir);
+
+    if (dest_dir == NULL) {
+        warnx(_("*** unable to set dest_dir"));
+        return -1;
+    }
+
+    /* create the output directory */
+    if (mkdirp(dest_dir, mode) == -1) {
+        warnx("mkdirp");
+        return -1;
+    }
+
+    /*
+     * Tag values written to their own file sit next to header.json.
+     * With the header going to stdout they keep their usual home.
+     */
+    if (paths->header == NULL || !strcmp(paths->header, OUTPUT_STDOUT)) {
+        header_dir = strdup(dest_dir);
+    } else {
+        header_dir = dir_name(paths->header);
+    }
+
+    if (header_dir == NULL) {
+        warnx(_("*** unable to set header_dir"));
+        return -1;
+    }
+
+    /* read the RPM headers and write them out as JSON */
+    if (extract_metadata(filename, dest_dir, header_dir, paths) != 0) {
+        return -1;
+    }
+
+    /* unpack the RPM payload where the caller asked us to */
+    payload_dir = make_payload_dir(dest_dir, paths->payload, mode);
+
+    if (payload_dir == NULL) {
+        return -1;
+    }
+
+    if (extract_payload(filename, cwd, dest_dir, payload_dir, verbose) != 0) {
+        return -1;
     }
 
     /* clean up */
-    json_object_put(header);
-    json_object_put(signature);
-    json_object_put(lead);
-    free(tmp);
+    free(payload_dir);
     free(dest_dir);
     free(header_dir);
     headerFree(h);
