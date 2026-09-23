@@ -1338,6 +1338,33 @@ new_in_payload(struct json_object *files, const char *path, const struct stat *s
 }
 
 /*
+ * Work out the class of a file the way rpmbuild does and put it on the
+ * entry.  A file rpm would record no class for loses the key, which is
+ * how generate_files() writes one out.
+ */
+static void
+set_file_class(struct json_object *file, const char *path, const char *file_path, const struct stat *sb)
+{
+    char *name = NULL;
+
+    name = file_class(path, file_path, sb);
+
+    if (name == NULL) {
+        return;
+    }
+
+    if (name[0] == '\0') {
+        json_object_object_del(file, RPM_FILE_CLASS_DESC);
+    } else {
+        json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(name));
+    }
+
+    free(name);
+
+    return;
+}
+
+/*
  * Build the "files" array entry for a file in the payload tree.  The
  * keys are the ones generate_files() writes for a file of this type so
  * an added file reads back the same way an unpacked one does.  The
@@ -1428,6 +1455,9 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
     if (sb->st_nlink > 1) {
         json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
     }
+
+    /* what kind of thing the file is, the way rpmbuild works it out */
+    set_file_class(file, path, file_path, sb);
 
     /* rpmbuild starts every file out verifying all of its attributes */
     verifyflags = verifyflag_names(RPMVERIFY_ALL);
@@ -1621,6 +1651,9 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
     if (S_ISCHR(sb->st_mode) || S_ISBLK(sb->st_mode)) {
         json_object_object_add(file, RPM_FILE_RDEV_DESC, json_object_new_int((int) sb->st_rdev));
     }
+
+    /* the class went with the old type, so work it out again */
+    set_file_class(file, path, file_path, sb);
 
     return;
 }
@@ -2233,6 +2266,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     size_t dependsstart = 0;
     int64_t size = 0;
     char *file_path = NULL;
+    char *olddigest = NULL;
     char *str = NULL;
     struct stat sb;
     struct stat *psb = NULL;
@@ -2268,6 +2302,13 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * fill in the keys the entry does not carry.
      */
     if (psb != NULL) {
+        /*
+         * Keep the digest the entry came in with.  Fixing the entry up
+         * can write a new one over it and we need the old one below to
+         * see whether the payload file changed.
+         */
+        olddigest = strdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
+
         fix_type_mismatch(file, path, file_path, psb, build->digestalgo);
         add_missing_metadata(file, path, file_path, psb, build->digestalgo);
     }
@@ -2285,6 +2326,15 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     json_object_array_add(out->filedevices, json_object_new_int64(key_number(file, RPM_FILE_DEVICE_DESC)));
 
     str = file_digest_value(file, file_path, psb, build->digestalgo);
+
+    /*
+     * The bytes are not the ones the entry describes, so the file may
+     * be a different kind of thing now and needs classifying again.
+     */
+    if (olddigest != NULL && strcmp(olddigest, str)) {
+        set_file_class(file, path, file_path, psb);
+    }
+
     json_object_array_add(out->filedigests, json_object_new_string(str));
     free(str);
 
@@ -2334,6 +2384,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     json_object_array_add(out->filedependsx, json_object_new_int64(dependsstart));
     json_object_array_add(out->filedependsn, json_object_new_int64(ndepends));
 
+    free(olddigest);
     free(file_path);
     build->nkept++;
 

@@ -18,6 +18,7 @@ if cunit.found()
         [ 'test-header.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -33,7 +34,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl ],
+        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -56,6 +57,7 @@ if cunit.found()
         [ 'test-json.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -67,7 +69,7 @@ if cunit.found()
           xalloc_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl ],
+        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -76,6 +78,7 @@ if cunit.found()
         [ 'test-lead.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -89,7 +92,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl ],
+        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -109,6 +112,7 @@ if cunit.found()
         [ 'test-read.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -124,7 +128,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl ],
+        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -158,6 +162,7 @@ if cunit.found()
         [ 'test-signature.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -174,7 +179,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl ],
+        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -261,6 +266,17 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_class = executable(
+        'test-class',
+        [ 'test-class.c',
+          'test-main.c',
+          class_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc, magic ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     test_entry = executable(
         'test-entry',
         [ 'test-entry.c',
@@ -291,6 +307,7 @@ if cunit.found()
         [ 'test-digest.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -307,7 +324,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl ],
+        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -331,6 +348,7 @@ if cunit.found()
         [ 'test-changelog.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -346,7 +364,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl ],
+        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -355,6 +373,7 @@ if cunit.found()
         [ 'test-deps.c',
           'test-main.c',
           changelog_src,
+          class_src,
           deps_src,
           files_src,
           listfuncs_src,
@@ -370,7 +389,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl ],
+        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -378,8 +397,9 @@ if cunit.found()
         'test-files',
         [ 'test-files.c',
           'test-main.c',
-          files_src,
+          class_src,
           deps_src,
+          files_src,
           listfuncs_src,
           strfuncs_src,
           joinpath_src,
@@ -388,7 +408,7 @@ if cunit.found()
           xalloc_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl ],
+        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -402,6 +422,7 @@ if cunit.found()
           deps_src,
           digest_src,
           entry_src,
+          class_src,
           files_src,
           header_src,
           joinpath_src,
@@ -416,7 +437,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, libarchive, libzstd, openssl ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, libzstd, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -438,6 +459,7 @@ if cunit.found()
     test('test-listfuncs', test_listfuncs)
     test('test-xread', test_xread)
     test('test-strmode', test_strmode)
+    test('test-class', test_class)
     test('test-entry', test_entry)
     test('test-readfile', test_readfile)
     test('test-digest', test_digest)

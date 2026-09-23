@@ -137,6 +137,22 @@
 #define RPM_FILE_TYPE_SYMLINK          "symlink"
 #define RPM_FILE_TYPE_SOCKET           "socket"
 
+/* class strings rpm writes itself rather than ask libmagic for */
+/*
+ * See rpmfcClassify() in build/rpmfc.cc in the rpm source.  Anything
+ * that is not a regular file or a symlink gets one of these names.
+ * Files under /dev/ stand in for real device nodes, so rpm gives them
+ * no class at all.  A file libmagic cannot read is called data.
+ */
+#define RPM_FILE_CLASS_CHARDEV         "character special"
+#define RPM_FILE_CLASS_BLOCKDEV        "block special"
+#define RPM_FILE_CLASS_PIPE            "fifo (named pipe)"
+#define RPM_FILE_CLASS_SOCKET          "socket"
+#define RPM_FILE_CLASS_DIR             "directory"
+#define RPM_FILE_CLASS_DATA            "data"
+#define RPM_FILE_CLASS_NONE            ""
+#define RPM_FILE_CLASS_DEV_PREFIX      "/dev/"
+
 /* names used for the file color bits in the "files" array   */
 /* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
 #define RPM_FILE_COLOR_ELF32           "Elf32"

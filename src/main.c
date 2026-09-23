@@ -405,6 +405,7 @@ main(int argc, char **argv)
     }
 
     /* Cleanup and exit */
+    close_magic();
     free(filename);
     free(cwd);
     free(output_dir);

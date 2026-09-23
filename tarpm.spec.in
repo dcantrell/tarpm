@@ -18,6 +18,7 @@ BuildRequires:  python3-devel
 BuildRequires:  gettext
 BuildRequires:  libzstd-devel
 BuildRequires:  openssl-devel
+BuildRequires:  file-devel
 
 
 %description

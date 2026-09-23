@@ -93,6 +93,12 @@ void add_payload_files(struct json_object *tags, struct json_object *files, cons
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies);
 bool is_file_list_tag(rpmTagVal tag);
 
+/* class.c */
+bool wanted_class(const char *name);
+const char *skipped_class(const char *path);
+char *file_class(const char *path, const char *file_path, const struct stat *sb);
+void close_magic(void);
+
 /* joinpath.c */
 char *joinpath(const char *path, ...);
 

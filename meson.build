@@ -70,6 +70,19 @@ elif cc.has_function('archive_version_string', dependencies : [ libarchive ])
 endif
 
 libzstd = dependency('libzstd', required : true)
+
+# libmagic
+if not cc.has_function('magic_open', args : ['-lmagic'])
+    error('*** unable to find magic_open() in libmagic')
+endif
+
+if cc.has_function('magic_version', args : ['-lmagic'])
+    add_project_arguments('-D_HAVE_MAGIC_VERSION', language : ['c', 'cpp'])
+endif
+
+magic = declare_dependency(link_args : ['-lmagic'])
+
+# librpm
 rpm = dependency('rpm', required : true)
 
 # See commit f14557cd521ddf95994aa6518f006eeb3fc58d87 in

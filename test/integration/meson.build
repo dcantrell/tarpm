@@ -11,6 +11,7 @@ if python.found()
         'test_header.py',
         'test_extract.py',
         'test_create.py',
+        'test_class.py',
         'test_roundtrip.py'
     ]
 
