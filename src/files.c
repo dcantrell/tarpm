@@ -555,30 +555,73 @@ verifyflag_value(struct json_object *names)
 }
 
 /*
+ * Turn one depends dictionary value in to a copy of the dependency it
+ * names.  The high byte gives us the type and the rest is the index
+ * in to that type's array in "dependencies".  We name the array the
+ * dependency came from first and then copy the rest of it.  Returns
+ * NULL when we cannot tell what the value points at.
+ */
+static struct json_object *
+dependency_ref(struct json_object *dependencies, const uint32_t value)
+{
+    char abbrev = '\0';
+    uint32_t index = 0;
+    const char *type = NULL;
+    struct json_object *deps = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *ref = NULL;
+
+    if (dependencies == NULL) {
+        return NULL;
+    }
+
+    abbrev = (char) ((value >> DEPENDS_DICT_TYPE_SHIFT) & 0xFF);
+    index = value & DEPENDS_DICT_INDEX_MASK;
+    type = dependency_type_key(abbrev);
+
+    if (type == NULL) {
+        warnx(_("*** unknown dependency type '%c' in the depends dictionary"), abbrev);
+        return NULL;
+    }
+
+    if (!json_object_object_get_ex(dependencies, type, &deps)) {
+        warnx(_("*** no %s dependencies for the depends dictionary"), type);
+        return NULL;
+    }
+
+    entry = json_object_array_get_idx(deps, index);
+
+    if (entry == NULL) {
+        warnx(_("*** %s dependency %u is out of range"), type, index);
+        return NULL;
+    }
+
+    /* copy the dependency, naming the array it came from first */
+    ref = json_object_new_object();
+    json_object_object_add(ref, RPM_DEPENDENCY_TYPE_DESC, json_object_new_string(type));
+
+    json_object_object_foreach(entry, depkey, depval) {
+        json_object_object_add(ref, depkey, json_object_get(depval));
+    }
+
+    return ref;
+}
+
+/*
  * Turn one file's slice of the depends dictionary in to an array of
- * the dependencies that file generated.  Each value names a
- * dependency type in its high byte and an index in to that type's
- * array in "dependencies" in the rest, so every value resolves to one
- * dependency.  We copy the dependency as-is and add a "type" key
- * naming the array it came from.
+ * the dependencies that file made.  We keep the order of the slice
+ * because rpm lists these in the order the generators made them, so
+ * the types can mix and the same dependency can show up twice.
+ * Create mode needs that order back.
  *
- * We keep the order of the slice because rpm records these in the
- * order the generators made them, so the types can mix and the same
- * dependency can show up twice.  Create mode needs that order back.
- *
- * Returns NULL when the slice is empty or nothing in it resolves and
- * the caller leaves the key off.
+ * Returns NULL when the slice is empty or when nothing in it works
+ * out, and then the caller leaves the key off.
  */
 static struct json_object *
 file_dependencies(struct json_object *dependencies, const uint32_list_t *dependsdict, uint32_t start, uint32_t count)
 {
     uint32_t i = 0;
     uint32_t value = 0;
-    uint32_t index = 0;
-    char abbrev = '\0';
-    const char *type = NULL;
-    struct json_object *deps = NULL;
-    struct json_object *entry = NULL;
     struct json_object *ref = NULL;
     struct json_object *refs = NULL;
 
@@ -592,33 +635,10 @@ file_dependencies(struct json_object *dependencies, const uint32_list_t *depends
             continue;
         }
 
-        abbrev = (char) ((value >> DEPENDS_DICT_TYPE_SHIFT) & 0xFF);
-        index = value & DEPENDS_DICT_INDEX_MASK;
-        type = dependency_type_key(abbrev);
+        ref = dependency_ref(dependencies, value);
 
-        if (type == NULL) {
-            warnx(_("*** unknown dependency type '%c' in the depends dictionary"), abbrev);
+        if (ref == NULL) {
             continue;
-        }
-
-        if (!json_object_object_get_ex(dependencies, type, &deps)) {
-            warnx(_("*** no %s dependencies for the depends dictionary"), type);
-            continue;
-        }
-
-        entry = json_object_array_get_idx(deps, index);
-
-        if (entry == NULL) {
-            warnx(_("*** %s dependency %u is out of range"), type, index);
-            continue;
-        }
-
-        /* copy the dependency, naming the array it came from first */
-        ref = json_object_new_object();
-        json_object_object_add(ref, RPM_DEPENDENCY_TYPE_DESC, json_object_new_string(type));
-
-        json_object_object_foreach(entry, depkey, depval) {
-            json_object_object_add(ref, depkey, json_object_get(depval));
         }
 
         if (refs == NULL) {
