@@ -25,6 +25,16 @@ struct tagfile {
     bool present;     /* true once the file has been read */
 };
 
+/*
+ * Where we are in the data area while we fill it in.  The offset is
+ * what the index entry records and datapos is the matching spot in
+ * the buffer, so the two always move together.
+ */
+struct data_writer {
+    uint8_t *datapos;
+    int32_t offset;
+};
+
 static rpmTagType
 get_entry_type(struct json_object *entry)
 {
@@ -215,6 +225,28 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
     return 0;
 }
 
+/*
+ * How many bytes of padding a type needs at this point in the data
+ * area.  rpm lines the numbers up on their own size.
+ */
+static int32_t
+align_padding(const rpmTagType type, const size_t offset)
+{
+    if (type == RPM_INT16_TYPE) {
+        return (2 - (offset % 2)) % 2;
+    }
+
+    if (type == RPM_INT32_TYPE) {
+        return (4 - (offset % 4)) % 4;
+    }
+
+    if (type == RPM_INT64_TYPE) {
+        return (8 - (offset % 8)) % 8;
+    }
+
+    return 0;
+}
+
 static size_t
 get_item_size(size_t index, struct json_object *entry, const struct tagfile *tagfiles, int32_t *trailer_index, size_t *trailer_size, bool is_signature)
 {
@@ -356,16 +388,7 @@ get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, i
             item_size = get_item_size(i, entry, tagfiles, trailer_index, trailer_size, is_signature);
 
             /* sequential calculation with alignment */
-            if (entry_type == RPM_INT16_TYPE) {
-                padding = (2 - (datasize % 2)) % 2;
-            } else if (entry_type == RPM_INT32_TYPE) {
-                padding = (4 - (datasize % 4)) % 4;
-            } else if (entry_type == RPM_INT64_TYPE) {
-                padding = (8 - (datasize % 8)) % 8;
-            } else {
-                padding = 0;
-            }
-
+            padding = align_padding(entry_type, datasize);
             datasize += padding + item_size;
         }
     }
@@ -373,41 +396,233 @@ get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, i
     return datasize;
 }
 
+/*
+ * Move the writer along to where the next value lines up.
+ */
+static void
+pad_writer(struct data_writer *w, const rpmTagType type)
+{
+    int32_t padding = 0;
+
+    padding = align_padding(type, w->offset);
+    w->offset += padding;
+    w->datapos += padding;
+
+    return;
+}
+
+/*
+ * Give back the number a JSON value holds for an int32 tag.  The
+ * digest algorithms are written by name in header.json and the build
+ * time as a timestamp, so those three need a lookup first.
+ */
+static uint32_t
+int32_value(const rpmTagVal tag, struct json_object *value)
+{
+    if (json_object_get_type(value) == json_type_string) {
+        if (tag == RPMTAG_FILEDIGESTALGO || tag == RPMTAG_PAYLOAD_DIGEST_ALGO) {
+            return digest_algo(json_object_get_string(value));
+        }
+
+        if (tag == RPMTAG_BUILDTIME) {
+            return buildtime_value(json_object_get_string(value));
+        }
+    }
+
+    return (uint32_t) json_object_get_int64(value);
+}
+
+/*
+ * Write one number in to the data area in network byte order and move
+ * the writer along.
+ */
+static void
+put_number(struct data_writer *w, const rpmTagType type, const rpmTagVal tag, struct json_object *value)
+{
+    size_t len = 0;
+    union datatypes n;
+
+    if (type == RPM_INT8_TYPE) {
+        n.i8 = json_object_get_int(value);
+        len = sizeof(n.i8);
+        memcpy(w->datapos, &n.i8, len);
+    } else if (type == RPM_INT16_TYPE) {
+        n.i16 = htons(json_object_get_uint64(value));
+        len = sizeof(n.i16);
+        memcpy(w->datapos, &n.i16, len);
+    } else if (type == RPM_INT32_TYPE) {
+        n.i32 = htonl(int32_value(tag, value));
+        len = sizeof(n.i32);
+        memcpy(w->datapos, &n.i32, len);
+    } else {
+        n.i64 = htobe64((uint64_t) json_object_get_int64(value));
+        len = sizeof(n.i64);
+        memcpy(w->datapos, &n.i64, len);
+    }
+
+    w->datapos += len;
+    w->offset += len;
+
+    return;
+}
+
+/*
+ * Write the numbers a tag carries in to the data area and give back
+ * how many went in.  A tag holds one number or an array of them.
+ */
+static uint32_t
+write_numbers(struct data_writer *w, const rpmTagType type, const rpmTagVal tag, struct json_object *key)
+{
+    uint32_t i = 0;
+    uint32_t count = 0;
+
+    if (json_object_get_type(key) != json_type_array) {
+        put_number(w, type, tag, key);
+        return 1;
+    }
+
+    count = json_object_array_length(key);
+
+    /*
+     * The three tags we write by name are single values, so the ones
+     * in an array all go in as plain numbers.
+     */
+    for (i = 0; i < count; i++) {
+        put_number(w, type, 0, json_object_array_get_idx(key, i));
+    }
+
+    return count;
+}
+
+/*
+ * Write one string and its NUL in to the data area and move the
+ * writer along.
+ */
+static void
+put_string(struct data_writer *w, const char *str, const size_t len)
+{
+    memcpy(w->datapos, str, len + 1);
+    w->datapos += len + 1;
+    w->offset += len + 1;
+
+    return;
+}
+
+/*
+ * Write the strings a tag carries in to the data area, each one with
+ * its NUL, and give back how many went in.
+ */
+static uint32_t
+write_strings(struct data_writer *w, struct json_object *key)
+{
+    uint32_t i = 0;
+    uint32_t count = 0;
+    const char *str = NULL;
+
+    count = json_object_array_length(key);
+
+    for (i = 0; i < count; i++) {
+        str = json_object_get_string(json_object_array_get_idx(key, i));
+        put_string(w, str, strlen(str));
+    }
+
+    return count;
+}
+
+/*
+ * Write the single string a tag carries.  A file backed tag gets the
+ * bytes we read before the header was sized, so this matches what
+ * get_item_size() counted.  A tag with no file named for it carries
+ * the empty string and both passes account for just its NUL.
+ */
+static void
+write_string(struct data_writer *w, const struct tagfile *tagfile, const rpmTagVal tag, struct json_object *key)
+{
+    const char *str = NULL;
+
+    if (!is_file_tag(tag)) {
+        str = json_object_get_string(key);
+        put_string(w, str, strlen(str));
+    } else if (tagfile->present) {
+        put_string(w, (const char *) tagfile->data, tagfile->len);
+    } else {
+        put_string(w, "", 0);
+    }
+
+    return;
+}
+
+/*
+ * Write the base64 data a tag carries in to the data area.  Returns 0
+ * if it worked and -1 if we could not decode it.
+ */
+static int
+write_binary(struct data_writer *w, struct rpmhdrentry *entry, struct json_object *key)
+{
+    int b = 0;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+
+    b = rpmBase64Decode(json_object_get_string(key), (void **) &blob, &blobsize);
+    entry->count = (uint32_t) blobsize;
+
+    if (b != 0) {
+        warnx(_("*** rpmBase64Decode failed with code %d"), b);
+        return -1;
+    }
+
+    memcpy(w->datapos, blob, entry->count);
+    w->datapos += entry->count;
+    w->offset += entry->count;
+    free(blob);
+
+    return 0;
+}
+
+/*
+ * Write the value of one tag in to the data area and record how many
+ * items went in.  Returns 0 if it worked and -1 if it did not.
+ */
+static int
+write_entry_value(struct data_writer *w, struct rpmhdrentry *entry, const struct tagfile *tagfile, struct json_object *key)
+{
+    if (entry->type == RPM_BIN_TYPE) {
+        return write_binary(w, entry, key);
+    }
+
+    if (entry->type == RPM_INT8_TYPE || entry->type == RPM_INT16_TYPE || entry->type == RPM_INT32_TYPE || entry->type == RPM_INT64_TYPE) {
+        entry->count = write_numbers(w, entry->type, entry->tag, key);
+    } else if (entry->type == RPM_STRING_ARRAY_TYPE) {
+        entry->count = write_strings(w, key);
+    } else {
+        entry->count = 1;
+        write_string(w, tagfile, entry->tag, key);
+    }
+
+    return 0;
+}
+
 /* Add the header tags and their values to the data buffer */
 static int
 add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct rpmhdrinfo *v, size_t totalsize, int32_t trailer_index, size_t trailer_size, bool is_signature)
 {
     int r = 0;
-    int b = 0;
     size_t i = 0;
+    const char *field = NULL;
+    struct data_writer w;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
-    uint8_t *datapos = NULL;
-    int32_t offset = 0;
-    uint8_t i8 = 0;
-    uint16_t i16 = 0;
-    uint32_t i32 = 0;
-    uint64_t i64 = 0;
-    const char *value = NULL;
-    const char *field = NULL;
-    size_t len = 0;
-    uint8_t *blob = NULL;
-    size_t blobsize = 0;
-    int32_t padding = 0;
-    size_t j = 0;
-    struct json_object *obj = NULL;
 
-    if (tags == NULL || v == NULL) {
+    if (tags == NULL || tagfiles == NULL || v == NULL) {
         return -1;
     }
 
-    /* position the data buffer and offset */
-    datapos = v->datastart;
-    offset = 0;
+    /* we fill the data area in from the front */
+    w.datapos = v->datastart;
+    w.offset = 0;
 
     /* create header tags and copy in the values */
     for (i = 0; i < json_object_array_length(tags); i++) {
-        padding = 0;
         entry = json_object_array_get_idx(tags, i);
 
         /* skip read-only tags */
@@ -424,182 +639,30 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
             v->entry->type = get_entry_type(entry);
         }
 
-        /* calculate offset */
         if (trailer_index >= 0 && i == ((size_t) trailer_index)) {
-            /* trailer offset points to end of data (past actual data) */
-            /* trailer is not written to data buffer when creating */
+            /*
+             * The trailer does not go in to the data area, so its
+             * offset points just past the end of what does.
+             */
             v->entry->offset = totalsize;
+            v->entry->count = trailer_size;
         } else {
-            /* compute offset and write data sequentially */
-            /* add alignment padding for integer types (4-byte alignment) */
-            if (v->entry->type == RPM_INT16_TYPE) {
-                padding = (2 - (offset % 2)) % 2;
-            } else if (v->entry->type == RPM_INT32_TYPE) {
-                padding = (4 - (offset % 4)) % 4;
-            } else if (v->entry->type == RPM_INT64_TYPE) {
-                padding = (8 - (offset % 8)) % 8;
-            }
+            pad_writer(&w, v->entry->type);
+            v->entry->offset = w.offset;
 
-            offset += padding;
-            datapos += padding;
-            v->entry->offset = offset;
-        }
-
-        /* write data for all entries except trailer */
-        if (!(trailer_index >= 0 && i == ((size_t) trailer_index))) {
-            /* get the field name based on the tag type */
+            /* the value of a file backed tag sits in a file of its own */
             if (is_file_tag(v->entry->tag)) {
                 field = RPM_ENTRY_FILE_DESC;
             } else {
                 field = RPM_ENTRY_VALUE_DESC;
             }
 
-            /* now get the data and put it in the buffer and update the offset */
             if (json_object_object_get_ex(entry, field, &key) == 0) {
                 warnx(_("*** invalid header tag entry, missing '%s'"), field);
                 r = -1;
-            } else {
-                /* handle each data type */
-                if (v->entry->type == RPM_BIN_TYPE) {
-                    value = json_object_get_string(key);
-                    b = rpmBase64Decode(value, (void **) &blob, &blobsize);
-                    v->entry->count = (uint32_t) blobsize;
-
-                    if (b == 0) {
-                        memcpy(datapos, blob, v->entry->count);
-                        datapos += v->entry->count;
-                        offset += v->entry->count;
-                        free(blob);
-                    } else {
-                        warnx(_("*** rpmBase64Decode failed with code %d"), b);
-                        r = -1;
-                    }
-                } else if (v->entry->type == RPM_INT8_TYPE) {
-                    if (json_object_get_type(key) == json_type_array) {
-                        v->entry->count = json_object_array_length(key);
-
-                        for (j = 0; j < v->entry->count; j++) {
-                            obj = json_object_array_get_idx(key, j);
-                            i8 = json_object_get_int(obj);
-                            memcpy(datapos, &i8, sizeof(i8));
-                            datapos += sizeof(i8);
-                            offset += sizeof(i8);
-                        }
-                    } else {
-                        v->entry->count = 1;
-                        i8 = json_object_get_int(key);
-                        memcpy(datapos, &i8, sizeof(i8));
-                        datapos += sizeof(i8);
-                        offset += sizeof(i8);
-                    }
-                } else if (v->entry->type == RPM_INT16_TYPE) {
-                    if (json_object_get_type(key) == json_type_array) {
-                        v->entry->count = json_object_array_length(key);
-
-                        for (j = 0; j < v->entry->count; j++) {
-                            obj = json_object_array_get_idx(key, j);
-                            i16 = htons(json_object_get_uint64(obj));
-                            memcpy(datapos, &i16, sizeof(i16));
-                            datapos += sizeof(i16);
-                            offset += sizeof(i16);
-                        }
-                    } else {
-                        v->entry->count = 1;
-                        i16 = htons(json_object_get_uint64(key));
-                        memcpy(datapos, &i16, sizeof(i16));
-                        datapos += sizeof(i16);
-                        offset += sizeof(i16);
-                    }
-                } else if (v->entry->type == RPM_INT32_TYPE) {
-                    if (json_object_get_type(key) == json_type_array) {
-                        v->entry->count = json_object_array_length(key);
-
-                        for (j = 0; j < v->entry->count; j++) {
-                            obj = json_object_array_get_idx(key, j);
-                            i32 = htonl((uint32_t) json_object_get_int64(obj));
-                            memcpy(datapos, &i32, sizeof(i32));
-                            datapos += sizeof(i32);
-                            offset += sizeof(i32);
-                        }
-                    } else {
-                        v->entry->count = 1;
-
-                        if ((v->entry->tag == RPMTAG_FILEDIGESTALGO || v->entry->tag == RPMTAG_PAYLOAD_DIGEST_ALGO) && json_object_get_type(key) == json_type_string) {
-                            /* the digest algorithm is recorded by name */
-                            i32 = htonl(digest_algo(json_object_get_string(key)));
-                        } else if (v->entry->tag == RPMTAG_BUILDTIME && json_object_get_type(key) == json_type_string) {
-                            /* the build time is recorded as a timestamp */
-                            i32 = htonl(buildtime_value(json_object_get_string(key)));
-                        } else {
-                            i32 = htonl((uint32_t) json_object_get_int64(key));
-                        }
-
-                        memcpy(datapos, &i32, sizeof(i32));
-                        datapos += sizeof(i32);
-                        offset += sizeof(i32);
-                    }
-                } else if (v->entry->type == RPM_INT64_TYPE) {
-                    if (json_object_get_type(key) == json_type_array) {
-                        v->entry->count = json_object_array_length(key);
-
-                        for (j = 0; j < v->entry->count; j++) {
-                            obj = json_object_array_get_idx(key, j);
-                            i64 = htobe64((uint64_t) json_object_get_int64(obj));
-                            memcpy(datapos, &i64, sizeof(i64));
-                            datapos += sizeof(i64);
-                            offset += sizeof(i64);
-                        }
-                    } else {
-                        v->entry->count = 1;
-                        i64 = htobe64((uint64_t) json_object_get_int64(key));
-                        memcpy(datapos, &i64, sizeof(i64));
-                        datapos += sizeof(i64);
-                        offset += sizeof(i64);
-                    }
-                } else if (v->entry->type == RPM_STRING_ARRAY_TYPE) {
-                    /* string array: write each string with NUL terminator */
-                    v->entry->count = json_object_array_length(key);
-
-                    for (j = 0; j < v->entry->count; j++) {
-                        obj = json_object_array_get_idx(key, j);
-                        value = json_object_get_string(obj);
-                        len = strlen(value);
-                        memcpy(datapos, value, len + 1);
-                        datapos += len + 1;
-                        offset += len + 1;
-                    }
-                } else {
-                    /* string data */
-                    v->entry->count = 1;
-
-                    if (is_file_tag(v->entry->tag)) {
-                        /*
-                         * Write the bytes read before the header was
-                         * sized, so this will match get_item_size().
-                         * A tag with no file named for it carries the
-                         * empty string and both passes account for
-                         * just its NUL.
-                         */
-                        if (tagfiles[i].present) {
-                            len = tagfiles[i].len;
-                            memcpy(datapos, tagfiles[i].data, len + 1);
-                        } else {
-                            len = 0;
-                            *datapos = '\0';
-                        }
-                    } else {
-                        value = json_object_get_string(key);
-                        len = strlen(value);
-                        memcpy(datapos, value, len + 1);
-                    }
-
-                    datapos += len + 1;
-                    offset += len + 1;
-                }
+            } else if (write_entry_value(&w, v->entry, &tagfiles[i], key) == -1) {
+                r = -1;
             }
-        } else {
-            /* get the trailer count value */
-            v->entry->count = trailer_size;
         }
 
         /* convert entry fields to network byte order */
