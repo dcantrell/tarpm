@@ -23,7 +23,7 @@ Core functionality that still needs to happen:
         [*] Size
         [*] Type (regular file, devnode, link)
         [*] Digests
-        [ ] Class
+        [*] Class
         [*] rdev
         [*] linkto
 
@@ -114,12 +114,11 @@ Core functionality that still needs to happen:
 
     [*] Add option to dump header data to stdout or a file
 
-[ ] Man page needs to document all options and explain how the the
+[*] Man page needs to document all options and explain how the the
     program works.
-    [ ] Convert man page source from MarkDown to Asciidoc
-    [ ] Drop pandoc dependency so we can use asciidoc
+    [*] Convert man page source to just mandoc
 
-[ ] More test cases.
+[*] More test cases.
     [*] Unit tests
     [*] Integration tests for create mode
     [*] Integration tests for list mode
