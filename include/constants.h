@@ -110,6 +110,20 @@
 #define RPM_FILE_VERIFYFLAGS_DESC      "verifyflags"
 #define RPM_FILE_PROVIDES_DESC         "provides"
 
+/* file metadata we can take from the payload tree */
+/*
+ * Each bit names one value in a "files" entry that we take from the
+ * file in the payload tree instead of from header.json.  We pick them
+ * up one at a time, so taking the owner does not mean we take the
+ * group too.
+ */
+#define PAYLOAD_OVERRIDE_NONE          0x00
+#define PAYLOAD_OVERRIDE_MTIME         0x01
+#define PAYLOAD_OVERRIDE_USER          0x02
+#define PAYLOAD_OVERRIDE_GROUP         0x04
+#define PAYLOAD_OVERRIDE_LINKTO        0x08
+#define PAYLOAD_OVERRIDE_ALL           (PAYLOAD_OVERRIDE_MTIME | PAYLOAD_OVERRIDE_USER | PAYLOAD_OVERRIDE_GROUP | PAYLOAD_OVERRIDE_LINKTO)
+
 /* values used by the entries in the "files" array */
 /*
  * These values were learned from the rpm source code and seem to be

@@ -10,6 +10,8 @@
 #include <time.h>
 #include <dirent.h>
 #include <err.h>
+#include <grp.h>
+#include <pwd.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
@@ -152,6 +154,13 @@ struct file_list_build {
     size_t nkept;
     int64_t totalsize;
 };
+
+/*
+ * The PAYLOAD_OVERRIDE_* bits for the file metadata we take from the
+ * payload tree.  We change nothing unless the command line asks us
+ * to, so header.json wins by default.
+ */
+uint32_t payload_overrides = PAYLOAD_OVERRIDE_NONE;
 
 /*
  * Maps a single RPMFILE_* bit to the name it carries in the "files"
@@ -1675,6 +1684,19 @@ report_missing(const char *path, const char *key, const bool from_payload)
 }
 
 /*
+ * Tell the user header.json and the payload tree disagree on a value
+ * and that we are taking the one from the payload.  We say nothing
+ * when the two already match.
+ */
+static void
+report_override(const char *path, const char *key)
+{
+    warnx(_("*** %s %s in header.json does not match the payload, taking the payload value"), path, key);
+
+    return;
+}
+
+/*
  * Add the keys a "files" entry is missing, reading them off the file
  * in the payload tree.  A hand edited header.json can be missing keys
  * the header needs.  The owner, the group and the device are not
@@ -2005,6 +2027,91 @@ add_file_path(struct file_list_tags *out, const char *path)
 }
 
 /*
+ * Replace the values in a "files" entry the user asked us to take
+ * from the payload tree.  We leave matching values alone and say
+ * nothing about them.  We change the entry in place so the header
+ * tags and the payload we write both get the new value.
+ */
+static void
+apply_payload_overrides(struct json_object *file, const char *path, const char *file_path, const struct stat *sb)
+{
+    ssize_t len = 0;
+    char *target = NULL;
+    char mtime_str[32];
+    time_t mtime = 0;
+    struct tm *tm_info = NULL;
+    struct passwd *pw = NULL;
+    struct group *gr = NULL;
+
+    if (file == NULL || path == NULL || file_path == NULL || sb == NULL) {
+        return;
+    }
+
+    /* the mtime as an ISO 8601 timestamp */
+    if (payload_overrides & PAYLOAD_OVERRIDE_MTIME) {
+        mtime = sb->st_mtime;
+        tm_info = gmtime(&mtime);
+
+        if (tm_info == NULL) {
+            warn("gmtime");
+        } else {
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+
+            if (strcmp(mtime_str, key_string(file, RPM_FILE_MTIME_DESC, ""))) {
+                report_override(path, RPM_FILE_MTIME_DESC);
+                json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
+            }
+        }
+    }
+
+    /* the owner by name */
+    if (payload_overrides & PAYLOAD_OVERRIDE_USER) {
+        pw = getpwuid(sb->st_uid);
+
+        if (pw == NULL) {
+            warnx(_("*** %s in the payload is owned by uid %u, which has no name"), path, (unsigned int) sb->st_uid);
+        } else if (strcmp(pw->pw_name, key_string(file, RPM_FILE_USER_DESC, RPM_FILE_DEFAULT_USER))) {
+            report_override(path, RPM_FILE_USER_DESC);
+            json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(pw->pw_name));
+        }
+    }
+
+    /* the group by name */
+    if (payload_overrides & PAYLOAD_OVERRIDE_GROUP) {
+        gr = getgrgid(sb->st_gid);
+
+        if (gr == NULL) {
+            warnx(_("*** %s in the payload is in gid %u, which has no name"), path, (unsigned int) sb->st_gid);
+        } else if (strcmp(gr->gr_name, key_string(file, RPM_FILE_GROUP_DESC, RPM_FILE_DEFAULT_GROUP))) {
+            report_override(path, RPM_FILE_GROUP_DESC);
+            json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(gr->gr_name));
+        }
+    }
+
+    /* a symlink carries its target and the length of it */
+    if ((payload_overrides & PAYLOAD_OVERRIDE_LINKTO) && S_ISLNK(sb->st_mode)) {
+        target = xalloc(sb->st_size + 1);
+        len = readlink(file_path, target, sb->st_size);
+
+        if (len < 0) {
+            warn("readlink");
+        } else {
+            target[len] = '\0';
+
+            if (strcmp(target, key_string(file, RPM_FILE_LINKTO_DESC, ""))) {
+                report_override(path, RPM_FILE_LINKTO_DESC);
+                json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
+                json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
+            }
+        }
+
+        free(target);
+    }
+
+    return;
+}
+
+/*
  * Work out the size to store for a file.  Only entries that carry a
  * size get one.  A regular file in the payload tree wins so an edited
  * payload lands the right number in the header.
@@ -2311,6 +2418,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
 
         fix_type_mismatch(file, path, file_path, psb, build->digestalgo);
         add_missing_metadata(file, path, file_path, psb, build->digestalgo);
+        apply_payload_overrides(file, path, file_path, psb);
     }
 
     /* the path splits in to a directory name and a base name */

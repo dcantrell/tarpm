@@ -88,6 +88,13 @@ char dependency_type_abbrev(const char *key);
 int dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry);
 
 /* files.c */
+/*
+ * The PAYLOAD_OVERRIDE_* bits for the file metadata we take from the
+ * payload tree instead of from header.json.  We set this from the
+ * command line before we create an RPM.
+ */
+extern uint32_t payload_overrides;
+
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies);

@@ -116,10 +116,16 @@ usage(void)
     printf(_("    -S FILE, --signature=FILE   Use FILE for signature.json\n"));
     printf(_("    -H FILE, --header=FILE      Use FILE for header.json\n"));
     printf(_("    -P DIR, --payload=DIR       Use DIR for the payload tree\n"));
+    printf(_("    -m, --payload-mtime         Take file timestamps from the payload tree\n"));
+    printf(_("    -u, --payload-user          Take file owners from the payload tree\n"));
+    printf(_("    -g, --payload-group         Take file groups from the payload tree\n"));
+    printf(_("    -l, --payload-linkto        Take symlink targets from the payload tree\n"));
+    printf(_("    -a, --payload-all           Take all of the above from the payload tree\n"));
     printf(_("    -V, --version               Display version information\n"));
     printf(_("    -?, --help                  Display this screen\n"));
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
+    printf(_("The -m, -u, -g, -l, and -a options may only be used when creating an RPM.\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -139,7 +145,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     char *opt = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:P:V?";
+    char *short_opts = "txcvf:O:L:S:H:P:muglaV?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -151,6 +157,11 @@ main(int argc, char **argv)
         { "signature", required_argument, 0, 'S' },
         { "header", required_argument, 0, 'H' },
         { "payload", required_argument, 0, 'P' },
+        { "payload-mtime", no_argument, 0, 'm' },
+        { "payload-user", no_argument, 0, 'u' },
+        { "payload-group", no_argument, 0, 'g' },
+        { "payload-linkto", no_argument, 0, 'l' },
+        { "payload-all", no_argument, 0, 'a' },
         { "version", no_argument, 0, 'V' },
         { "help", no_argument, 0, '?' },
         { 0, 0, 0, 0 }
@@ -272,6 +283,21 @@ main(int argc, char **argv)
                 }
 
                 break;
+            case 'm':
+                payload_overrides |= PAYLOAD_OVERRIDE_MTIME;
+                break;
+            case 'u':
+                payload_overrides |= PAYLOAD_OVERRIDE_USER;
+                break;
+            case 'g':
+                payload_overrides |= PAYLOAD_OVERRIDE_GROUP;
+                break;
+            case 'l':
+                payload_overrides |= PAYLOAD_OVERRIDE_LINKTO;
+                break;
+            case 'a':
+                payload_overrides |= PAYLOAD_OVERRIDE_ALL;
+                break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
                 exit(EXIT_SUCCESS);
@@ -302,6 +328,16 @@ main(int argc, char **argv)
                 x_flag = true;
             } else if (*opt == 'v') {
                 v_flag = true;
+            } else if (*opt == 'm') {
+                payload_overrides |= PAYLOAD_OVERRIDE_MTIME;
+            } else if (*opt == 'u') {
+                payload_overrides |= PAYLOAD_OVERRIDE_USER;
+            } else if (*opt == 'g') {
+                payload_overrides |= PAYLOAD_OVERRIDE_GROUP;
+            } else if (*opt == 'l') {
+                payload_overrides |= PAYLOAD_OVERRIDE_LINKTO;
+            } else if (*opt == 'a') {
+                payload_overrides |= PAYLOAD_OVERRIDE_ALL;
             } else if (*opt == 'f') {
                 /* the filename must come after 'f' */
                 if (filename) {
@@ -370,6 +406,11 @@ main(int argc, char **argv)
 
     if (filename == NULL) {
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
+    }
+
+    /* the payload metadata options only mean something when we create an RPM */
+    if (!c_flag && payload_overrides != PAYLOAD_OVERRIDE_NONE) {
+        errx(EXIT_FAILURE, _("*** -m, -u, -g, -l, and -a may only be used when creating an RPM"));
     }
 
     /* Creating an RPM reads the JSON metadata from files, not stdin */
