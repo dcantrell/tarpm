@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <pwd.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -1906,6 +1910,445 @@ test_add_file_list_tags_provides(void)
     return;
 }
 
+/*
+ * Helper for the payload override tests below that sets the
+ * modification time of a file in a payload tree.
+ */
+static void
+touch_payload(const char *payload_dir, const char *path, const time_t mtime)
+{
+    char *file_path = NULL;
+    struct timespec times[2];
+
+    times[0].tv_sec = mtime;
+    times[0].tv_nsec = 0;
+    times[1].tv_sec = mtime;
+    times[1].tv_nsec = 0;
+
+    file_path = joinpath(payload_dir, path, NULL);
+    TARPM_ASSERT_TRUE(utimensat(AT_FDCWD, file_path, times, AT_SYMLINK_NOFOLLOW) == 0);
+    free(file_path);
+
+    return;
+}
+
+/*
+ * Helper for the payload override tests below that returns the name
+ * of the user running the test suite.
+ */
+static const char *
+test_user(void)
+{
+    struct passwd *pw = NULL;
+
+    pw = getpwuid(geteuid());
+    TARPM_ASSERT_PTR_NOT_NULL(pw);
+
+    return pw->pw_name;
+}
+
+/*
+ * Helper for the payload override tests below that returns the name
+ * of the group running the test suite.
+ */
+static const char *
+test_group(void)
+{
+    struct group *gr = NULL;
+
+    gr = getgrgid(getegid());
+    TARPM_ASSERT_PTR_NOT_NULL(gr);
+
+    return gr->gr_name;
+}
+
+/*
+ * Helper for the payload override tests below that builds a payload
+ * tree with one regular file and one symlink.  The file list we hand
+ * back describes them with values the tree does not match.
+ */
+static void
+make_override_tree(const char *payload_dir, struct json_object *files)
+{
+    struct json_object *file = NULL;
+
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/ls", 10);
+    link_payload(payload_dir, "/usr/bin/link", "/usr/bin/ls");
+    touch_payload(payload_dir, "/usr/bin/ls", 1000000000);
+    touch_payload(payload_dir, "/usr/bin/link", 1000000000);
+
+    file = add_file(files, "/usr/bin/ls");
+    json_object_object_add(file, "size", json_object_new_int64(10));
+    json_object_object_add(file, "mtime", json_object_new_string("2020-01-01T00:00:00Z"));
+    json_object_object_add(file, "user", json_object_new_string("bin"));
+    json_object_object_add(file, "group", json_object_new_string("bin"));
+
+    file = add_file(files, "/usr/bin/link");
+    json_object_object_add(file, "size", json_object_new_int64(3));
+    json_object_object_add(file, "linkto", json_object_new_string("ls"));
+    json_object_object_add(file, "mtime", json_object_new_string("2020-01-01T00:00:00Z"));
+    json_object_object_add(file, "user", json_object_new_string("bin"));
+    json_object_object_add(file, "group", json_object_new_string("bin"));
+
+    return;
+}
+
+/*
+ * Helper for the payload override tests below that removes the tree
+ * make_override_tree() built.
+ */
+static void
+remove_override_tree(const char *payload_dir)
+{
+    remove_payload(payload_dir, "/usr/bin/ls");
+    remove_payload(payload_dir, "/usr/bin/link");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+
+    return;
+}
+
+/* Test add_file_list_tags() changes nothing when we ask for no overrides */
+void
+test_add_file_list_tags_no_overrides(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    /* 2020-01-01T00:00:00Z */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1577836800);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "ls");
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_file_list_tags() takes only the mtime from the payload tree */
+void
+test_add_file_list_tags_override_mtime(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_MTIME;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1000000000);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 1000000000);
+
+    /* the rest still come from the file list */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "ls");
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_file_list_tags() takes only the owner from the payload tree */
+void
+test_add_file_list_tags_override_user(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_USER;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), test_user());
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), test_user());
+
+    /* we did not ask for the group, so it stays put */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1577836800);
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_file_list_tags() takes only the group from the payload tree */
+void
+test_add_file_list_tags_override_group(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_GROUP;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), test_group());
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), test_group());
+
+    /* we did not ask for the owner, so it stays put */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "bin");
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() takes the symlink target and its length
+ * from the payload tree.
+ */
+void
+test_add_file_list_tags_override_linkto(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_LINKTO;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "/usr/bin/ls");
+
+    /* a symlink stores the length of the target string as its size */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), strlen("/usr/bin/ls"));
+
+    /* the regular file has no target either way */
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS)), 0)), "");
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/* Test add_file_list_tags() takes every value from the payload tree */
+void
+test_add_file_list_tags_override_all(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_ALL;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1000000000);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), test_user());
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), test_group());
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "/usr/bin/ls");
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() writes the payload values back in to the
+ * file list, so a second pass has nothing left to say.
+ */
+void
+test_add_file_list_tags_override_entries(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    make_override_tree(payload_dir, files);
+
+    payload_overrides = PAYLOAD_OVERRIDE_ALL;
+
+    add_file_list_tags(tags, files, payload_dir, NULL);
+
+    file = find_file(files, "/usr/bin/ls");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(file, "mtime")), "2001-09-09T01:46:40Z");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(file, "user")), test_user());
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(file, "group")), test_group());
+
+    file = find_file(files, "/usr/bin/link");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(file, "linkto")), "/usr/bin/ls");
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_object_get(file, "size")), strlen("/usr/bin/ls"));
+
+    payload_overrides = PAYLOAD_OVERRIDE_NONE;
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_override_tree(payload_dir);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
 /* Test is_file_list_tag() with file list tags */
 void
 test_is_file_list_tag_file_list_tags(void)
@@ -1992,6 +2435,13 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with flag values", test_add_file_list_tags_flags) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with verify flag values", test_add_file_list_tags_verifyflags) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with provides values", test_add_file_list_tags_provides) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with no payload overrides", test_add_file_list_tags_no_overrides) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the mtime override", test_add_file_list_tags_override_mtime) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the user override", test_add_file_list_tags_override_user) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the group override", test_add_file_list_tags_override_group) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the linkto override", test_add_file_list_tags_override_linkto) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with every payload override", test_add_file_list_tags_override_all) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() writes the payload overrides back", test_add_file_list_tags_override_entries) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

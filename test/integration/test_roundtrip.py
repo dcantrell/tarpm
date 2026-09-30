@@ -4,9 +4,11 @@
 #
 
 import datetime
+import grp
 import hashlib
 import json
 import os
+import pwd
 import subprocess
 import rpmfluff
 from baseclass import NAME
@@ -211,19 +213,21 @@ class RoundTrip(object):
 
         return extract_dir
 
-    def create_warns(self, extract_dir, name="recreated.rpm", env=None):
+    def create_warns(self, extract_dir, name="recreated.rpm", env=None, args=None):
         """Create an RPM and return it along with what tarpm said about it"""
         pkg = os.path.join(self.output_dir, name)
 
-        rc, out, err = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir], env=env)
+        rc, out, err = run_tarpm(
+            self.tarpm, ["-c", "-f", pkg] + (args or []) + [extract_dir], env=env
+        )
         self.assertEqual(rc, 0, "Create failed: %s" % err)
         self.assertTrue(os.path.isfile(pkg))
 
         return (pkg, err)
 
-    def create(self, extract_dir, name="recreated.rpm", env=None):
+    def create(self, extract_dir, name="recreated.rpm", env=None, args=None):
         """Create an RPM from a tarpm extraction directory"""
-        pkg, err = self.create_warns(extract_dir, name=name, env=env)
+        pkg, err = self.create_warns(extract_dir, name=name, env=env, args=args)
 
         return pkg
 
@@ -1564,6 +1568,267 @@ class TestCreateLeavesGhostMetadataAlone(RoundTrip, TestUnpackRPM):
         # the %ghost is not in the payload, so nothing to read
         self.assertEqual(err.count("%s is missing" % ghost), 0, err)
         self.assertEqual(mtimes[ghost], 0)
+
+        self.assertVerifies(recreated)
+
+
+class PayloadOverride(RoundTrip):
+    """
+    Class for the tests covering the options that tell tarpm to skip
+    a value in header.json and take it from the payload tree instead.
+    Each package here has one regular file and one symlink so we have
+    something to edit.
+    """
+
+    # the timestamp the tests put on the payload file
+    mtime = 1000000000
+
+    def setUp(self):
+        super().setUp()
+
+        self.data = "/usr/share/%s/data.txt" % NAME
+        self.link = "/usr/share/%s/link" % NAME
+
+        self.rpm.add_installed_file(
+            self.data, rpmfluff.SourceFile("data.txt", b"payload metadata\n")
+        )
+        self.rpm.add_installed_symlink(self.link, "data.txt")
+
+    def build(self):
+        """Build the package the payload override tests work with"""
+        self.rpm.do_make()
+
+        return self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+    def retime(self, extract_dir, path, mtime):
+        """Set the modification time of a file in the payload tree"""
+        os.utime(
+            self.payload_path(extract_dir, path),
+            (mtime, mtime),
+            follow_symlinks=False,
+        )
+
+    def relink(self, extract_dir, path, target):
+        """Point a symlink in the payload tree somewhere else"""
+        full = self.payload_path(extract_dir, path)
+        os.unlink(full)
+        os.symlink(target, full)
+
+    def payload_owner(self):
+        """Return the user and group names the payload tree files carry"""
+        return (pwd.getpwuid(os.geteuid()).pw_name, grp.getgrgid(os.getegid()).gr_name)
+
+    def assertOverride(self, err, path, key, changed):
+        """
+        Assert tarpm named a value it took from the payload once, or
+        said nothing when header.json and the payload already match.
+        """
+        message = "%s %s in header.json does not match the payload" % (path, key)
+        self.assertEqual(err.count(message), 1 if changed else 0, err)
+
+
+class TestCreateKeepsHeaderMetadataByDefault(PayloadOverride, TestUnpackRPM):
+    """Without an override option we keep what header.json says"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        original = dict(
+            mtime_list(self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()))
+        )
+
+        self.retime(extract_dir, self.data, self.mtime)
+        self.relink(extract_dir, self.link, "elsewhere.txt")
+
+        recreated, err = self.create_warns(extract_dir)
+
+        # the edited payload changed nothing in the header
+        self.assertEqual(dict(mtime_list(recreated))[self.data], original[self.data])
+        self.assertEqual(dict(linkto_list(recreated))[self.link], "data.txt")
+        self.assertEqual(dict(owner_list(recreated))[self.data], ("root", "root"))
+
+        # and tarpm said nothing about any of it
+        self.assertEqual(err.count("does not match the payload"), 0, err)
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateTakesMtimeFromPayload(PayloadOverride, TestUnpackRPM):
+    """The -m option takes the timestamps from the payload tree"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+
+        self.retime(extract_dir, self.data, self.mtime)
+
+        recreated, err = self.create_warns(extract_dir, args=["-m"])
+
+        self.assertEqual(dict(mtime_list(recreated))[self.data], self.mtime)
+        self.assertOverride(err, self.data, "mtime", True)
+
+        # we only asked for the timestamp, so nothing else moved
+        self.assertEqual(dict(owner_list(recreated))[self.data], ("root", "root"))
+        self.assertEqual(dict(linkto_list(recreated))[self.link], "data.txt")
+        self.assertOverride(err, self.data, "user", False)
+        self.assertOverride(err, self.data, "group", False)
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateTakesUserFromPayload(PayloadOverride, TestUnpackRPM):
+    """The -u option takes the file owners from the payload tree"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        user, group = self.payload_owner()
+
+        recreated, err = self.create_warns(extract_dir, args=["-u"])
+        owners = dict(owner_list(recreated))
+
+        # we take the owner off the file and leave the group alone
+        self.assertEqual(owners[self.data], (user, "root"))
+        self.assertOverride(err, self.data, "user", user != "root")
+        self.assertOverride(err, self.data, "group", False)
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateTakesGroupFromPayload(PayloadOverride, TestUnpackRPM):
+    """The -g option takes the file groups from the payload tree"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        user, group = self.payload_owner()
+
+        recreated, err = self.create_warns(extract_dir, args=["-g"])
+        owners = dict(owner_list(recreated))
+
+        # we take the group off the file and leave the owner alone
+        self.assertEqual(owners[self.data], ("root", group))
+        self.assertOverride(err, self.data, "group", group != "root")
+        self.assertOverride(err, self.data, "user", False)
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateTakesLinktoFromPayload(PayloadOverride, TestUnpackRPM):
+    """The -l option takes the symlink targets from the payload tree"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        target = "somewhere/else.txt"
+
+        self.relink(extract_dir, self.link, target)
+
+        recreated, err = self.create_warns(extract_dir, args=["-l"])
+
+        # a symlink carries its target and the length of it
+        self.assertEqual(dict(linkto_list(recreated))[self.link], target)
+        self.assertEqual(dict(size_list(recreated))[self.link], len(target))
+        self.assertOverride(err, self.link, "linkto", True)
+
+        # and the new package holds the symlink itself
+        recreated_dir = self.extract(recreated, subdir="recreated_extract")
+        self.assertEqual(
+            os.readlink(self.payload_path(recreated_dir, self.link)), target
+        )
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateTakesEverythingFromPayload(PayloadOverride, TestUnpackRPM):
+    """The -a option takes all of the values from the payload tree"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        user, group = self.payload_owner()
+        target = "somewhere/else.txt"
+
+        self.retime(extract_dir, self.data, self.mtime)
+        self.relink(extract_dir, self.link, target)
+        self.retime(extract_dir, self.link, self.mtime)
+
+        recreated, err = self.create_warns(extract_dir, args=["-a"])
+
+        self.assertEqual(dict(mtime_list(recreated))[self.data], self.mtime)
+        self.assertEqual(dict(mtime_list(recreated))[self.link], self.mtime)
+        self.assertEqual(dict(owner_list(recreated))[self.data], (user, group))
+        self.assertEqual(dict(linkto_list(recreated))[self.link], target)
+        self.assertEqual(dict(size_list(recreated))[self.link], len(target))
+
+        self.assertOverride(err, self.data, "mtime", True)
+        self.assertOverride(err, self.link, "linkto", True)
+        self.assertOverride(err, self.data, "user", user != "root")
+        self.assertOverride(err, self.data, "group", group != "root")
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateOverridesIndividually(PayloadOverride, TestUnpackRPM):
+    """The override options pick up one value each, not all of them"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        user, group = self.payload_owner()
+        target = "somewhere/else.txt"
+
+        self.retime(extract_dir, self.data, self.mtime)
+        self.relink(extract_dir, self.link, target)
+
+        # ask for the owner and the symlink target and nothing else
+        recreated, err = self.create_warns(extract_dir, args=["-u", "-l"])
+
+        self.assertEqual(dict(owner_list(recreated))[self.data], (user, "root"))
+        self.assertEqual(dict(linkto_list(recreated))[self.link], target)
+
+        # we did not ask for the timestamp, so header.json still has it
+        self.assertNotEqual(dict(mtime_list(recreated))[self.data], self.mtime)
+        self.assertOverride(err, self.data, "mtime", False)
+        self.assertOverride(err, self.data, "group", False)
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateSaysNothingWhenPayloadMatches(PayloadOverride, TestUnpackRPM):
+    """We say nothing when the payload already matches header.json"""
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+        original = dict(
+            mtime_list(self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()))
+        )
+
+        # the payload tree came out of the package, so nothing differs
+        recreated, err = self.create_warns(extract_dir, args=["-m", "-l"])
+
+        self.assertEqual(err.count("does not match the payload"), 0, err)
+        self.assertEqual(dict(mtime_list(recreated))[self.data], original[self.data])
+        self.assertEqual(dict(linkto_list(recreated))[self.link], "data.txt")
+
+        self.assertVerifies(recreated)
+
+
+class TestCreateOverridesGhostEntriesAlone(PayloadOverride, TestUnpackRPM):
+    """An entry with no payload file keeps what header.json says"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.ghost = "/var/lib/%s/ghost.txt" % NAME
+        self.rpm.add_installed_file(
+            self.ghost,
+            rpmfluff.SourceFile("ghost.txt", b"ghostly\n"),
+            isGhost=True,
+        )
+
+    def runTest(self):
+        extract_dir = self.extract(self.build())
+
+        recreated, err = self.create_warns(extract_dir, args=["-a"])
+
+        # the %ghost is not in the payload, so nothing to read
+        self.assertEqual(dict(owner_list(recreated))[self.ghost], ("root", "root"))
+        self.assertEqual(err.count("%s user in header.json" % self.ghost), 0, err)
+        self.assertEqual(err.count("%s group in header.json" % self.ghost), 0, err)
 
         self.assertVerifies(recreated)
 
