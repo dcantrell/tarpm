@@ -19,6 +19,8 @@
  * human-readable strings.  We would use the RPM_HASH_* constants from
  * rpmcrypto.h, but those duplicate the rpmpgp.h values and are not
  * available on older releases of rpm which we still want to support.
+ * The SHA3 algorithms are newer than the oldest rpm we support, so we
+ * carry those two numbers ourselves.
  */
 static struct {
     uint32_t algo;
@@ -34,12 +36,8 @@ static struct {
     { PGPHASHALGO_SHA384, "sha384" },
     { PGPHASHALGO_SHA512, "sha512" },
     { PGPHASHALGO_SHA224, "sha224" },
-#ifdef PGPHASHALGO_SHA3_256
-    { PGPHASHALGO_SHA3_256, "sha3-256" },
-#endif
-#ifdef PGPHASHALGO_SHA3_512
-    { PGPHASHALGO_SHA3_512, "sha3-512" },
-#endif
+    { PGPHASHALGO_SHA3_256_VALUE, "sha3-256" },
+    { PGPHASHALGO_SHA3_512_VALUE, "sha3-512" },
     { 0, NULL }
 };
 
@@ -297,22 +295,22 @@ sig_tag_name(uint32_t tag)
             return "Longarchivesize";
         case RPMSIGTAG_SHA256:
             return "Sha256";
-#ifdef RPMSIGTAG_FILESIGNATURES
-        case RPMSIGTAG_FILESIGNATURES:
+        case RPMSIGTAG_PUBKEYS_VALUE:
+            return "Pubkeys";
+        case RPMSIGTAG_FILESIGNATURES_VALUE:
             return "Filesignatures";
-#endif
-#ifdef RPMSIGTAG_FILESIGNATURELENGTH
-        case RPMSIGTAG_FILESIGNATURELENGTH:
+        case RPMSIGTAG_FILESIGNATURELENGTH_VALUE:
             return "Filesignaturelength";
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATURES
-        case RPMSIGTAG_VERITYSIGNATURES:
+        case RPMSIGTAG_VERITYSIGNATURES_VALUE:
             return "Veritysignatures";
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
-        case RPMSIGTAG_VERITYSIGNATUREALGO:
+        case RPMSIGTAG_VERITYSIGNATUREALGO_VALUE:
             return "Veritysignaturealgo";
-#endif
+        case RPMSIGTAG_OPENPGP_VALUE:
+            return "Openpgp";
+        case RPMSIGTAG_SHA3_256_VALUE:
+            return "Sha3_256";
+        case RPMSIGTAG_RESERVED_VALUE:
+            return "Reserved";
         default:
             return "(unknown)";
     }
@@ -378,22 +376,22 @@ sig_tag_number(const char *tag)
         return RPMSIGTAG_LONGARCHIVESIZE;
     } else if (!strcmp(tag, "Sha256")) {
         return RPMSIGTAG_SHA256;
-#ifdef RPMSIGTAG_FILESIGNATURES
+    } else if (!strcmp(tag, "Pubkeys")) {
+        return RPMSIGTAG_PUBKEYS_VALUE;
     } else if (!strcmp(tag, "Filesignatures")) {
-        return RPMSIGTAG_FILESIGNATURES;
-#endif
-#ifdef RPMSIGTAG_FILESIGNATURELENGTH
+        return RPMSIGTAG_FILESIGNATURES_VALUE;
     } else if (!strcmp(tag, "Filesignaturelength")) {
-        return RPMSIGTAG_FILESIGNATURELENGTH;
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATURES
+        return RPMSIGTAG_FILESIGNATURELENGTH_VALUE;
     } else if (!strcmp(tag, "Veritysignatures")) {
-        return RPMSIGTAG_VERITYSIGNATURES;
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
+        return RPMSIGTAG_VERITYSIGNATURES_VALUE;
     } else if (!strcmp(tag, "Veritysignaturealgo")) {
-        return RPMSIGTAG_VERITYSIGNATUREALGO;
-#endif
+        return RPMSIGTAG_VERITYSIGNATUREALGO_VALUE;
+    } else if (!strcmp(tag, "Openpgp")) {
+        return RPMSIGTAG_OPENPGP_VALUE;
+    } else if (!strcmp(tag, "Sha3_256")) {
+        return RPMSIGTAG_SHA3_256_VALUE;
+    } else if (!strcmp(tag, "Reserved")) {
+        return RPMSIGTAG_RESERVED_VALUE;
     } else {
         return 0;
     }

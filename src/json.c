@@ -13,10 +13,13 @@
 #include "tarpm.h"
 
 /*
- * Used by generate_json_entries() below to sort the 'tags' array.
+ * Compare two entries of a 'tags' array by tag number.  The signature
+ * flag tells us to read the names as signature tags, which we have to
+ * do because some signature tags share a name with a header tag that
+ * carries a different number.
  */
 static int
-sort_by_tag_number(const void *a, const void *b)
+compare_tag_number(const void *a, const void *b, const bool signature)
 {
     struct json_object **aobj = (struct json_object **) a;
     struct json_object **bobj = (struct json_object **) b;
@@ -37,10 +40,29 @@ sort_by_tag_number(const void *a, const void *b)
     }
 
     /* get the tag numbers for sorting */
-    atag = get_tag_number(*aobj, false);
-    btag = get_tag_number(*bobj, false);
+    atag = get_tag_number(*aobj, signature);
+    btag = get_tag_number(*bobj, signature);
 
     return (atag > btag) - (atag < btag);
+}
+
+/*
+ * Used by generate_json_entries() below to sort a header 'tags' array.
+ */
+static int
+sort_by_tag_number(const void *a, const void *b)
+{
+    return compare_tag_number(a, b, false);
+}
+
+/*
+ * Used by generate_json_entries() below to sort a signature 'tags'
+ * array.
+ */
+static int
+sort_by_sig_tag_number(const void *a, const void *b)
+{
+    return compare_tag_number(a, b, true);
 }
 
 /*
@@ -107,7 +129,7 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
          * These tags are recalculated by update_signature() or should
          * be preserved, so they are NOT read-only
          */
-        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256 && tag != RPMSIGTAG_RESERVEDSPACE && tag != HEADER_SIGNATURES) {
+        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256 && tag != RPMSIGTAG_RESERVEDSPACE && tag != RPMSIGTAG_RESERVED_VALUE && tag != HEADER_SIGNATURES) {
             /* All other signature tags are read-only (RSA, DSA, etc.) */
             json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
         }
@@ -205,7 +227,11 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     }
 
     /* sort the array in ascending order by tag number */
-    json_object_array_sort(kvals, sort_by_tag_number);
+    if (signature) {
+        json_object_array_sort(kvals, sort_by_sig_tag_number);
+    } else {
+        json_object_array_sort(kvals, sort_by_tag_number);
+    }
 
     return kvals;
 }

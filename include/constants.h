@@ -52,6 +52,24 @@
  */
 #define RPMTAG_PAYLOAD_DIGEST_ALGO     5093
 
+/*
+ * Signature header tags.  rpm names these in enum rpmSigTag_e in
+ * include/rpm/rpmtag.h, but they are enum values and not macros, so
+ * we cannot ask the preprocessor whether the release of rpm we build
+ * against knows them.  The numbers never change, so we spell them out
+ * here and use these instead.  Everything from 256 up is in the
+ * signature range (HEADER_SIGBASE in the rpm source) and 999 is the
+ * top of that range (HEADER_SIGTOP).
+ */
+#define RPMSIGTAG_PUBKEYS_VALUE             266
+#define RPMSIGTAG_FILESIGNATURES_VALUE      274
+#define RPMSIGTAG_FILESIGNATURELENGTH_VALUE 275
+#define RPMSIGTAG_VERITYSIGNATURES_VALUE    276
+#define RPMSIGTAG_VERITYSIGNATUREALGO_VALUE 277
+#define RPMSIGTAG_OPENPGP_VALUE             278
+#define RPMSIGTAG_SHA3_256_VALUE            279
+#define RPMSIGTAG_RESERVED_VALUE            999
+
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
 #define RPM_SIGNATURE_RESERVED_DESC    "reserved"
@@ -245,6 +263,16 @@
 #define SENSE_FLAG_TRIGGERPOSTUN       "triggerpostun"
 #define SENSE_FLAG_TRIGGERPREIN        "triggerprein"
 #define SENSE_FLAG_KEYRING             "keyring"
+
+/*
+ * File digest algorithms.  rpm names these in enum pgpHashAlgo_e in
+ * include/rpm/rpmpgp.h, but they are enum values and not macros, so
+ * we cannot ask the preprocessor whether the release of rpm we build
+ * against knows them.  The SHA3 ones are the only two newer than the
+ * oldest rpm we support, so those are the only two we spell out here.
+ */
+#define PGPHASHALGO_SHA3_256_VALUE     12
+#define PGPHASHALGO_SHA3_512_VALUE     14
 
 /* Digest types used in the headers */
 #define TARPM_DIGEST_MD5               1
