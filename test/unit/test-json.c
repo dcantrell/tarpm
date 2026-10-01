@@ -320,6 +320,127 @@ test_create_json_entry_signature_crypto_tags(void)
 }
 
 void
+test_create_json_entry_signature_file_tags(void)
+{
+    int i = 0;
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+    struct {
+        uint32_t tag;
+        const char *name;
+    } tags[] = {
+        { RPMSIGTAG_PUBKEYS_VALUE, "Pubkeys" },
+        { RPMSIGTAG_FILESIGNATURES_VALUE, "Filesignatures" },
+        { RPMSIGTAG_FILESIGNATURELENGTH_VALUE, "Filesignaturelength" },
+        { RPMSIGTAG_VERITYSIGNATURES_VALUE, "Veritysignatures" },
+        { RPMSIGTAG_VERITYSIGNATUREALGO_VALUE, "Veritysignaturealgo" },
+        { RPMSIGTAG_OPENPGP_VALUE, "Openpgp" },
+        { RPMSIGTAG_SHA3_256_VALUE, "Sha3_256" },
+        { 0, NULL }
+    };
+
+    /*
+     * The file signing and verity tags get a name rather than a
+     * number and we cannot make any of them again, so they are all
+     * read-only.
+     */
+    for (i = 0; tags[i].name != NULL; i++) {
+        hdrentry.tag = htonl(tags[i].tag);
+        hdrentry.type = htonl(RPM_BIN_TYPE);
+        hdrentry.offset = htonl(0);
+        hdrentry.count = htonl(1);
+
+        entry = create_json_entry(&hdrentry, true);
+        TARPM_ASSERT_PTR_NOT_NULL(entry);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "tag", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), tags[i].name);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
+        json_object_put(entry);
+    }
+
+    /* the reserved space tag is kept, so it is not read-only */
+    hdrentry.tag = htonl(RPMSIGTAG_RESERVED_VALUE);
+    hdrentry.type = htonl(RPM_BIN_TYPE);
+    hdrentry.offset = htonl(0);
+    hdrentry.count = htonl(1);
+
+    entry = create_json_entry(&hdrentry, true);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "tag", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "Reserved");
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    json_object_put(entry);
+
+    return;
+}
+
+void
+test_generate_json_entries_signature_order(void)
+{
+    int i = 0;
+    uint32_t data[4];
+    struct rpmhdr hdr;
+    struct rpmhdrinfo hdrinfo;
+    struct rpmhdrentry entries[4];
+    struct json_object *kvals = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+    /* the tag numbers above in the order we expect to read them back */
+    uint32_t tags[] = {
+        RPMSIGTAG_PAYLOADSIZE,
+        RPMSIGTAG_SIZE,
+        RPMSIGTAG_VERITYSIGNATUREALGO_VALUE,
+        RPMSIGTAG_FILESIGNATURELENGTH_VALUE
+    };
+    const char *names[] = {
+        "Filesignaturelength",
+        "Veritysignaturealgo",
+        "Size",
+        "Payloadsize"
+    };
+
+    /*
+     * Build a signature header with the tags out of order so we can
+     * see that we sort them by signature tag number and not by the
+     * header tag number that shares the same name.
+     */
+    memset(&hdr, 0, sizeof(hdr));
+    memset(&hdrinfo, 0, sizeof(hdrinfo));
+    memset(entries, 0, sizeof(entries));
+    memset(data, 0, sizeof(data));
+
+    hdr.nentries = 4;
+
+    for (i = 0; i < 4; i++) {
+        entries[i].tag = htonl(tags[i]);
+        entries[i].type = htonl(RPM_INT32_TYPE);
+        entries[i].offset = htonl(i * (int32_t) sizeof(uint32_t));
+        entries[i].count = htonl(1);
+        data[i] = htonl(i + 1);
+    }
+
+    hdrinfo.estart = entries;
+    hdrinfo.datastart = (uint8_t *) data;
+
+    kvals = generate_json_entries(&hdr, &hdrinfo, NULL, NULL, true);
+    TARPM_ASSERT_PTR_NOT_NULL(kvals);
+    TARPM_ASSERT_EQUAL(json_object_array_length(kvals), 4);
+
+    for (i = 0; i < 4; i++) {
+        entry = json_object_array_get_idx(kvals, i);
+        TARPM_ASSERT_PTR_NOT_NULL(entry);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "tag", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), names[i]);
+    }
+
+    json_object_put(kvals);
+
+    return;
+}
+
+void
 test_create_json_entry_has_required_fields(void)
 {
     struct rpmhdrentry hdrentry;
@@ -432,6 +553,8 @@ get_suite(void)
         CU_add_test(pSuite, "test create_json_entry() with signature digest tags", test_create_json_entry_signature_digest_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature size tags", test_create_json_entry_signature_size_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature crypto tags", test_create_json_entry_signature_crypto_tags) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() with signature file tags", test_create_json_entry_signature_file_tags) == NULL ||
+        CU_add_test(pSuite, "test generate_json_entries() signature order", test_generate_json_entries_signature_order) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL ||
         CU_add_test(pSuite, "test read_json_file() with a missing file", test_read_json_file_missing) == NULL ||
         CU_add_test(pSuite, "test read_json_file() with invalid JSON", test_read_json_file_invalid) == NULL ||

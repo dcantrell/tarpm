@@ -6,6 +6,39 @@
 import json
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
+# Every signature header tag tarpm writes by name, and the tag number
+# each name stands for.  See enum rpmSigTag_e in include/rpm/rpmtag.h
+# in the rpm source.
+SIGTAGS = {
+    "Headersignatures": 62,
+    "Headerimmutable": 63,
+    "Badsha1_1": 264,
+    "Badsha1_2": 265,
+    "Pubkeys": 266,
+    "Dsa": 267,
+    "Rsa": 268,
+    "Sha1": 269,
+    "Longsize": 270,
+    "Longarchivesize": 271,
+    "Sha256": 273,
+    "Filesignatures": 274,
+    "Filesignaturelength": 275,
+    "Veritysignatures": 276,
+    "Veritysignaturealgo": 277,
+    "Openpgp": 278,
+    "Sha3_256": 279,
+    "Reserved": 999,
+    "Size": 1000,
+    "Lemd5_1": 1001,
+    "Pgp": 1002,
+    "Lemd5_2": 1003,
+    "Md5": 1004,
+    "Gpg": 1005,
+    "Pgp5": 1006,
+    "Payloadsize": 1007,
+    "Reservedspace": 1008,
+}
+
 
 class VerifySignatureExtractSRPM(TestUnpackSRPM):
     def runTest(self):
@@ -60,7 +93,7 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
                     elif t == "Reservedspace":
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 5590)
-                    else:
+                    elif t not in SIGTAGS:
                         # unknown tag is now appearing, write it out
 
                         # To see what it is, uncomment this block and
@@ -73,6 +106,10 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
 
                         m = "Unknown tag found in signature: %s" % t
                         self.fail(msg=m)
+
+                # the tags come out in ascending signature tag order
+                numbers = [SIGTAGS[tag["tag"]] for tag in signature[key]]
+                self.assertEqual(numbers, sorted(numbers))
 
 
 class VerifySignatureExtractRPM(TestUnpackRPM):
@@ -127,7 +164,7 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                     elif t == "Reservedspace":
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 5590)
-                    else:
+                    elif t not in SIGTAGS:
                         # unknown tag is now appearing, write it out
 
                         # To see what it is, uncomment this block and
@@ -140,3 +177,7 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
 
                         m = "Unknown tag found in signature: %s" % t
                         self.fail(msg=m)
+
+                # the tags come out in ascending signature tag order
+                numbers = [SIGTAGS[tag["tag"]] for tag in signature[key]]
+                self.assertEqual(numbers, sorted(numbers))

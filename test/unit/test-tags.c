@@ -10,6 +10,64 @@
 
 #include "test-main.h"
 
+/*
+ * Every signature header tag we know a name for.  The zero on the end
+ * marks the end of the list.
+ */
+static uint32_t sig_tags[] = {
+    HEADER_SIGNATURES,
+    HEADER_IMMUTABLE,
+    RPMSIGTAG_SIZE,
+    RPMSIGTAG_LEMD5_1,
+    RPMSIGTAG_PGP,
+    RPMSIGTAG_LEMD5_2,
+    RPMSIGTAG_MD5,
+    RPMSIGTAG_GPG,
+    RPMSIGTAG_PGP5,
+    RPMSIGTAG_PAYLOADSIZE,
+    RPMSIGTAG_RESERVEDSPACE,
+    RPMSIGTAG_BADSHA1_1,
+    RPMSIGTAG_BADSHA1_2,
+    RPMSIGTAG_DSA,
+    RPMSIGTAG_RSA,
+    RPMSIGTAG_SHA1,
+    RPMSIGTAG_LONGSIZE,
+    RPMSIGTAG_LONGARCHIVESIZE,
+    RPMSIGTAG_SHA256,
+    RPMSIGTAG_PUBKEYS_VALUE,
+    RPMSIGTAG_FILESIGNATURES_VALUE,
+    RPMSIGTAG_FILESIGNATURELENGTH_VALUE,
+    RPMSIGTAG_VERITYSIGNATURES_VALUE,
+    RPMSIGTAG_VERITYSIGNATUREALGO_VALUE,
+    RPMSIGTAG_OPENPGP_VALUE,
+    RPMSIGTAG_SHA3_256_VALUE,
+    RPMSIGTAG_RESERVED_VALUE,
+    0
+};
+
+/*
+ * Every file digest algorithm we know a name for.  The NULL name on
+ * the end marks the end of the list.
+ */
+static struct {
+    uint32_t algo;
+    const char *name;
+} digest_algos[] = {
+    { PGPHASHALGO_MD5, "md5" },
+    { PGPHASHALGO_SHA1, "sha1" },
+    { PGPHASHALGO_RIPEMD160, "ripemd160" },
+    { PGPHASHALGO_MD2, "md2" },
+    { PGPHASHALGO_TIGER192, "tiger192" },
+    { PGPHASHALGO_HAVAL_5_160, "haval-5-160" },
+    { PGPHASHALGO_SHA256, "sha256" },
+    { PGPHASHALGO_SHA384, "sha384" },
+    { PGPHASHALGO_SHA512, "sha512" },
+    { PGPHASHALGO_SHA224, "sha224" },
+    { PGPHASHALGO_SHA3_256_VALUE, "sha3-256" },
+    { PGPHASHALGO_SHA3_512_VALUE, "sha3-512" },
+    { 0, NULL }
+};
+
 int
 init_test_tags(void)
 {
@@ -62,19 +120,23 @@ test_sig_tag_name(void)
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_LONGSIZE), "Longsize") == 0);
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_LONGARCHIVESIZE), "Longarchivesize") == 0);
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_SHA256), "Sha256") == 0);
-#ifdef RPMSIGTAG_FILESIGNATURES
-    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURES), "Filesignatures") == 0);
-#endif
-#ifdef RPMSIGTAG_FILESIGNATURELENGTH
-    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURELENGTH), "Filesignaturelength") == 0);
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATURES
-    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATURES), "Veritysignatures") == 0);
-#endif
-#ifdef RPMSIGTAG_VERITYSIGNATUREALGO
-    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO), "Veritysignaturealgo") == 0);
-#endif
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_PUBKEYS_VALUE), "Pubkeys") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURES_VALUE), "Filesignatures") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_FILESIGNATURELENGTH_VALUE), "Filesignaturelength") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATURES_VALUE), "Veritysignatures") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE), "Veritysignaturealgo") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_OPENPGP_VALUE), "Openpgp") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_SHA3_256_VALUE), "Sha3_256") == 0);
+    TARPM_ASSERT_TRUE(strcmp(sig_tag_name(RPMSIGTAG_RESERVED_VALUE), "Reserved") == 0);
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(0), "(unknown)") == 0);
+
+    /*
+     * The tag numbers we carry ourselves have to agree with the ones
+     * the rpm we build against uses.
+     */
+    TARPM_ASSERT_TRUE(RPMSIGTAG_PUBKEYS_VALUE == RPMTAG_PUBKEYS);
+    TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATURES_VALUE == RPMTAG_VERITYSIGNATURES);
+    TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE == RPMTAG_VERITYSIGNATUREALGO);
 
     return;
 }
@@ -139,6 +201,7 @@ test_tag_type(void)
 void
 test_get_tag_number(void)
 {
+    int i = 0;
     struct json_object *entry = NULL;
     rpmTagVal result = 0;
 
@@ -165,6 +228,42 @@ test_get_tag_number(void)
     json_object_object_add(entry, "tag", json_object_new_string("Version"));
     result = get_tag_number(entry, false);
     TARPM_ASSERT_TRUE(result == RPMTAG_VERSION);
+    json_object_put(entry);
+
+    /*
+     * Every signature tag name we write has to read back as the same
+     * number we wrote it for.
+     */
+    for (i = 0; sig_tags[i] != 0; i++) {
+        entry = json_object_new_object();
+        json_object_object_add(entry, "tag", json_object_new_string(sig_tag_name(sig_tags[i])));
+        result = get_tag_number(entry, true);
+        TARPM_ASSERT_TRUE(result == (rpmTagVal) sig_tags[i]);
+        json_object_put(entry);
+    }
+
+    /*
+     * Some signature tags share a name with a header tag that carries
+     * a different number, so the signature flag has to pick the right
+     * one.
+     */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Filesignatures"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, true) == RPMSIGTAG_FILESIGNATURES_VALUE);
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMTAG_FILESIGNATURES);
+    json_object_put(entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Size"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, true) == RPMSIGTAG_SIZE);
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMTAG_SIZE);
+    json_object_put(entry);
+
+    /* tags we have no name for come back as a number */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("#272"));
+    result = get_tag_number(entry, true);
+    TARPM_ASSERT_TRUE(result == 272);
     json_object_put(entry);
 
     /* test with entry missing tag field */
@@ -292,6 +391,7 @@ test_set_tag_value(void)
 void
 test_strdigestalgo(void)
 {
+    int i = 0;
     char *s = NULL;
 
     /* algorithms tarpm knows about come back by name */
@@ -311,6 +411,22 @@ test_strdigestalgo(void)
     TARPM_ASSERT_STRING_EQUAL(s, "sha512");
     free(s);
 
+    /* the SHA3 algorithms get a name and not a number */
+    s = strdigestalgo(PGPHASHALGO_SHA3_256_VALUE);
+    TARPM_ASSERT_STRING_EQUAL(s, "sha3-256");
+    free(s);
+
+    s = strdigestalgo(PGPHASHALGO_SHA3_512_VALUE);
+    TARPM_ASSERT_STRING_EQUAL(s, "sha3-512");
+    free(s);
+
+    /* every algorithm we know gets its own name */
+    for (i = 0; digest_algos[i].name != NULL; i++) {
+        s = strdigestalgo(digest_algos[i].algo);
+        TARPM_ASSERT_STRING_EQUAL(s, digest_algos[i].name);
+        free(s);
+    }
+
     /* anything else comes back as the number itself */
     s = strdigestalgo(0);
     TARPM_ASSERT_STRING_EQUAL(s, "0");
@@ -326,11 +442,34 @@ test_strdigestalgo(void)
 void
 test_digest_algo(void)
 {
+    int i = 0;
+    char *s = NULL;
+
     /* names come back as the algorithm they were written from */
     TARPM_ASSERT_EQUAL(digest_algo("md5"), PGPHASHALGO_MD5);
     TARPM_ASSERT_EQUAL(digest_algo("sha1"), PGPHASHALGO_SHA1);
     TARPM_ASSERT_EQUAL(digest_algo("sha256"), PGPHASHALGO_SHA256);
     TARPM_ASSERT_EQUAL(digest_algo("sha512"), PGPHASHALGO_SHA512);
+    TARPM_ASSERT_EQUAL(digest_algo("sha3-256"), PGPHASHALGO_SHA3_256_VALUE);
+    TARPM_ASSERT_EQUAL(digest_algo("sha3-512"), PGPHASHALGO_SHA3_512_VALUE);
+
+    /* every algorithm we write has to read back the same way */
+    for (i = 0; digest_algos[i].name != NULL; i++) {
+        s = strdigestalgo(digest_algos[i].algo);
+        TARPM_ASSERT_EQUAL(digest_algo(s), digest_algos[i].algo);
+        free(s);
+    }
+
+    /*
+     * The numbers we carry ourselves have to agree with the ones the
+     * rpm we build against uses.
+     */
+    TARPM_ASSERT_EQUAL(PGPHASHALGO_SHA3_256_VALUE, PGPHASHALGO_SHA3_256);
+    TARPM_ASSERT_EQUAL(PGPHASHALGO_SHA3_512_VALUE, PGPHASHALGO_SHA3_512);
+
+    /* older files record the SHA3 algorithms as a bare number */
+    TARPM_ASSERT_EQUAL(digest_algo("12"), PGPHASHALGO_SHA3_256_VALUE);
+    TARPM_ASSERT_EQUAL(digest_algo("14"), PGPHASHALGO_SHA3_512_VALUE);
 
     /* a bare number is read as the algorithm itself */
     TARPM_ASSERT_EQUAL(digest_algo("47"), 47);
