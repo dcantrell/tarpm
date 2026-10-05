@@ -164,6 +164,18 @@ size of the data area. Information is stored in key=value manner but
 value may be an array. The contents of the RPM signature is read\-only
 as \f[B]tarpm\f[R] will recalculate all of the values when creating an
 RPM.
+.RS
+.PP
+A package built by rpmbuild(8) and then signed by rpmsign(8) carries
+signature tags that only rpmsign(8) can make, which are Dsa, Rsa,
+Pgp, Gpg, Pgp5, Openpgp, Filesignatures, Filesignaturelength,
+Veritysignatures, and Veritysignaturealgo.  \f[B]tarpm\f[R] reads all
+of them out of a package and writes them to \f[B]signature.json\f[R]
+so you can see what the package carries, but it leaves every one of
+them out of a package it creates because making them takes the
+private signing key.  Run rpmsign(8) on the new package to sign it
+again.
+.RE
 .TP
 \f[B]header.json\f[R]
 The RPM header.
