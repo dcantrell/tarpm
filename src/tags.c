@@ -42,6 +42,13 @@ static struct {
 };
 
 /*
+ * The signature header tags rpmsign writes.  The list itself is
+ * RPMSIGN_SIGNATURE_TAGS in include/constants.h; see the comment
+ * there for where it comes from.
+ */
+static const uint32_t rpmsign_tags[] = { RPMSIGN_SIGNATURE_TAGS };
+
+/*
  * Convert tag type to symbolic type name.  Caller must not free the
  * string returned.
  */
@@ -314,6 +321,25 @@ sig_tag_name(uint32_t tag)
         default:
             return "(unknown)";
     }
+}
+
+/*
+ * Returns true if the tag is a signature header tag that rpmsign
+ * writes.  Only rpmsign can make these, so we leave them out of a
+ * signature header we create and let rpmsign put them back.
+ */
+bool
+is_rpmsign_tag(uint32_t tag)
+{
+    size_t i = 0;
+
+    for (i = 0; i < (sizeof(rpmsign_tags) / sizeof(rpmsign_tags[0])); i++) {
+        if (rpmsign_tags[i] == tag) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static uint32_t

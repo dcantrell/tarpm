@@ -82,6 +82,28 @@ is_read_only_tag(struct json_object *entry)
     return false;
 }
 
+/*
+ * Helper to check if a tag should be left out of the header we are
+ * building.  A read-only tag is out because the user cannot change
+ * it, and a signature tag rpmsign owns is out because only rpmsign
+ * can write it.  We drop the rpmsign tags whether or not the JSON
+ * marks them read-only so that a hand written signature.json cannot
+ * carry a signature from some other package in to this one.
+ */
+static bool
+is_skipped_tag(struct json_object *entry, bool is_signature)
+{
+    if (is_read_only_tag(entry)) {
+        return true;
+    }
+
+    if (is_signature && is_rpmsign_tag(get_tag_number(entry, true))) {
+        return true;
+    }
+
+    return false;
+}
+
 /* Free the file contents collected by read_tag_files(). */
 static void
 free_tag_files(struct tagfile *tagfiles, size_t len)
@@ -186,7 +208,7 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
 
-        if (is_read_only_tag(entry)) {
+        if (is_skipped_tag(entry, is_signature)) {
             continue;
         }
 
@@ -367,8 +389,8 @@ get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, i
         /* get the tag in the array */
         entry = json_object_array_get_idx(tags, i);
 
-        /* skip read-only tags */
-        if (is_read_only_tag(entry)) {
+        /* skip read-only tags and the ones rpmsign owns */
+        if (is_skipped_tag(entry, is_signature)) {
             continue;
         }
 
@@ -625,8 +647,8 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
 
-        /* skip read-only tags */
-        if (is_read_only_tag(entry)) {
+        /* skip read-only tags and the ones rpmsign owns */
+        if (is_skipped_tag(entry, is_signature)) {
             continue;
         }
 
@@ -973,11 +995,11 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         return -1;
     }
 
-    /* number of header index entries (excluding read-only tags) */
+    /* number of header index entries (excluding the tags we skip) */
     s->nentries = 0;
 
     for (i = 0; i < json_object_array_length(tags); i++) {
-        if (!is_read_only_tag(json_object_array_get_idx(tags, i))) {
+        if (!is_skipped_tag(json_object_array_get_idx(tags, i), is_signature)) {
             s->nentries++;
         }
     }

@@ -70,6 +70,27 @@
 #define RPMSIGTAG_SHA3_256_VALUE            279
 #define RPMSIGTAG_RESERVED_VALUE            999
 
+/*
+ * The signature header tags rpmsign owns.  These are the tags
+ * deleteSigs() and deleteFileSigs() in sign/rpmgensig.cc in the rpm
+ * source throw away before rpmsign writes new ones, which makes them
+ * the tags only rpmsign can produce.  Making any of them takes the
+ * private signing key, so tarpm reads them out of a package it
+ * extracts but leaves them out of a package it creates.  Run
+ * rpmsign(8) on the new package to put them back.
+ */
+#define RPMSIGN_SIGNATURE_TAGS               \
+    RPMSIGTAG_DSA,                           \
+    RPMSIGTAG_RSA,                           \
+    RPMSIGTAG_FILESIGNATURES_VALUE,          \
+    RPMSIGTAG_FILESIGNATURELENGTH_VALUE,     \
+    RPMSIGTAG_VERITYSIGNATURES_VALUE,        \
+    RPMSIGTAG_VERITYSIGNATUREALGO_VALUE,     \
+    RPMSIGTAG_OPENPGP_VALUE,                 \
+    RPMSIGTAG_PGP,                           \
+    RPMSIGTAG_GPG,                           \
+    RPMSIGTAG_PGP5
+
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
 #define RPM_SIGNATURE_RESERVED_DESC    "reserved"
