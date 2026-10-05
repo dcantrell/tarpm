@@ -46,6 +46,15 @@ static uint32_t sig_tags[] = {
 };
 
 /*
+ * Every signature header tag rpmsign writes.  The zero on the end
+ * marks the end of the list.
+ */
+static uint32_t rpmsign_sig_tags[] = {
+    RPMSIGN_SIGNATURE_TAGS,
+    0
+};
+
+/*
  * Every file digest algorithm we know a name for.  The NULL name on
  * the end marks the end of the list.
  */
@@ -137,6 +146,36 @@ test_sig_tag_name(void)
     TARPM_ASSERT_TRUE(RPMSIGTAG_PUBKEYS_VALUE == RPMTAG_PUBKEYS);
     TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATURES_VALUE == RPMTAG_VERITYSIGNATURES);
     TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE == RPMTAG_VERITYSIGNATUREALGO);
+
+    return;
+}
+
+void
+test_is_rpmsign_tag(void)
+{
+    int i = 0;
+
+    /* every tag rpmsign writes is one we leave to rpmsign */
+    for (i = 0; rpmsign_sig_tags[i] != 0; i++) {
+        TARPM_ASSERT_TRUE(is_rpmsign_tag(rpmsign_sig_tags[i]));
+    }
+
+    /*
+     * The tags tarpm writes itself when it creates a package are not
+     * rpmsign's to make, so they have to stay out of the list.
+     */
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(HEADER_SIGNATURES));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_SIZE));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_LONGSIZE));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_PAYLOADSIZE));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_MD5));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_SHA1));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_SHA256));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_RESERVEDSPACE));
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(RPMSIGTAG_RESERVED_VALUE));
+
+    /* a tag number that means nothing at all */
+    TARPM_ASSERT_FALSE(is_rpmsign_tag(0));
 
     return;
 }
@@ -542,6 +581,7 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
         CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL ||
+        CU_add_test(pSuite, "test is_rpmsign_tag()", test_is_rpmsign_tag) == NULL ||
         CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL ||
         CU_add_test(pSuite, "test get_tag_number()", test_get_tag_number) == NULL ||
         CU_add_test(pSuite, "test get_tag_value()", test_get_tag_value) == NULL ||

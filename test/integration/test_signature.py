@@ -4,7 +4,10 @@
 #
 
 import json
-from baseclass import TestUnpackSRPM, TestUnpackRPM
+import os
+import subprocess
+import rpmfluff
+from baseclass import NAME, TestUnpackSRPM, TestUnpackRPM
 
 # Every signature header tag tarpm writes by name, and the tag number
 # each name stands for.  See enum rpmSigTag_e in include/rpm/rpmtag.h
@@ -37,6 +40,24 @@ SIGTAGS = {
     "Pgp5": 1006,
     "Payloadsize": 1007,
     "Reservedspace": 1008,
+}
+
+# The signature header tags rpmsign writes and the type each one
+# carries.  tarpm reads these out of a package it extracts, but it
+# cannot make them without the private signing key, so a package it
+# creates has to come out without them.  See RPMSIGN_SIGNATURE_TAGS
+# in include/constants.h.
+RPMSIGN_TAGS = {
+    "Dsa": "binary blob",
+    "Rsa": "binary blob",
+    "Filesignatures": "string array",
+    "Filesignaturelength": "int32",
+    "Veritysignatures": "string array",
+    "Veritysignaturealgo": "int32",
+    "Openpgp": "string array",
+    "Pgp": "binary blob",
+    "Gpg": "binary blob",
+    "Pgp5": "binary blob",
 }
 
 
@@ -181,3 +202,71 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                 # the tags come out in ascending signature tag order
                 numbers = [SIGTAGS[tag["tag"]] for tag in signature[key]]
                 self.assertEqual(numbers, sorted(numbers))
+
+
+class VerifyCreateDropsRpmsignTags(TestUnpackRPM):
+    """
+    The signature tags rpmsign owns show up in signature.json when we
+    extract a package, but a package tarpm creates has to come out
+    without them.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        # creating a package needs something in the payload
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        # put one of every tag rpmsign owns in the extracted signature
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        for tag, tagtype in RPMSIGN_TAGS.items():
+            if tagtype == "int32":
+                value = 73
+            elif tagtype == "string array":
+                value = ["bm90IGEgc2lnbmF0dXJl"]
+            else:
+                value = "bm90IGEgc2lnbmF0dXJl"
+
+            signature["tags"].append({"tag": tag, "type": tagtype, "value": value})
+
+        f = open(self.signature, "w")
+        json.dump(signature, f)
+        f.close()
+
+        # create a new package from what we extracted
+        created = os.path.join(self.output_dir, "created.rpm")
+        args = [self.tarpm, "-c", "-f", created, self.output_dir]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode())
+
+        # and read the signature back out of the new package
+        again = os.path.join(self.output_dir, "again")
+        os.makedirs(again)
+
+        args = [self.tarpm, "-x", "-f", created, "-O", again]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode())
+
+        f = open(os.path.join(again, "signature.json"))
+        signature = json.load(f)
+        f.close()
+
+        tags = [tag["tag"] for tag in signature["tags"]]
+
+        # none of the tags rpmsign owns made it in to the new package
+        for tag in RPMSIGN_TAGS:
+            self.assertFalse(tag in tags, msg="%s is in the new signature" % tag)
+
+        # the tags tarpm writes itself are all still there
+        for tag in ["Sha1", "Sha256", "Size", "Md5", "Payloadsize"]:
+            m = "%s is missing from the new signature" % tag
+            self.assertTrue(tag in tags, msg=m)
