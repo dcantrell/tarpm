@@ -16,6 +16,19 @@ topdir := $(shell $(REALPATH) $(dir $(lastword $(MAKEFILE_LIST))))
 PROJECT_NAME = $(shell $(GREP) ^project $(topdir)/meson.build | $(CUT) -d "'" -f 2)
 PROJECT_VERSION = $(shell $(GREP) version $(topdir)/meson.build | $(GREP) -E ',$$' | $(CUT) -d "'" -f 2)
 
+# Additional packages required to run the test suite, varies by OS
+OS = $(shell $(topdir)/utils/determine-os.sh)
+
+ifeq ($(OS),)
+OS = $(error "*** unable to determine host operating system")
+endif
+
+-include $(topdir)/osdeps/$(OS)/defs.mk
+
+ifeq ($(PKG_CMD),)
+PKG_CMD = $(error "*** unable to determine host operating system package command")
+endif
+
 # Take additional command line argument as a positional parameter for
 # the Makefile target
 TARGET_ARG = `arg="$(filter-out $@,$(MAKECMDGOALS))" && echo $${arg:-${1}}`
@@ -106,8 +119,23 @@ koji: srpm
 	fi
 	$(topdir)/utils/submit-koji-builds.sh $(RELEASED_TARBALL) $(RELEASED_TARBALL_ASC) $$(basename $(topdir))
 
+# Set to 'y' in the calling environment to skip the pip package
+# installation in instreqs.
+SKIP_PIP ?= n
+
 instreqs:
-	dnf install $$(grep Requires: tarpm.spec.in | awk '{ print $$2; }' | awk 'NF' ORS=' ')
+	if [ -x $(topdir)/osdeps/$(OS)/pre.sh ]; then \
+		env OSDEPS=$(topdir)/osdeps/$(OS) $(topdir)/osdeps/$(OS)/pre.sh ; \
+	fi
+	if [ -f $(topdir)/osdeps/$(OS)/reqs.txt ]; then \
+		$(PKG_CMD) $$(grep -v ^# $(topdir)/osdeps/$(OS)/reqs.txt 2>/dev/null | awk 'NF' ORS=' ') ; \
+	fi
+	if [ ! "$(SKIP_PIP)" = "y" ] && [ -f $(topdir)/osdeps/$(OS)/pip.txt ]; then \
+		$(PIP_CMD) $$(grep -v ^# $(topdir)/osdeps/$(OS)/pip.txt 2>/dev/null | awk 'NF' ORS=' ') ; \
+	fi
+	if [ -x $(topdir)/osdeps/$(OS)/post.sh ]; then \
+		env OSDEPS=$(topdir)/osdeps/$(OS) $(topdir)/osdeps/$(OS)/post.sh ; \
+	fi
 
 clean:
 	-rm -rf $(MESON_BUILD_DIR)
@@ -152,6 +180,7 @@ help:
 	@echo "    make"
 	@echo
 	@echo "To perform syntax and style checks:"
+	@echo "    make shellcheck   Run ShellCheck on all shell scripts"
 	@echo "    make flake8       Run Python flake8 checks on all Python files"
 	@echo "    make black        Run Python black checks on all Python files"
 	@echo

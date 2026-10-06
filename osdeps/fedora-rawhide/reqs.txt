@@ -1,0 +1,12 @@
+CUnit-devel
+file-devel
+gcc
+gettext
+json-c-devel
+libarchive-devel
+libzstd-devel
+meson
+ninja-build
+openssl-devel
+python3-devel
+rpm-devel
