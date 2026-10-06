@@ -177,7 +177,11 @@ test_create_json_entry_signature_digest_tags(void)
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    /* MD5 tag should NOT be read-only (recalculated by update_signature) */
+    /*
+     * update_signature() works the digests out again when we create a
+     * package, so they cannot be edited by the user and come out
+     * read-only like the rest of the signature.
+     */
     hdrentry.tag = htonl(RPMSIGTAG_MD5);
     hdrentry.type = htonl(RPM_BIN_TYPE);
     hdrentry.offset = htonl(0);
@@ -185,10 +189,10 @@ test_create_json_entry_signature_digest_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
-    /* SHA1 tag should NOT be read-only */
     hdrentry.tag = htonl(RPMSIGTAG_SHA1);
     hdrentry.type = htonl(RPM_STRING_TYPE);
     hdrentry.offset = htonl(0);
@@ -196,10 +200,10 @@ test_create_json_entry_signature_digest_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
-    /* SHA256 tag should NOT be read-only */
     hdrentry.tag = htonl(RPMSIGTAG_SHA256);
     hdrentry.type = htonl(RPM_STRING_TYPE);
     hdrentry.offset = htonl(0);
@@ -207,7 +211,8 @@ test_create_json_entry_signature_digest_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
     return;
@@ -220,7 +225,10 @@ test_create_json_entry_signature_size_tags(void)
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    /* SIZE tag should NOT be read-only */
+    /*
+     * update_signature() works the sizes out again when we create a
+     * package, so they are read-only like the rest of the signature.
+     */
     hdrentry.tag = htonl(RPMSIGTAG_SIZE);
     hdrentry.type = htonl(RPM_INT32_TYPE);
     hdrentry.offset = htonl(0);
@@ -228,10 +236,10 @@ test_create_json_entry_signature_size_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
-    /* LONGSIZE tag should NOT be read-only */
     hdrentry.tag = htonl(RPMSIGTAG_LONGSIZE);
     hdrentry.type = htonl(RPM_INT64_TYPE);
     hdrentry.offset = htonl(0);
@@ -239,10 +247,10 @@ test_create_json_entry_signature_size_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
-    /* PAYLOADSIZE tag should NOT be read-only */
     hdrentry.tag = htonl(RPMSIGTAG_PAYLOADSIZE);
     hdrentry.type = htonl(RPM_INT32_TYPE);
     hdrentry.offset = htonl(0);
@@ -250,7 +258,8 @@ test_create_json_entry_signature_size_tags(void)
 
     entry = create_json_entry(&hdrentry, true);
     TARPM_ASSERT_PTR_NOT_NULL(entry);
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
 
     return;
@@ -342,8 +351,8 @@ test_create_json_entry_signature_file_tags(void)
 
     /*
      * The file signing and verity tags get a name rather than a
-     * number and we cannot make any of them again, so they are all
-     * read-only.
+     * number, and like everything else in the signature header they
+     * are read-only.
      */
     for (i = 0; tags[i].name != NULL; i++) {
         hdrentry.tag = htonl(tags[i].tag);
@@ -360,7 +369,10 @@ test_create_json_entry_signature_file_tags(void)
         json_object_put(entry);
     }
 
-    /* the reserved space tag is kept, so it is not read-only */
+    /*
+     * The reserved space tag is carried over to a package we create
+     * rather than worked out again, but it is still read-only.
+     */
     hdrentry.tag = htonl(RPMSIGTAG_RESERVED_VALUE);
     hdrentry.type = htonl(RPM_BIN_TYPE);
     hdrentry.offset = htonl(0);
@@ -370,8 +382,69 @@ test_create_json_entry_signature_file_tags(void)
     TARPM_ASSERT_PTR_NOT_NULL(entry);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "tag", &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "Reserved");
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
     json_object_put(entry);
+
+    return;
+}
+
+void
+test_create_json_entry_signature_all_read_only(void)
+{
+    int i = 0;
+    struct rpmhdrentry hdrentry;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+    uint32_t tags[] = {
+        HEADER_SIGNATURES,
+        RPMSIGTAG_BADSHA1_1,
+        RPMSIGTAG_BADSHA1_2,
+        RPMSIGTAG_PUBKEYS_VALUE,
+        RPMSIGTAG_DSA,
+        RPMSIGTAG_RSA,
+        RPMSIGTAG_SHA1,
+        RPMSIGTAG_LONGSIZE,
+        RPMSIGTAG_LONGARCHIVESIZE,
+        RPMSIGTAG_SHA256,
+        RPMSIGTAG_FILESIGNATURES_VALUE,
+        RPMSIGTAG_FILESIGNATURELENGTH_VALUE,
+        RPMSIGTAG_VERITYSIGNATURES_VALUE,
+        RPMSIGTAG_VERITYSIGNATUREALGO_VALUE,
+        RPMSIGTAG_OPENPGP_VALUE,
+        RPMSIGTAG_SHA3_256_VALUE,
+        RPMSIGTAG_RESERVED_VALUE,
+        RPMSIGTAG_SIZE,
+        RPMSIGTAG_LEMD5_1,
+        RPMSIGTAG_PGP,
+        RPMSIGTAG_LEMD5_2,
+        RPMSIGTAG_MD5,
+        RPMSIGTAG_GPG,
+        RPMSIGTAG_PGP5,
+        RPMSIGTAG_PAYLOADSIZE,
+        RPMSIGTAG_RESERVEDSPACE,
+        0
+    };
+
+    /* all tags in the signature header are read-only to the user */
+    for (i = 0; tags[i] != 0; i++) {
+        hdrentry.tag = htonl(tags[i]);
+        hdrentry.type = htonl(RPM_BIN_TYPE);
+        hdrentry.offset = htonl(0);
+        hdrentry.count = htonl(1);
+
+        entry = create_json_entry(&hdrentry, true);
+        TARPM_ASSERT_PTR_NOT_NULL(entry);
+        TARPM_ASSERT_TRUE(json_object_object_get_ex(entry, "read-only", &value));
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "true");
+        json_object_put(entry);
+
+        /* the same number in the main header is not read-only */
+        entry = create_json_entry(&hdrentry, false);
+        TARPM_ASSERT_PTR_NOT_NULL(entry);
+        TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, "read-only", &value));
+        json_object_put(entry);
+    }
 
     return;
 }
@@ -554,6 +627,7 @@ get_suite(void)
         CU_add_test(pSuite, "test create_json_entry() with signature size tags", test_create_json_entry_signature_size_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature crypto tags", test_create_json_entry_signature_crypto_tags) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() with signature file tags", test_create_json_entry_signature_file_tags) == NULL ||
+        CU_add_test(pSuite, "test create_json_entry() marks all signature tags read-only", test_create_json_entry_signature_all_read_only) == NULL ||
         CU_add_test(pSuite, "test generate_json_entries() signature order", test_generate_json_entries_signature_order) == NULL ||
         CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL ||
         CU_add_test(pSuite, "test read_json_file() with a missing file", test_read_json_file_missing) == NULL ||

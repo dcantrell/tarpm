@@ -166,6 +166,12 @@ as \f[B]tarpm\f[R] will recalculate all of the values when creating an
 RPM.
 .RS
 .PP
+The tags in \f[B]signature.json\f[R] are presented for informational
+purposes only.  When you create an RPM with \f[B]tarpm\f[R], the signature
+header will be created again from scratch.  Just like the lead.  To
+reiterate this point, the tags in \f[B]signature.json\f[R] carry a
+read\-only marker, the same as in the \f[B]lead.json\f[R] file.
+.PP
 A package built by rpmbuild(8) and then signed by rpmsign(8) carries
 signature tags that only rpmsign(8) can make, which are Dsa, Rsa,
 Pgp, Gpg, Pgp5, Openpgp, Filesignatures, Filesignaturelength,

@@ -84,24 +84,24 @@ is_read_only_tag(struct json_object *entry)
 
 /*
  * Helper to check if a tag should be left out of the header we are
- * building.  A read-only tag is out because the user cannot change
- * it, and a signature tag rpmsign owns is out because only rpmsign
- * can write it.  We drop the rpmsign tags whether or not the JSON
- * marks them read-only so that a hand written signature.json cannot
- * carry a signature from some other package in to this one.
+ * building.  Signature tags are extracted for informational purposes,
+ * but are regenerated when creating an RPM.
+ *
+ * There are sort of two kinds of read-only tags that we display from
+ * RPM.  The first are ones that are extracted but then ignored when
+ * creating an RPM.  That category contains all of the tags handled by
+ * rpmsign(1).  The other kind are tags that we extract for informational
+ * purposes but recalculate when creating a package.  That includes all
+ * of the tags in the signature header and the lead.
  */
 static bool
 is_skipped_tag(struct json_object *entry, bool is_signature)
 {
-    if (is_read_only_tag(entry)) {
-        return true;
+    if (is_signature) {
+        return is_rpmsign_tag(get_tag_number(entry, true));
     }
 
-    if (is_signature && is_rpmsign_tag(get_tag_number(entry, true))) {
-        return true;
-    }
-
-    return false;
+    return is_read_only_tag(entry);
 }
 
 /* Free the file contents collected by read_tag_files(). */

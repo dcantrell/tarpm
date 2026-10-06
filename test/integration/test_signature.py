@@ -92,6 +92,10 @@ class VerifySignatureExtractSRPM(TestUnpackSRPM):
 
                     t = tag["tag"]
 
+                    # signature header tags are read-only
+                    m = "%s is not marked read-only" % t
+                    self.assertEqual(tag.get("read-only"), "true", msg=m)
+
                     if t == "Headersignatures":
                         self.assertTrue(tag["type"] == "binary blob")
                         self.assertTrue(len(tag["value"]) == 25)
@@ -163,6 +167,10 @@ class VerifySignatureExtractRPM(TestUnpackRPM):
                     self.assertTrue("type" in tag.keys())
 
                     t = tag["tag"]
+
+                    # signature header tags are read-only
+                    m = "%s is not marked read-only" % t
+                    self.assertEqual(tag.get("read-only"), "true", msg=m)
 
                     if t == "Headersignatures":
                         self.assertTrue(tag["type"] == "binary blob")
@@ -266,7 +274,13 @@ class VerifyCreateDropsRpmsignTags(TestUnpackRPM):
         for tag in RPMSIGN_TAGS:
             self.assertFalse(tag in tags, msg="%s is in the new signature" % tag)
 
-        # the tags tarpm writes itself are all still there
+        # The tags tarpm writes itself are all still there.  Being
+        # marked read-only tells the user not to edit a tag, it does
+        # not keep the tag out of a package we create.
         for tag in ["Sha1", "Sha256", "Size", "Md5", "Payloadsize"]:
             m = "%s is missing from the new signature" % tag
             self.assertTrue(tag in tags, msg=m)
+
+        for tag in signature["tags"]:
+            m = "%s is not marked read-only" % tag["tag"]
+            self.assertEqual(tag.get("read-only"), "true", msg=m)

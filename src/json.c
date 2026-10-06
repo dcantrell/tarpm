@@ -120,19 +120,12 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(tagtype));
 
     /*
-     * Mark the signature tags read-only because we cannot make them
-     * again without the private signing key.  The digest and size
-     * tags are not read-only since update_signature() redoes them.
+     * Mark signature header tags are read-only to reiterate to the
+     * user that this information will be recalculated when you create
+     * an RPM.
      */
     if (signature) {
-        /*
-         * These tags are recalculated by update_signature() or should
-         * be preserved, so they are NOT read-only
-         */
-        if (tag != RPMSIGTAG_SIZE && tag != RPMSIGTAG_LONGSIZE && tag != RPMSIGTAG_PAYLOADSIZE && tag != RPMSIGTAG_MD5 && tag != RPMSIGTAG_SHA1 && tag != RPMSIGTAG_SHA256 && tag != RPMSIGTAG_RESERVEDSPACE && tag != RPMSIGTAG_RESERVED_VALUE && tag != HEADER_SIGNATURES) {
-            /* All other signature tags are read-only (RSA, DSA, etc.) */
-            json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
-        }
+        json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
     }
 
     /* clean up */
