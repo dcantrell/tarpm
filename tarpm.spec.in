@@ -4,8 +4,8 @@ Release:        %autorelease
 Summary:        RPM metadata and payload utility
 Group:          Development/Tools
 License:        GPL-3.0-or-later AND LGPL-3.0-or-later AND Apache-2.0 AND BSD-3-Clause
-URL:            https://codeberg.org/dcantrell/tarpm
-Source0:        https://codeberg.org/dcantrell/tarpm/archive/%{name}-%{version}.tar.gz
+URL:            https://github.com/dcantrell/tarpm
+Source0:        https://github.com/dcantrell/tarpm/archive/%{name}-%{version}.tar.gz
 
 BuildRequires:  meson
 BuildRequires:  ninja-build

@@ -49,7 +49,7 @@ is:
 
 ```sh
 git checkout main
-git remote add upstream https://codeberg.org/dcantrell/tarpm
+git remote add upstream https://github.com/dcantrell/tarpm
 git fetch upstream
 git rebase upstream/main
 git push -f
@@ -67,3 +67,9 @@ AI Policy
 
 As a policy, the tarpm project does not accept use of generative AI in
 contributions.
+
+I feel some clarification on this is in order.  Many developers are
+using AI tools to help break apart core dumps or in other debugging
+ways.  In that case I view the use of the tool as a tool.  What I'm
+not interested in is the automated code generation that you have no
+idea how it works or what it's doing, but you got it to compile.
