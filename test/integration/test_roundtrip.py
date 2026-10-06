@@ -140,6 +140,15 @@ def payload_bytes(pkg):
     return out
 
 
+def lead_bytes(pkg):
+    """Return the 96 byte lead at the front of an RPM"""
+    f = open(pkg, "rb")
+    lead = f.read(96)
+    f.close()
+
+    return lead
+
+
 def read_header(extract_dir):
     """Read the header.json a tarpm extraction wrote"""
     f = open(os.path.join(extract_dir, "header.json"))
@@ -318,6 +327,88 @@ class TestRoundTripSourceRPM(RoundTrip, TestUnpackSRPM):
         self.assertEqual(inode_list(recreated), inode_list(original))
         self.assertEqual(payload_bytes(recreated), payload_bytes(original))
         self.assertVerifies(recreated)
+
+
+class TestCreateWithoutLeadBinaryRPM(RoundTrip, TestUnpackRPM):
+    """A binary RPM comes back the same with no lead.json to read"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        # we build the lead from header.json, so drop lead.json
+        extract_dir = self.extract(original)
+        os.unlink(os.path.join(extract_dir, "lead.json"))
+
+        recreated = self.create(extract_dir)
+
+        self.assertIdentical(original, recreated)
+
+
+class TestCreateWithoutLeadSourceRPM(RoundTrip, TestUnpackSRPM):
+    """A source RPM still gets a source lead with no lead.json to read"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_srpm()
+
+        extract_dir = self.extract(original)
+        os.unlink(os.path.join(extract_dir, "lead.json"))
+
+        recreated = self.create(extract_dir)
+
+        # Sourcepackage in header.json is what makes this a source
+        # lead, so the lead we built matches the one we threw away
+        self.assertEqual(lead_bytes(recreated), lead_bytes(original))
+        self.assertVerifies(recreated)
+
+
+class TestCreateIgnoresEditedLead(RoundTrip, TestUnpackRPM):
+    """An edited lead.json makes no difference to the package we write"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        extract_dir = self.extract(original)
+        lead_path = os.path.join(extract_dir, "lead.json")
+
+        f = open(lead_path)
+        lead = json.load(f)
+        f.close()
+
+        lead["name"] = "nonsense-0-0"
+        lead["type"] = "source"
+        lead["architecture"] = 47
+
+        f = open(lead_path, "w")
+        json.dump(lead, f, indent=2)
+        f.close()
+
+        recreated = self.create(extract_dir)
+
+        self.assertIdentical(original, recreated)
 
 
 class TestCreateRecomputesFileDigests(RoundTrip, TestUnpackRPM):

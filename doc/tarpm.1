@@ -146,16 +146,26 @@ combined options like this is optional (in order to make
 \f[B]tarpm\f[R] more syntax compatible with tar(1)).
 .SH METADATA
 RPM metadata is extracted by \f[B]tarpm\f[R] and written to JSON
-files.  When you create a package with \f[B]tarpm\f[R], these JSON
-files must be present in the DIRECTORY serving as the source for the
-package.  Fields that are read\-only are marked with a read\-only
-string set to true. The JSON files are:
+files.  When you create a package with \f[B]tarpm\f[R],
+\f[B]signature.json\f[R] and \f[B]header.json\f[R] must be present in
+the DIRECTORY serving as the source for the package.
+\f[B]lead.json\f[R] is optional because we never read it.  Fields that
+are read\-only are marked with a read\-only string set to true. The
+JSON files are:
 .TP
 \f[B]lead.json\f[R]
 The RPM lead.
 Obsolete, only shown for informational purposes. \f[B]tarpm\f[R]
 recreates the lead when it creates a package.  The RPM lead is the
 first 96 bytes of any RPM file.
+.RS
+.PP
+Because we build the lead from the Name, Epoch, Version, Release, and
+Sourcepackage tags in \f[B]header.json\f[R], the DIRECTORY you create
+a package from does not need a \f[B]lead.json\f[R] at all.  If one is
+there we leave it alone, so editing it changes nothing in the package
+we write.
+.RE
 .TP
 \f[B]signature.json\f[R]
 The RPM signature.
