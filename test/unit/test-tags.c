@@ -72,8 +72,12 @@ static struct {
     { PGPHASHALGO_SHA384, "sha384" },
     { PGPHASHALGO_SHA512, "sha512" },
     { PGPHASHALGO_SHA224, "sha224" },
+#ifdef _HAS_PGPHASHALGO_SHA3_256
     { PGPHASHALGO_SHA3_256_VALUE, "sha3-256" },
+#endif
+#ifdef _HAS_PGPHASHALGO_SHA3_512
     { PGPHASHALGO_SHA3_512_VALUE, "sha3-512" },
+#endif
     { 0, NULL }
 };
 
@@ -144,8 +148,12 @@ test_sig_tag_name(void)
      * the rpm we build against uses.
      */
     TARPM_ASSERT_TRUE(RPMSIGTAG_PUBKEYS_VALUE == RPMTAG_PUBKEYS);
+#ifdef _HAS_VERITYSIGNATURES_TAG
     TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATURES_VALUE == RPMTAG_VERITYSIGNATURES);
+#endif
+#ifdef _HAS_VERITYSIGNATUREALGO_TAG
     TARPM_ASSERT_TRUE(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE == RPMTAG_VERITYSIGNATUREALGO);
+#endif
 
     return;
 }
@@ -489,8 +497,12 @@ test_digest_algo(void)
     TARPM_ASSERT_EQUAL(digest_algo("sha1"), PGPHASHALGO_SHA1);
     TARPM_ASSERT_EQUAL(digest_algo("sha256"), PGPHASHALGO_SHA256);
     TARPM_ASSERT_EQUAL(digest_algo("sha512"), PGPHASHALGO_SHA512);
+#ifdef _HAS_PGPHASHALGO_SHA3_256
     TARPM_ASSERT_EQUAL(digest_algo("sha3-256"), PGPHASHALGO_SHA3_256_VALUE);
+#endif
+#ifdef _HAS_PGPHASHALGO_SHA3_512
     TARPM_ASSERT_EQUAL(digest_algo("sha3-512"), PGPHASHALGO_SHA3_512_VALUE);
+#endif
 
     /* every algorithm we write has to read back the same way */
     for (i = 0; digest_algos[i].name != NULL; i++) {
@@ -503,12 +515,20 @@ test_digest_algo(void)
      * The numbers we carry ourselves have to agree with the ones the
      * rpm we build against uses.
      */
+#ifdef _HAS_PGPHASHALGO_SHA3_256
     TARPM_ASSERT_EQUAL(PGPHASHALGO_SHA3_256_VALUE, PGPHASHALGO_SHA3_256);
+#endif
+#ifdef _HAS_PGPHASHALGO_SHA3_512
     TARPM_ASSERT_EQUAL(PGPHASHALGO_SHA3_512_VALUE, PGPHASHALGO_SHA3_512);
+#endif
 
     /* older files record the SHA3 algorithms as a bare number */
+#ifdef _HAS_PGPHASHALGO_SHA3_256
     TARPM_ASSERT_EQUAL(digest_algo("12"), PGPHASHALGO_SHA3_256_VALUE);
+#endif
+#ifdef _HAS_PGPHASHALGO_SHA3_512
     TARPM_ASSERT_EQUAL(digest_algo("14"), PGPHASHALGO_SHA3_512_VALUE);
+#endif
 
     /* a bare number is read as the algorithm itself */
     TARPM_ASSERT_EQUAL(digest_algo("47"), 47);

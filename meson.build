@@ -116,7 +116,40 @@ if rpm.version().version_compare('>=4.16.0')
     add_project_arguments('-D_HAS_META_TAG', language : ['c', 'cpp'])
 endif
 
+# See commit:
+#     9644bbd5b33c5efdf58898cb8a04ecd39b208be4
+#     7e528e66506e48f01acfdc1101591f8084742f2a
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains 7e528e66506e48f01acfdc1101591f8084742f2a)
+# (git tag --contains 9644bbd5b33c5efdf58898cb8a04ecd39b208be4)
+if rpm.version().version_compare('>=4.17.0')
+    add_project_arguments('-D_HAS_VERITYSIGNATURES_TAG', language : ['c', 'cpp'])
+    add_project_arguments('-D_HAS_VERITYSIGNATUREALGO_TAG', language : ['c', 'cpp'])
+endif
+
+# See commit:
+#     5630cf4bcbaae85d1b53e7a57ba6c7ed86b62e7d
+#     f8fb0690582b60307c7ec6f8babb48d49b2578ad
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains 5630cf4bcbaae85d1b53e7a57ba6c7ed86b62e7d)
+# (git tag --contains f8fb0690582b60307c7ec6f8babb48d49b2578ad)
+if rpm.version().version_compare('>=6.0.0')
+    add_project_arguments('-D_HAS_OPENPGP_TAG', language : ['c', 'cpp'])
+    add_project_arguments('-D_HAS_SHA3_DIGEST_TAG', language : ['c', 'cpp'])
+endif
+
+# See commit:
+#     9344367edf654fb41a136793b68cea9abb892fb9
+# https://github.com/rpm-software-management/rpm
+# (git tag --contains 9344367edf654fb41a136793b68cea9abb892fb9)
+if rpm.version().version_compare('>=6.0.0')
+    add_project_arguments('-D_HAS_PGPHASHALGO_SHA3_256', language : ['c', 'cpp'])
+    add_project_arguments('-D_HAS_PGPHASHALGO_SHA3_512', language : ['c', 'cpp'])
+endif
+
+# OpenSSL
 openssl = dependency('openssl', required : true)
+
 # Test suite dependencies
 run_tests = get_option('tests')
 if run_tests
