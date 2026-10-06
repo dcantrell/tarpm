@@ -9,4 +9,5 @@ meson
 ninja-build
 openssl-devel
 python3-devel
+python3-rpm
 rpm-devel

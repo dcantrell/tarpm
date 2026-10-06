@@ -19,6 +19,7 @@ BuildRequires:  gettext
 BuildRequires:  libzstd-devel
 BuildRequires:  openssl-devel
 BuildRequires:  file-devel
+BuildRequires:  python3-rpm
 
 
 %description
