@@ -51,6 +51,13 @@ Core functionality that still needs to happen:
         [ ] Note what is happening in different stages
         [ ] Note added and removed files from the payload
 
+    [ ] What is minimally needed for creating an RPM from scratch
+        [ ] Missing lead.json creates lead
+        [ ] Missing signature.json creates a signature
+        [ ] Define minimal set of header.json tags
+            [ ] Create files array automatically
+            [ ] Command line option to create dependencies?
+
 [*] List mode
     [*] Need a strmode() function
     [*] Output needs to look like 'tar -tvf' on example.tar
@@ -132,14 +139,21 @@ Core functionality that still needs to happen:
         [ ] This will require dumping a list of tag names, so an
             option for that separately.
 
-[ ] signature.json
+[*] signature.json
     [*] Unknown signature tags in signature.json -- figure these out
         from rpm source and update tarpm to make them symbolic.
 
-    [ ] Mark tags as read-only, similar to lead.json.
+    [*] Mark tags as read-only, similar to lead.json.
 
-    [ ] Exclude all signature tags that rpmsign(1) generates when
+    [*] Exclude all signature tags that rpmsign(1) generates when
         creating an RPM
+
+[ ] Documentation
+    [ ] Basic info
+    [ ] How to build
+    [ ] How to list RPM contents
+    [ ] How to extract an RPM
+    [ ] How to create an RPM
 
 [ ] Document creating an RPM from scratch
     [ ] Source RPM
