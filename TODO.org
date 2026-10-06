@@ -52,7 +52,7 @@ Core functionality that still needs to happen:
         [ ] Note added and removed files from the payload
 
     [ ] What is minimally needed for creating an RPM from scratch
-        [ ] Missing lead.json creates lead
+        [*] Missing lead.json creates lead
         [ ] Missing signature.json creates a signature
         [ ] Define minimal set of header.json tags
             [ ] Create files array automatically
