@@ -21,6 +21,7 @@ BuildRequires:  openssl-devel
 BuildRequires:  file-devel
 BuildRequires:  python3-rpm
 BuildRequires:  rpm-build
+BuildRequires:  python3-rpmfluff
 
 
 %description
@@ -42,6 +43,10 @@ package is usable by rpm(8).
 %build
 %meson
 %meson_build
+
+
+%check
+%meson_test
 
 
 %install
