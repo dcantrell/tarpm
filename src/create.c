@@ -70,7 +70,6 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     uint8_t padding[8] = {0};
     uint8_t *trailer_data = NULL;
     size_t trailer_size = 0;
-    int32_t trailer_offset = 0;
     int r = 0;
 
     if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
@@ -100,19 +99,11 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
      * not written in the main data section
      */
     if (has_trailer(nentries, hdrinfo->estart)) {
-        n -= 16;
+        n -= RPM_TRAILER_SIZE;
         r = get_trailer_data(data, &trailer_data, &trailer_size);
 
-        /*
-         * The region trailer records the size of the index entries
-         * it covers as a negative offset.  The trailer from the JSON
-         * still describes the old header, so we work the offset out
-         * again from the entries we really wrote.  That leaves out
-         * read-only tags like the signatures on a signed package.
-         */
-        if (r == 0 && trailer_size == 16) {
-            trailer_offset = htonl(-((int32_t) (nentries * sizeof(struct rpmhdrentry))));
-            memcpy(trailer_data + (2 * sizeof(int32_t)), &trailer_offset, sizeof(trailer_offset));
+        if (r == 0) {
+            fix_trailer_offset(trailer_data, trailer_size, nentries);
         }
     }
 
@@ -122,7 +113,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     }
 
     /* write the trailer if present (for both signature and header sections) */
-    if (r == 0 && trailer_size == 16) {
+    if (r == 0 && trailer_size == RPM_TRAILER_SIZE) {
         if (fwrite(trailer_data, 1, trailer_size, rpm) != trailer_size) {
             warn("fwrite");
             r = -1;
@@ -1111,208 +1102,6 @@ write_payload(FILE *rpm, int fd)
 }
 
 /*
- * Compute the SHA-256 digest of the uncompressed payload, which is
- * what RPM records in RPMTAG_PAYLOADSHA256ALT.  We already wrote the
- * compressed payload in to payloadfd, so we read it back through the
- * libarchive filters to get the cpio stream again.  Returns the
- * digest as an allocated hex string or NULL on failure.  Caller must
- * free it.  If size is not NULL, the uncompressed byte count goes
- * there.
- */
-static char *
-uncompressed_payload_digest(const int payloadfd, uint64_t *size)
-{
-    unsigned int i = 0;
-    unsigned int digestlen = 0;
-    ssize_t len = 0;
-    uint64_t total = 0;
-    char *r = NULL;
-    struct archive *raw = NULL;
-    struct archive_entry *entry = NULL;
-    EVP_MD_CTX *ctx = NULL;
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    char buf[BUFSIZ];
-
-    if (payloadfd == -1) {
-        return NULL;
-    }
-
-    if (lseek(payloadfd, 0, SEEK_SET) == -1) {
-        warn("lseek");
-        return NULL;
-    }
-
-    raw = archive_read_new();
-    archive_read_support_filter_all(raw);
-    archive_read_support_format_raw(raw);
-
-    if (archive_read_open_fd(raw, payloadfd, BUFSIZ) != ARCHIVE_OK) {
-        warnx("archive_read_open_fd: %s", archive_error_string(raw));
-        archive_read_free(raw);
-        return NULL;
-    }
-
-    ctx = EVP_MD_CTX_new();
-
-    if (ctx == NULL || EVP_DigestInit(ctx, EVP_sha256()) == 0) {
-        warn("EVP_DigestInit");
-        goto cleanup_uncompressed_payload_digest;
-    }
-
-    if (archive_read_next_header(raw, &entry) != ARCHIVE_OK) {
-        warnx("archive_read_next_header: %s", archive_error_string(raw));
-        goto cleanup_uncompressed_payload_digest;
-    }
-
-    while ((len = archive_read_data(raw, buf, sizeof(buf))) > 0) {
-        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
-            warn("EVP_DigestUpdate");
-            goto cleanup_uncompressed_payload_digest;
-        }
-
-        total += len;
-    }
-
-    if (len < 0) {
-        warnx("archive_read_data: %s", archive_error_string(raw));
-        goto cleanup_uncompressed_payload_digest;
-    }
-
-    if (EVP_DigestFinal_ex(ctx, digest, &digestlen) == 0) {
-        warn("EVP_DigestFinal_ex");
-        goto cleanup_uncompressed_payload_digest;
-    }
-
-    r = xcalloc((digestlen * 2) + 1, sizeof(char));
-
-    for (i = 0; i < digestlen; ++i) {
-        sprintf(&r[i * 2], "%02x", (unsigned int) digest[i]);
-    }
-
-    if (size != NULL) {
-        *size = total;
-    }
-
-cleanup_uncompressed_payload_digest:
-    EVP_MD_CTX_free(ctx);
-    archive_read_free(raw);
-
-    return r;
-}
-
-/*
- * Replace the first element of the string array value of the named
- * header tag with the given digest string.  Tags that the package does
- * not carry are left alone.  Returns non-zero on failure.
- */
-static int
-set_payload_digest(struct json_object *tags, const rpmTagVal tagnum, const char *digest)
-{
-    size_t i = 0;
-    struct json_object *entry = NULL;
-    struct json_object *tag = NULL;
-    struct json_object *value = NULL;
-
-    if (tags == NULL || digest == NULL) {
-        return -1;
-    }
-
-    for (i = 0; i < json_object_array_length(tags); i++) {
-        entry = json_object_array_get_idx(tags, i);
-
-        if (!json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
-            continue;
-        }
-
-        if (rpmTagGetValue(json_object_get_string(tag)) != tagnum) {
-            continue;
-        }
-
-        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
-            return -1;
-        }
-
-        if (json_object_get_type(value) != json_type_array || json_object_array_length(value) < 1) {
-            return -1;
-        }
-
-        json_object_array_put_idx(value, 0, json_object_new_string(digest));
-        break;
-    }
-
-    return 0;
-}
-
-/*
- * Update the payload digests in the header.  RPMTAG_PAYLOADSHA256 is
- * the digest of the payload as it is written in to the RPM, which is
- * the compressed payload, and RPMTAG_PAYLOADSHA256ALT is the digest of
- * the uncompressed payload.  Returns non-zero on failure.
- */
-static int
-update_header_digests(struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
-{
-    int i = 0;
-    char *buf = NULL;
-    unsigned char *digest = NULL;
-    struct json_object *tags = NULL;
-
-    if (header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
-        return -1;
-    }
-
-    /* get the tags array from the header */
-    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
-        warnx(_("*** missing tags in header data"));
-        return -1;
-    }
-
-    /* compute the SHA-256 digest of the compressed payload */
-    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, hdr, hdrinfo, header, payloadfd);
-
-    if (digest == NULL) {
-        warnx(_("*** failed to compute the payload SHA-256 digest"));
-        return -1;
-    }
-
-    buf = xcalloc((SHA256_DIGEST_LENGTH * 2) + 1, sizeof(char));
-
-    for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
-    }
-
-    free(digest);
-
-    if (set_payload_digest(tags, 5092, buf) != 0) {
-        warnx(_("*** failed to update the payload SHA-256 digest"));
-        free(buf);
-        return -1;
-    }
-
-    free(buf);
-
-#ifdef _USE_RPMTAG_5097
-    /* compute the SHA-256 digest of the uncompressed payload */
-    buf = uncompressed_payload_digest(payloadfd, NULL);
-
-    if (buf == NULL) {
-        warnx(_("*** failed to compute the payload SHA-256 ALT digest"));
-        return -1;
-    }
-
-    if (set_payload_digest(tags, 5097, buf) != 0) {
-        warnx(_("*** failed to update the payload SHA-256 ALT digest"));
-        free(buf);
-        return -1;
-    }
-
-    free(buf);
-#endif
-
-    return 0;
-}
-
-/*
  * Rename a signature size tag to its 64 bit counterpart.  rpm does
  * this in rpmGenerateSignature() for a package too big for the 32 bit
  * tags to describe.  Returns non-zero on failure.
@@ -1406,7 +1195,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
          * Payloadsize tag records rather than what we write in to the
          * RPM
          */
-        buf = uncompressed_payload_digest(payloadfd, &archivesize);
+        buf = archive_digest(TARPM_DIGEST_SHA256, payloadfd, &archivesize);
 
         if (buf == NULL) {
             warnx(_("*** failed to measure the uncompressed payload"));
@@ -1664,6 +1453,18 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         add_payload_files(tags, files, payload_dir);
     }
 
+    /*
+     * Put the main header in to the shape the format calls for before
+     * anything reads it.  The lead, the header and the payload all
+     * depend on what this leaves behind.
+     */
+    if (apply_rpmformat(header, rpmformat) != 0) {
+        warnx(_("*** unable to apply the RPM format to the header"));
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
+
     /* create the lead from header metadata */
     rawlead = create_lead(header);
 
@@ -1700,10 +1501,10 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    /* update the header payload digest (payload only) */
-    if (update_header_digests(header, hdr, hdrinfo, payloadfd) != 0) {
+    /* work out the payload digests and sizes the format calls for */
+    if (update_payload_tags(header, payloadfd, rpmformat) != 0) {
         close(payloadfd);
-        warnx("update_header_digests");
+        warnx("update_payload_tags");
         free(header_dir);
         free(payload_dir);
         return -1;

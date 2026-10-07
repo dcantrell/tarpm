@@ -53,6 +53,22 @@
 #define RPMTAG_PAYLOAD_DIGEST_ALGO     5093
 
 /*
+ * Main header payload tags.  The same reasoning as the payload digest
+ * algorithm applies: 5092 and 5097 were renamed at 6.0.0 and the rest
+ * only arrived with 6.0.0, so we spell out the numbers rather than
+ * depend on the release of rpm we build against knowing the names.
+ */
+#define RPMTAG_PAYLOADSHA256_VALUE        5092
+#define RPMTAG_PAYLOADSHA256ALT_VALUE     5097
+#define RPMTAG_PAYLOADSIZE_VALUE          5112
+#define RPMTAG_PAYLOADSIZEALT_VALUE       5113
+#define RPMTAG_RPMFORMAT_VALUE            5114
+#define RPMTAG_PAYLOADSHA512_VALUE        5121
+#define RPMTAG_PAYLOADSHA512ALT_VALUE     5122
+#define RPMTAG_PAYLOADSHA3_256_VALUE      5123
+#define RPMTAG_PAYLOADSHA3_256ALT_VALUE   5124
+
+/*
  * Signature header tags.  rpm names these in enum rpmSigTag_e in
  * include/rpm/rpmtag.h, but they are enum values and not macros, so
  * we cannot ask the preprocessor whether the release of rpm we build
@@ -122,11 +138,56 @@
     RPMSIGTAG_RESERVED_VALUE
 
 /*
+ * The main header tags rpm writes for each format.  writeRPM() in
+ * build/pack.cc in the rpm source puts these in before it writes the
+ * header out, so we add the group for the format we are asked for and
+ * take the other group out.  A tag ending in ALT describes the
+ * uncompressed payload, the rest describe the payload as it lands in
+ * the package.
+ */
+#define RPMFORMAT_V4_HEADER_TAGS             \
+    RPMTAG_PAYLOAD_DIGEST_ALGO,              \
+    RPMTAG_PAYLOADSHA256_VALUE,              \
+    RPMTAG_PAYLOADSHA256ALT_VALUE
+
+#define RPMFORMAT_V6_HEADER_TAGS             \
+    RPMTAG_RPMFORMAT_VALUE,                  \
+    RPMTAG_PAYLOADSHA256_VALUE,              \
+    RPMTAG_PAYLOADSHA256ALT_VALUE,           \
+    RPMTAG_PAYLOADSHA512_VALUE,              \
+    RPMTAG_PAYLOADSHA512ALT_VALUE,           \
+    RPMTAG_PAYLOADSHA3_256_VALUE,            \
+    RPMTAG_PAYLOADSHA3_256ALT_VALUE,         \
+    RPMTAG_PAYLOADSIZE_VALUE,                \
+    RPMTAG_PAYLOADSIZEALT_VALUE
+
+/*
+ * The payload compressor a format 6 package carries.  The
+ * %_binary_payload macro in macros.in in the rpm source expands to
+ * w19.zstdio from format 6 on, so zstd at level 19.
+ */
+#define RPMFORMAT_V6_COMPRESSOR        "zstd"
+#define RPMFORMAT_V6_COMPRESSOR_LEVEL  "19"
+
+/*
+ * The lead version byte.  rpmLeadFromHeader() in lib/rpmlead.cc in the
+ * rpm source writes 3 for a format 4 package and 4 for a format 6 one.
+ */
+#define RPM_LEAD_MAJOR_V4              3
+#define RPM_LEAD_MAJOR_V6              4
+
+/*
  * The space rpm reserves in the signature header for rpmsign to write
  * in to.  rpm always keeps 32 bytes and adds whatever
  * %__gpg_reserved_space asks for, which is 4096.
  */
 #define RPM_SIGNATURE_RESERVED_SIZE    4128
+
+/*
+ * The size of a region trailer, which is one index entry sitting at
+ * the end of the data area rather than in the index.
+ */
+#define RPM_TRAILER_SIZE               16
 
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
@@ -336,7 +397,7 @@
 #define TARPM_DIGEST_MD5               1
 #define TARPM_DIGEST_SHA1              2
 #define TARPM_DIGEST_SHA256            3
-#define TARPM_DIGEST_SHA256_PAYLOAD    4
-#define TARPM_DIGEST_SHA3_256          5
+#define TARPM_DIGEST_SHA3_256          4
+#define TARPM_DIGEST_SHA512            5
 
 #endif /* _TARPM_CONSTANTS_H */

@@ -9,6 +9,7 @@ digest_src = files('digest.c')
 entry_src = files('entry.c')
 extract_src = files('extract.c')
 files_src = files('files.c')
+format_src = files('format.c')
 header_src = files('header.c')
 joinpath_src = files('joinpath.c')
 json_src = files('json.c')
@@ -39,6 +40,7 @@ sources = [
     entry_src,
     extract_src,
     files_src,
+    format_src,
     header_src,
     joinpath_src,
     json_src,

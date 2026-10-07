@@ -127,8 +127,10 @@ usage(void)
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
     printf(_("The -m, -u, -g, -l, -a, and -F options may only be used when creating an RPM.\n"));
-    printf(_("The default format is %d.  The signature header is generated, so -S is\n"), RPM_FORMAT_DEFAULT);
-    printf(_("ignored when creating an RPM.\n"));
+    printf(_("The default format is %d.  The format shapes the lead, the signature\n"), RPM_FORMAT_DEFAULT);
+    printf(_("header, the payload digest tags in the main header, and the payload\n"));
+    printf(_("compressor.  The signature header is generated, so -S is ignored when\n"));
+    printf(_("creating an RPM.\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -296,6 +298,10 @@ main(int argc, char **argv)
                 if (!strcmp(optarg, "4")) {
                     rpmformat = RPM_FORMAT_V4;
                 } else if (!strcmp(optarg, "6")) {
+#ifndef _HAS_RPMFORMAT_TAGS
+                    /* librpm has to know the format 6 tag names */
+                    errx(EXIT_FAILURE, _("*** -F %d needs rpm 6.0.0 or newer"), RPM_FORMAT_V6);
+#endif
                     rpmformat = RPM_FORMAT_V6;
                 } else {
                     errx(EXIT_FAILURE, _("*** -F must be %d or %d"), RPM_FORMAT_V4, RPM_FORMAT_V6);

@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <arpa/inet.h>
+#include <archive.h>
+#include <archive_entry.h>
 #include <CUnit/Basic.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
@@ -271,49 +273,67 @@ test_mksigdigest_sha256(void)
 }
 
 void
-test_mksigdigest_sha256_payload(void)
+test_payload_digest_sha256(void)
 {
-    struct rpmhdr hdr;
-    struct rpmhdrinfo hdrinfo;
-    struct rpmhdrentry entries[2];
-    uint8_t datastore[16];
-    struct json_object *data = NULL;
     int fd = -1;
-    unsigned char *digest = NULL;
+    uint64_t size = 0;
+    char *digest = NULL;
     const char *test_payload = "test payload data";
 
-    /* initialize header */
-    memset(&hdr, 0, sizeof(hdr));
-    hdr.magic = htonl(RPM_SIGNATURE_MAGIC);
-    hdr.reserved = htonl(RPM_SIGNATURE_RESERVED);
-    hdr.nentries = htonl(2);
-    hdr.nbytes = htonl(16);
-
-    /* initialize header info */
-    memset(&hdrinfo, 0, sizeof(hdrinfo));
-    memset(entries, 0, sizeof(entries));
-    memset(datastore, 0, sizeof(datastore));
-    hdrinfo.estart = entries;
-    hdrinfo.datastart = datastore;
-
-    /* create JSON data */
-    data = json_object_new_object();
+    /*
+     * the SHA-256 of "test payload data", which is what the main
+     * header records for the payload as it lands in the package
+     */
+    const char *expected = "84e6c7064a6672fa2994643ff5c626ac5c6f9d6e4a8c23e0b4d8e27a0b7d311b";
 
     /* create a temporary file with test payload */
     fd = memfd_create("test-digest", MFD_CLOEXEC);
     TARPM_ASSERT_TRUE(fd != -1);
     TARPM_ASSERT_TRUE(write(fd, test_payload, strlen(test_payload)) == (ssize_t)strlen(test_payload));
 
-    /* compute SHA-256 payload-only digest */
-    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, &hdr, &hdrinfo, data, fd);
+    digest = payload_digest(TARPM_DIGEST_SHA256, fd, &size);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
-
-    /* SHA-256 should produce 32 bytes */
+    TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
+    TARPM_ASSERT_TRUE(size == strlen(test_payload));
+    TARPM_ASSERT_STRING_EQUAL(digest, expected);
     free(digest);
+
+    /* an unknown digest type gives us nothing */
+    digest = payload_digest(-1, fd, NULL);
+    TARPM_ASSERT_PTR_NULL(digest);
 
     /* clean up */
     close(fd);
-    json_object_put(data);
+
+    return;
+}
+
+void
+test_nul_digest(void)
+{
+    char *digest = NULL;
+
+    /* each digest is all zeroes and as wide as the algorithm */
+    digest = nul_digest(TARPM_DIGEST_SHA256);
+    TARPM_ASSERT_PTR_NOT_NULL(digest);
+    TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
+    TARPM_ASSERT_TRUE(strspn(digest, "0") == strlen(digest));
+    free(digest);
+
+    digest = nul_digest(TARPM_DIGEST_SHA512);
+    TARPM_ASSERT_PTR_NOT_NULL(digest);
+    TARPM_ASSERT_TRUE(strlen(digest) == (SHA512_DIGEST_LENGTH * 2));
+    TARPM_ASSERT_TRUE(strspn(digest, "0") == strlen(digest));
+    free(digest);
+
+    digest = nul_digest(TARPM_DIGEST_SHA3_256);
+    TARPM_ASSERT_PTR_NOT_NULL(digest);
+    TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
+    free(digest);
+
+    /* an unknown digest type gives us nothing */
+    digest = nul_digest(-1);
+    TARPM_ASSERT_PTR_NULL(digest);
 
     return;
 }
@@ -355,8 +375,8 @@ test_mksigdigest_empty_payload(void)
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     free(digest);
 
-    /* compute SHA-256 payload digest with empty payload */
-    digest = mksigdigest(TARPM_DIGEST_SHA256_PAYLOAD, &hdr, &hdrinfo, data, fd);
+    /* compute SHA-256 digest with empty payload */
+    digest = mksigdigest(TARPM_DIGEST_SHA256, &hdr, &hdrinfo, data, fd);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     free(digest);
 
@@ -419,6 +439,56 @@ test_mksigdigest_large_payload(void)
     return;
 }
 
+void
+test_archive_digest_gzip(void)
+{
+    int fd = -1;
+    uint64_t size = 0;
+    char *digest = NULL;
+    char *plain = NULL;
+    struct archive *out = NULL;
+    struct archive_entry *entry = NULL;
+    const char *content = "uncompressed payload data";
+
+    /* write a gzip compressed cpio archive holding one file */
+    fd = memfd_create("test-digest", MFD_CLOEXEC);
+    TARPM_ASSERT_TRUE(fd != -1);
+
+    out = archive_write_new();
+    TARPM_ASSERT_TRUE(archive_write_set_format_cpio_newc(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_add_filter_gzip(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_open_fd(out, fd) == ARCHIVE_OK);
+
+    entry = archive_entry_new();
+    archive_entry_set_pathname(entry, "./payload");
+    archive_entry_set_filetype(entry, AE_IFREG);
+    archive_entry_set_perm(entry, 0644);
+    archive_entry_set_size(entry, strlen(content));
+    TARPM_ASSERT_TRUE(archive_write_header(out, entry) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_data(out, content, strlen(content)) == (ssize_t) strlen(content));
+    archive_entry_free(entry);
+
+    TARPM_ASSERT_TRUE(archive_write_close(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_free(out) == ARCHIVE_OK);
+
+    /* the archive digest covers the cpio stream with the gzip taken off */
+    digest = archive_digest(TARPM_DIGEST_SHA256, fd, &size);
+    TARPM_ASSERT_PTR_NOT_NULL(digest);
+    TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
+
+    /* which is bigger than the compressed payload and a different digest */
+    plain = payload_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    TARPM_ASSERT_PTR_NOT_NULL(plain);
+    TARPM_ASSERT_TRUE(size > strlen(content));
+    TARPM_ASSERT_STRING_NOT_EQUAL(digest, plain);
+
+    free(digest);
+    free(plain);
+    close(fd);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -438,7 +508,9 @@ get_suite(void)
         CU_add_test(pSuite, "test mksigdigest() MD5", test_mksigdigest_md5) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() SHA-1", test_mksigdigest_sha1) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() SHA-256", test_mksigdigest_sha256) == NULL ||
-        CU_add_test(pSuite, "test mksigdigest() SHA-256 payload", test_mksigdigest_sha256_payload) == NULL ||
+        CU_add_test(pSuite, "test payload_digest() SHA-256", test_payload_digest_sha256) == NULL ||
+        CU_add_test(pSuite, "test archive_digest() gzip", test_archive_digest_gzip) == NULL ||
+        CU_add_test(pSuite, "test nul_digest()", test_nul_digest) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() empty payload", test_mksigdigest_empty_payload) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() large payload", test_mksigdigest_large_payload) == NULL) {
         return NULL;

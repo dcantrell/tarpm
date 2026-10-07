@@ -168,6 +168,8 @@ if cunit.found()
           listfuncs_src,
           strfuncs_src,
           signature_src,
+          digest_src,
+          format_src,
           header_src,
           joinpath_src,
           json_src,
@@ -179,7 +181,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -324,7 +326,34 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
+        dependencies : [ cunit, jsonc, rpm, libarchive, openssl, magic ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
+    test_format = executable(
+        'test-format',
+        [ 'test-format.c',
+          'test-main.c',
+          changelog_src,
+          class_src,
+          deps_src,
+          digest_src,
+          files_src,
+          format_src,
+          listfuncs_src,
+          strfuncs_src,
+          header_src,
+          entry_src,
+          tags_src,
+          joinpath_src,
+          json_src,
+          read_src,
+          readfile_src,
+          xalloc_src,
+          xread_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, jsonc, rpm, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -424,6 +453,7 @@ if cunit.found()
           entry_src,
           class_src,
           files_src,
+          format_src,
           header_src,
           joinpath_src,
           json_src,
@@ -464,6 +494,7 @@ if cunit.found()
     test('test-entry', test_entry)
     test('test-readfile', test_readfile)
     test('test-digest', test_digest)
+    test('test-format', test_format)
     test('test-list', test_list)
     test('test-changelog', test_changelog)
     test('test-deps', test_deps)

@@ -64,14 +64,18 @@ int unpack_archive(const char *archive, const char *dest, const bool verbose);
 struct json_object *read_lead(const int fd);
 struct rpmlead *create_lead(struct json_object *header);
 
-/* signature.c */
+/* format.c */
 /*
- * The RPM format we write the signature header for, which is
- * RPM_FORMAT_V4 or RPM_FORMAT_V6.  We set this from the command
- * line before we create an RPM.
+ * The RPM format we write the package for, which is RPM_FORMAT_V4 or
+ * RPM_FORMAT_V6.  We set this from the command line before we create
+ * an RPM.
  */
 extern int rpmformat;
 
+int apply_rpmformat(struct json_object *header, const int format);
+int update_payload_tags(struct json_object *header, const int payloadfd, const int format);
+
+/* signature.c */
 struct json_object *read_signature(const int fd);
 struct json_object *make_signature(const int format);
 
@@ -81,6 +85,7 @@ struct json_object *read_header(const int fd, const char *dest_dir);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
+void fix_trailer_offset(uint8_t *trailer_data, const size_t trailer_size, const uint32_t nentries);
 
 /* changelog.c */
 struct json_object *generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
@@ -165,6 +170,9 @@ void list_rpm(const char *rpm);
 
 /* digest.c */
 unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
+char *payload_digest(const int type, const int payloadfd, uint64_t *size);
+char *archive_digest(const int type, const int payloadfd, uint64_t *size);
+char *nul_digest(const int type);
 
 /* strmode.c */
 void strmode(mode_t mode, char *p);

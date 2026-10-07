@@ -9,6 +9,7 @@ if python.found()
         'test_lead.py',
         'test_signature.py',
         'test_header.py',
+        'test_format.py',
         'test_extract.py',
         'test_create.py',
         'test_class.py',

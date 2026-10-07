@@ -112,8 +112,18 @@ create_lead(struct json_object *header)
 
     /* fill out the lead */
 
-    /* RPM lead is deprecated, all modern RPMs use version 3.0 */
-    lead->major = 3;
+    /*
+     * The RPM lead is deprecated, but the major version still tells a
+     * format 4 package apart from a format 6 one.
+     * rpmLeadFromHeader() in lib/rpmlead.cc in the rpm source goes by
+     * whether the header carries RPMTAG_RPMFORMAT, so we do the same.
+     */
+    if (get_tag_value(obj, rpmTagGetName(RPMTAG_RPMFORMAT_VALUE)) != NULL) {
+        lead->major = RPM_LEAD_MAJOR_V6;
+    } else {
+        lead->major = RPM_LEAD_MAJOR_V4;
+    }
+
     lead->minor = 0;
     lead->signature_type = htons(RPMSIGTYPE_HEADERSIG);
     memcpy(lead->magic, lead_magic, sizeof(lead->magic));

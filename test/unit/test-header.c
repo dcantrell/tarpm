@@ -274,6 +274,40 @@ test_get_trailer_data_valid(void)
 }
 
 void
+test_fix_trailer_offset(void)
+{
+    int32_t offset = 0;
+    uint8_t trailer_data[RPM_TRAILER_SIZE];
+
+    /* bad input leaves the trailer alone */
+    memset(trailer_data, 0, sizeof(trailer_data));
+    fix_trailer_offset(NULL, RPM_TRAILER_SIZE, 3);
+    fix_trailer_offset(trailer_data, 8, 3);
+    memcpy(&offset, trailer_data + (2 * sizeof(int32_t)), sizeof(offset));
+    TARPM_ASSERT_EQUAL(offset, 0);
+
+    /* the offset counts back over the entries the region covers */
+    fix_trailer_offset(trailer_data, RPM_TRAILER_SIZE, 3);
+    memcpy(&offset, trailer_data + (2 * sizeof(int32_t)), sizeof(offset));
+    TARPM_ASSERT_EQUAL((int32_t) ntohl(offset), -(3 * (int32_t) sizeof(struct rpmhdrentry)));
+
+    /* a different entry count gives a different offset */
+    fix_trailer_offset(trailer_data, RPM_TRAILER_SIZE, 9);
+    memcpy(&offset, trailer_data + (2 * sizeof(int32_t)), sizeof(offset));
+    TARPM_ASSERT_EQUAL((int32_t) ntohl(offset), -(9 * (int32_t) sizeof(struct rpmhdrentry)));
+
+    /* and the rest of the trailer is untouched */
+    memset(trailer_data, 0xff, sizeof(trailer_data));
+    fix_trailer_offset(trailer_data, RPM_TRAILER_SIZE, 3);
+    TARPM_ASSERT_EQUAL(trailer_data[0], 0xff);
+    TARPM_ASSERT_EQUAL(trailer_data[7], 0xff);
+    TARPM_ASSERT_EQUAL(trailer_data[12], 0xff);
+    TARPM_ASSERT_EQUAL(trailer_data[15], 0xff);
+
+    return;
+}
+
+void
 test_create_header_invalid(void)
 {
     struct json_object *data = NULL;
@@ -374,6 +408,7 @@ get_suite(void)
         CU_add_test(pSuite, "test get_trailer_data() with no value", test_get_trailer_data_no_value) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with invalid size", test_get_trailer_data_invalid_size) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with valid data", test_get_trailer_data_valid) == NULL ||
+        CU_add_test(pSuite, "test fix_trailer_offset()", test_fix_trailer_offset) == NULL ||
         CU_add_test(pSuite, "test create_header() with invalid data", test_create_header_invalid) == NULL ||
         CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL) {
         return NULL;

@@ -1110,3 +1110,27 @@ get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t 
 
     return -1;
 }
+
+/*
+ * The region trailer records the size of the index entries it covers
+ * as a negative offset.  The trailer we read back from the JSON still
+ * describes the header the package came with, so we work the offset
+ * out again from the entries we really have.  That leaves out
+ * read-only tags like the signatures on a signed package and takes in
+ * the tags a format change added.  Everything that reads the trailer
+ * has to go through here or the digests will not match what we write.
+ */
+void
+fix_trailer_offset(uint8_t *trailer_data, const size_t trailer_size, const uint32_t nentries)
+{
+    int32_t offset = 0;
+
+    if (trailer_data == NULL || trailer_size != RPM_TRAILER_SIZE) {
+        return;
+    }
+
+    offset = htonl(-((int32_t) (nentries * sizeof(struct rpmhdrentry))));
+    memcpy(trailer_data + (2 * sizeof(int32_t)), &offset, sizeof(offset));
+
+    return;
+}

@@ -12,9 +12,6 @@
 
 #include "tarpm.h"
 
-/* the format we write the signature header for */
-int rpmformat = RPM_FORMAT_DEFAULT;
-
 /* the default signature header tags, one group per RPM format */
 static const uint32_t v4_signature_tags[] = { RPMFORMAT_V4_SIGNATURE_TAGS };
 static const uint32_t v6_signature_tags[] = { RPMFORMAT_V6_SIGNATURE_TAGS };
