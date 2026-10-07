@@ -74,10 +74,14 @@ nul_digest(const int type)
         return NULL;
     }
 
-    len = EVP_MD_get_size(md);
+    /*
+     * Use EVP_MD_size() to maintain compatibility going back to
+     * OpenSSL 1.1.x
+     */
+    len = EVP_MD_size(md);
 
     if (len <= 0) {
-        warnx("EVP_MD_get_size");
+        warnx("EVP_MD_size");
         return NULL;
     }
 
