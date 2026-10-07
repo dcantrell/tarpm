@@ -27,9 +27,6 @@ endif
 # Determine if git needs to be installed
 _HAVE_GIT := $(shell ls -1 /usr/bin/git 2>/dev/null)
 
-# Install packages before anything else
-_safedir := $(shell git config --global --add safe.directory $(topdir))
-
 # Pass BUILDTYPE=release to generate a release SRPM
 BUILDTYPE ?= copr
 
