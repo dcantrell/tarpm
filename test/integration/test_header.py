@@ -13,6 +13,20 @@ import time
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
 
+def build_host():
+    """The host name rpmbuild stamps in to a package"""
+    # mock defines %_buildhost to the name of the host outside the
+    # chroot, which is not the name the chroot answers to.  rpmbuild
+    # takes the macro when it is set and works the name out itself
+    # when it is not, so we go the same way round.
+    host = rpm.expandMacro("%{?_buildhost}")
+
+    if host == "":
+        host = socket.gethostname()
+
+    return host
+
+
 class VerifyHeaderExtractSRPM(TestUnpackSRPM):
     def runTest(self):
         super().runTest()
@@ -78,7 +92,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         )
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"] == socket.gethostname())
+                        self.assertTrue(tag["value"] == build_host())
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) > 0)
@@ -134,7 +148,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["value"] == ["- Initial version"])
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"].startswith(socket.gethostname()))
+                        self.assertTrue(tag["value"].startswith(build_host()))
                     elif t == "Fileinodes":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 1)
@@ -349,7 +363,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         )
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"] == socket.gethostname())
+                        self.assertTrue(tag["value"] == build_host())
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 0)
@@ -384,7 +398,7 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["value"] == ["- Initial version"])
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"].startswith(socket.gethostname()))
+                        self.assertTrue(tag["value"].startswith(build_host()))
                     elif t == "Optflags":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(len(tag["value"]) > 0)
