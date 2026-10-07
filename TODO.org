@@ -53,7 +53,7 @@ Core functionality that still needs to happen:
 
     [ ] What is minimally needed for creating an RPM from scratch
         [*] Missing lead.json creates lead
-        [ ] Missing signature.json creates a signature
+        [*] Missing signature.json creates a signature
         [ ] Define minimal set of header.json tags
             [ ] Create files array automatically
             [ ] Command line option to create dependencies?
@@ -166,7 +166,8 @@ Core functionality that still needs to happen:
     [ ] Binary RPM
         [ ] Minimum required for lead.json
 
-        [ ] Do we need signature.json?
+        [*] Do we need signature.json?  No, we generate the signature
+            header ourselves.
 
         [ ] Minimum required for header.json
 
