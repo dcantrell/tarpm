@@ -17,8 +17,9 @@ rpmbuild(1)
 [\f[B]\-H\f[R] \f[I]PATH\f[R]] [\f[B]\-P\f[R] \f[I]DIRNAME\f[R]]
 .PP
 \f[B]tarpm\f[R] \f[B]\-c\f[R] [\f[B]\-v\f[R]] \f[B]\-f\f[R]
-\f[I]RPMFILENAME\f[R] [\f[B]\-S\f[R] \f[I]PATH\f[R]]
+\f[I]RPMFILENAME\f[R]
 [\f[B]\-H\f[R] \f[I]PATH\f[R]] [\f[B]\-P\f[R] \f[I]DIRNAME\f[R]]
+[\f[B]\-F\f[R] \f[I]NUMBER\f[R]]
 [\f[B]\-m\f[R]] [\f[B]\-u\f[R]] [\f[B]\-g\f[R]] [\f[B]\-l\f[R]]
 [\f[B]\-a\f[R]] \f[I]DIRECTORY\f[R]
 .SH DESCRIPTION
@@ -84,10 +85,11 @@ file.  The RPM lead is rebuilt from the header, so this is not read
 when creating an RPM.
 .TP
 \f[B]\-S\f[R] PATH, \f[B]\-\-signature\f[R]=PATH
-Where \f[B]signature.json\f[R] is written when extracting an RPM and
-where it is read from when creating one.  PATH works the same way it
-does for \f[B]\-\-lead\f[R].  A PATH of a single hyphen may only be
-used when extracting an RPM.
+Where \f[B]signature.json\f[R] is written when extracting an RPM.
+PATH works the same way it does for \f[B]\-\-lead\f[R].  A PATH of a
+single hyphen may only be used when extracting an RPM.  The signature
+header is generated, so this is not read when creating an RPM and
+\f[B]tarpm\f[R] says so on standard error if you give it anyway.
 .TP
 \f[B]\-H\f[R] PATH, \f[B]\-\-header\f[R]=PATH
 Where \f[B]header.json\f[R] is written when extracting an RPM and
@@ -105,6 +107,35 @@ directory you are in.  When extracting, DIRNAME is created if it is
 not there yet and no \f[B]payload\f[R] subdirectory is made in the
 output directory.  When creating, DIRNAME has to be a directory that
 is already there.
+.TP
+\f[B]\-F\f[R] NUMBER, \f[B]\-\-format\f[R]=NUMBER
+The RPM format to write the package as, which is either 4 or 6.  The
+default is 4.  May only be used when creating an RPM.  This is the
+same thing rpm(8) does with its %_rpmformat macro.
+.RS
+.PP
+A format 4 signature header carries the Sha1, Sha256, Size, Md5, and
+Payloadsize tags along with the reserved space rpmsign(8) writes in
+to.  A format 6 one carries the Sha256 and Sha3_256 digests of the
+main header and the reserved space, and nothing else.
+.PP
+The main header carries the payload digests the format calls for.  A
+format 4 package gets Payloadsha256, Payloadsha256alt, and the
+Payloaddigestalgo tag naming the algorithm.  A format 6 package gets
+the Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
+Payloadsha256, Payloadsha512, and Payloadsha3_256 digests along with
+the alt form of each.  The alt digests cover the payload with the
+compression taken back off, the others cover the payload as it lands
+in the package.  The tags the other format owns are taken out, so
+writing a package you extracted from one format as the other leaves
+nothing behind.
+.PP
+The lead records the format in its major version, which is 3 for
+format 4 and 4 for format 6.  A format 6 package is compressed with
+zstd at level 19, which is what rpm(8) picks from format 6 on.  A
+package whose metadata already names zstd keeps the level it came
+with.  Nothing else about the payload changes.
+.RE
 .TP
 \f[B]\-m\f[R], \f[B]\-\-payload\-mtime\f[R]
 Take the timestamp of each file from the file in the payload tree
@@ -146,12 +177,12 @@ combined options like this is optional (in order to make
 \f[B]tarpm\f[R] more syntax compatible with tar(1)).
 .SH METADATA
 RPM metadata is extracted by \f[B]tarpm\f[R] and written to JSON
-files.  When you create a package with \f[B]tarpm\f[R],
-\f[B]signature.json\f[R] and \f[B]header.json\f[R] must be present in
-the DIRECTORY serving as the source for the package.
-\f[B]lead.json\f[R] is optional because we never read it.  Fields that
-are read\-only are marked with a read\-only string set to true. The
-JSON files are:
+files.  When you create a package with \f[B]tarpm\f[R], only
+\f[B]header.json\f[R] must be present in the DIRECTORY serving as the
+source for the package.  \f[B]lead.json\f[R] and
+\f[B]signature.json\f[R] are optional because we never read them.
+Fields that are read\-only are marked with a read\-only string set to
+true. The JSON files are:
 .TP
 \f[B]lead.json\f[R]
 The RPM lead.
@@ -177,10 +208,13 @@ RPM.
 .RS
 .PP
 The tags in \f[B]signature.json\f[R] are presented for informational
-purposes only.  When you create an RPM with \f[B]tarpm\f[R], the signature
-header will be created again from scratch.  Just like the lead.  To
-reiterate this point, the tags in \f[B]signature.json\f[R] carry a
-read\-only marker, the same as in the \f[B]lead.json\f[R] file.
+purposes only.  When you create an RPM with \f[B]tarpm\f[R], we build
+the signature header from scratch for the format you ask for with
+\f[B]\-F\f[R], so the DIRECTORY does not need a
+\f[B]signature.json\f[R] at all and we do not read one that is there.
+Just like the lead.  To reiterate this point, the tags in
+\f[B]signature.json\f[R] carry a read\-only marker, the same as in the
+\f[B]lead.json\f[R] file.
 .PP
 A package built by rpmbuild(8) and then signed by rpmsign(8) carries
 signature tags that only rpmsign(8) can make, which are Dsa, Rsa,
