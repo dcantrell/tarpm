@@ -431,6 +431,7 @@ if cunit.found()
           listfuncs_src,
           read_src,
           readfile_src,
+          signature_src,
           strfuncs_src,
           tags_src,
           xalloc_src,
