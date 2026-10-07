@@ -116,6 +116,7 @@ usage(void)
     printf(_("    -S FILE, --signature=FILE   Use FILE for signature.json\n"));
     printf(_("    -H FILE, --header=FILE      Use FILE for header.json\n"));
     printf(_("    -P DIR, --payload=DIR       Use DIR for the payload tree\n"));
+    printf(_("    -F NUM, --format=NUM        Write an RPM format NUM package (%d or %d)\n"), RPM_FORMAT_V4, RPM_FORMAT_V6);
     printf(_("    -m, --payload-mtime         Take file timestamps from the payload tree\n"));
     printf(_("    -u, --payload-user          Take file owners from the payload tree\n"));
     printf(_("    -g, --payload-group         Take file groups from the payload tree\n"));
@@ -125,7 +126,9 @@ usage(void)
     printf(_("    -?, --help                  Display this screen\n"));
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
-    printf(_("The -m, -u, -g, -l, and -a options may only be used when creating an RPM.\n"));
+    printf(_("The -m, -u, -g, -l, -a, and -F options may only be used when creating an RPM.\n"));
+    printf(_("The default format is %d.  The signature header is generated, so -S is\n"), RPM_FORMAT_DEFAULT);
+    printf(_("ignored when creating an RPM.\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -138,6 +141,7 @@ main(int argc, char **argv)
     int c = 0;
     int idx = 0;
     bool havefilename = false;
+    bool haveformat = false;
     char *filename = NULL;
     char *cwd = NULL;
     char *input_dir = NULL;
@@ -145,7 +149,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     char *opt = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:P:muglaV?";
+    char *short_opts = "txcvf:O:L:S:H:P:F:muglaV?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -157,6 +161,7 @@ main(int argc, char **argv)
         { "signature", required_argument, 0, 'S' },
         { "header", required_argument, 0, 'H' },
         { "payload", required_argument, 0, 'P' },
+        { "format", required_argument, 0, 'F' },
         { "payload-mtime", no_argument, 0, 'm' },
         { "payload-user", no_argument, 0, 'u' },
         { "payload-group", no_argument, 0, 'g' },
@@ -282,6 +287,21 @@ main(int argc, char **argv)
                     errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), optarg);
                 }
 
+                break;
+            case 'F':
+                if (haveformat) {
+                    errx(EXIT_FAILURE, _("*** -F already specified; only allowed once"));
+                }
+
+                if (!strcmp(optarg, "4")) {
+                    rpmformat = RPM_FORMAT_V4;
+                } else if (!strcmp(optarg, "6")) {
+                    rpmformat = RPM_FORMAT_V6;
+                } else {
+                    errx(EXIT_FAILURE, _("*** -F must be %d or %d"), RPM_FORMAT_V4, RPM_FORMAT_V6);
+                }
+
+                haveformat = true;
                 break;
             case 'm':
                 payload_overrides |= PAYLOAD_OVERRIDE_MTIME;
@@ -413,9 +433,19 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** -m, -u, -g, -l, and -a may only be used when creating an RPM"));
     }
 
+    /* the format option only means something when we create an RPM */
+    if (!c_flag && haveformat) {
+        errx(EXIT_FAILURE, _("*** -F may only be used when creating an RPM"));
+    }
+
     /* Creating an RPM reads the JSON metadata from files, not stdin */
     if (c_flag && ((paths.lead != NULL && !strcmp(paths.lead, OUTPUT_STDOUT)) || (paths.signature != NULL && !strcmp(paths.signature, OUTPUT_STDOUT)) || (paths.header != NULL && !strcmp(paths.header, OUTPUT_STDOUT)))) {
         errx(EXIT_FAILURE, _("*** \"%s\" may not be used when creating an RPM"), OUTPUT_STDOUT);
+    }
+
+    /* we generate the signature header, so -S has nothing to say here */
+    if (c_flag && paths.signature != NULL) {
+        warnx(_("*** -S is ignored when creating an RPM"));
     }
 
     /* Make the directories the JSON metadata files are written to */

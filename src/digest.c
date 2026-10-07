@@ -69,6 +69,8 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
         i = EVP_DigestInit(ctx, EVP_sha1());
     } else if (type == TARPM_DIGEST_SHA256 || type == TARPM_DIGEST_SHA256_PAYLOAD) {
         i = EVP_DigestInit(ctx, EVP_sha256());
+    } else if (type == TARPM_DIGEST_SHA3_256) {
+        i = EVP_DigestInit(ctx, EVP_sha3_256());
     } else {
         warnx("*** unsupported digest type: %d", type);
         goto cleanup_mksigdigest;

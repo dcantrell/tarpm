@@ -65,7 +65,15 @@ struct json_object *read_lead(const int fd);
 struct rpmlead *create_lead(struct json_object *header);
 
 /* signature.c */
+/*
+ * The RPM format we write the signature header for, which is
+ * RPM_FORMAT_V4 or RPM_FORMAT_V6.  We set this from the command
+ * line before we create an RPM.
+ */
+extern int rpmformat;
+
 struct json_object *read_signature(const int fd);
+struct json_object *make_signature(const int format);
 
 /* header.c */
 bool valid_header(struct rpmhdr *hdr);

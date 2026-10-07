@@ -1313,16 +1313,47 @@ update_header_digests(struct json_object *header, const struct rpmhdr *hdr, cons
 }
 
 /*
+ * Rename a signature size tag to its 64 bit counterpart.  rpm does
+ * this in rpmGenerateSignature() for a package too big for the 32 bit
+ * tags to describe.  Returns non-zero on failure.
+ */
+static int
+widen_size_tag(struct json_object *tags, const char *tag, const char *wide)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (entry == NULL) {
+            break;
+        }
+
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1 && !strcmp(tag, json_object_get_string(value))) {
+            json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(wide));
+            json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT64_TYPE)));
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+/*
  * Update the digests and sizes in the signature using the header and
  * payload data.  Returns non-zero on failure.
  */
 static int
-update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd)
+update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd, const int format)
 {
     int i = 0;
     unsigned char *digest = NULL;
     void *blob = NULL;
     char *buf = NULL;
+    const char *sizetag = NULL;
+    const char *payloadtag = NULL;
     struct json_object *tags = NULL;
     off_t payload_off = 0;
     uint64_t payloadsize = 0;
@@ -1364,99 +1395,115 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     hdrsize = sizeof(*hdr) + (nentries * sizeof(struct rpmhdrentry)) + nbytes;
     totalsize = hdrsize + payloadsize;
 
-    /* update Size tag (header + payload) */
-    xasprintf(&buf, "%lu", totalsize);
-
-    if (payloadsize > UINT32_MAX) {
-        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_LONGSIZE), buf) != 0) {
-            warnx(_("*** failed to update Longsize in signature"));
-            free(buf);
-            return -1;
-        }
-    } else {
-        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SIZE), buf) != 0) {
-            warnx(_("*** failed to update Size in signature"));
-            free(buf);
-            return -1;
-        }
-    }
-
-    free(buf);
-
     /*
-     * update the Payloadsize tag.  This is the size of the
-     * uncompressed payload, not of what we write in to the RPM
+     * The sizes and the MD5 and SHA-1 digests only belong in a v4
+     * signature header.  The v6 one carries digests of the main
+     * header and nothing else.
      */
-    buf = uncompressed_payload_digest(payloadfd, &archivesize);
+    if (format == RPM_FORMAT_V4) {
+        /*
+         * measure the uncompressed payload, which is what the
+         * Payloadsize tag records rather than what we write in to the
+         * RPM
+         */
+        buf = uncompressed_payload_digest(payloadfd, &archivesize);
 
-    if (buf == NULL) {
-        warnx(_("*** failed to measure the uncompressed payload"));
-        return -1;
-    }
+        if (buf == NULL) {
+            warnx(_("*** failed to measure the uncompressed payload"));
+            return -1;
+        }
 
-    free(buf);
-    xasprintf(&buf, "%lu", archivesize);
-
-    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), buf) != 0) {
-        warnx(_("*** failed to update Payloadsize in signature"));
         free(buf);
-        return -1;
-    }
 
-    free(buf);
+        /* a package too big for the 32 bit tags gets the 64 bit ones */
+        if (totalsize > UINT32_MAX || archivesize > UINT32_MAX) {
+            sizetag = sig_tag_name(RPMSIGTAG_LONGSIZE);
+            payloadtag = sig_tag_name(RPMSIGTAG_LONGARCHIVESIZE);
 
-    /* compute MD5 digest */
-    digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
+            if (widen_size_tag(tags, sig_tag_name(RPMSIGTAG_SIZE), sizetag) != 0 || widen_size_tag(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), payloadtag) != 0) {
+                warnx(_("*** failed to widen the size tags in signature"));
+                return -1;
+            }
+        } else {
+            sizetag = sig_tag_name(RPMSIGTAG_SIZE);
+            payloadtag = sig_tag_name(RPMSIGTAG_PAYLOADSIZE);
+        }
 
-    if (digest == NULL) {
-        warnx(_("*** failed to compute the signature MD5 digest"));
-        return -1;
-    }
+        /* update the size tag (header + payload) */
+        xasprintf(&buf, "%lu", totalsize);
 
-    blob = xalloc(MD5_DIGEST_LENGTH);
-    memcpy(blob, digest, MD5_DIGEST_LENGTH);
-    buf = rpmBase64Encode(blob, MD5_DIGEST_LENGTH, -1);
-    free(blob);
+        if (set_tag_value(tags, sizetag, buf) != 0) {
+            warnx(_("*** failed to update %s in signature"), sizetag);
+            free(buf);
+            return -1;
+        }
 
-    if (buf == NULL) {
-        warnx("rpmBase64Encode");
-        free(digest);
-        return -1;
-    }
+        free(buf);
 
-    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_MD5), buf) != 0) {
-        warnx(_("*** failed to update MD5 digest in signature"));
+        /* update the payload size tag */
+        xasprintf(&buf, "%lu", archivesize);
+
+        if (set_tag_value(tags, payloadtag, buf) != 0) {
+            warnx(_("*** failed to update %s in signature"), payloadtag);
+            free(buf);
+            return -1;
+        }
+
+        free(buf);
+
+        /* compute MD5 digest */
+        digest = mksigdigest(TARPM_DIGEST_MD5, hdr, hdrinfo, header, payloadfd);
+
+        if (digest == NULL) {
+            warnx(_("*** failed to compute the signature MD5 digest"));
+            return -1;
+        }
+
+        blob = xalloc(MD5_DIGEST_LENGTH);
+        memcpy(blob, digest, MD5_DIGEST_LENGTH);
+        buf = rpmBase64Encode(blob, MD5_DIGEST_LENGTH, -1);
+        free(blob);
+
+        if (buf == NULL) {
+            warnx("rpmBase64Encode");
+            free(digest);
+            return -1;
+        }
+
+        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_MD5), buf) != 0) {
+            warnx(_("*** failed to update MD5 digest in signature"));
+            free(digest);
+            free(buf);
+            return -1;
+        }
+
         free(digest);
         free(buf);
-        return -1;
-    }
 
-    free(digest);
-    free(buf);
+        /* compute SHA-1 digest */
+        digest = mksigdigest(TARPM_DIGEST_SHA1, hdr, hdrinfo, header, payloadfd);
 
-    /* compute SHA-1 digest */
-    digest = mksigdigest(TARPM_DIGEST_SHA1, hdr, hdrinfo, header, payloadfd);
+        if (digest == NULL) {
+            warnx(_("*** failed to compute the signature SHA-1 digest"));
+            return -1;
+        }
 
-    if (digest == NULL) {
-        warnx(_("*** failed to compute the signature SHA-1 digest"));
-        return -1;
-    }
+        buf = xcalloc(SHA_DIGEST_LENGTH * 2 + 1, sizeof(char));
 
-    buf = xcalloc(SHA_DIGEST_LENGTH * 2 + 1, sizeof(char));
+        for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+            sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
+        }
 
-    for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-        sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
-    }
+        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA1), buf) != 0) {
+            warnx(_("*** failed to update SHA-1 digest in signature"));
+            free(digest);
+            free(buf);
+            return -1;
+        }
 
-    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA1), buf) != 0) {
-        warnx(_("*** failed to update SHA-1 digest in signature"));
         free(digest);
         free(buf);
-        return -1;
     }
-
-    free(digest);
-    free(buf);
 
     /* compute SHA-256 digest */
     digest = mksigdigest(TARPM_DIGEST_SHA256, hdr, hdrinfo, header, payloadfd);
@@ -1482,6 +1529,32 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     free(digest);
     free(buf);
 
+    /* the SHA3-256 digest is only in a v6 signature header */
+    if (format == RPM_FORMAT_V6) {
+        digest = mksigdigest(TARPM_DIGEST_SHA3_256, hdr, hdrinfo, header, payloadfd);
+
+        if (digest == NULL) {
+            warnx(_("*** failed to compute the signature SHA3-256 digest"));
+            return -1;
+        }
+
+        buf = xcalloc(SHA256_DIGEST_LENGTH * 2 + 1, sizeof(char));
+
+        for (i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+            sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
+        }
+
+        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA3_256_VALUE), buf) != 0) {
+            warnx(_("*** failed to update SHA3-256 digest in signature"));
+            free(digest);
+            free(buf);
+            return -1;
+        }
+
+        free(digest);
+        free(buf);
+    }
+
     return 0;
 }
 
@@ -1494,7 +1567,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     struct stat sb;
     char *header_dir = NULL;
     char *payload_dir = NULL;
-    const char *signature_path = OUTPUT_SIGNATURE;
     const char *header_path = OUTPUT_HEADER;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
@@ -1548,10 +1620,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* the caller may have named where the JSON metadata files are */
-    if (paths != NULL && paths->signature != NULL) {
-        signature_path = paths->signature;
-    }
-
     if (paths != NULL && paths->header != NULL) {
         header_path = paths->header;
 
@@ -1567,16 +1635,21 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    /* read in signature.json and header.json */
-    signature = read_json_file(signature_path);
+    /*
+     * Build the signature header ourselves.  Everything in it is
+     * recalculated from the header and the payload, so there is
+     * nothing in signature.json worth reading back.
+     */
+    signature = make_signature(rpmformat);
 
     if (signature == NULL) {
-        warnx(_("*** missing signature data"));
+        warnx(_("*** unable to construct RPM signature"));
         free(header_dir);
         free(payload_dir);
         return -1;
     }
 
+    /* read in header.json */
     header = read_json_file(header_path);
 
     if (header == NULL) {
@@ -1648,7 +1721,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* recalculate the digests and update the signature data using the updated header */
-    if (update_signature(signature, header, hdr, hdrinfo, payloadfd) != 0) {
+    if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat) != 0) {
         close(payloadfd);
         warnx("update_signature");
         free(header_dir);

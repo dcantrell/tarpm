@@ -91,6 +91,43 @@
     RPMSIGTAG_GPG,                           \
     RPMSIGTAG_PGP5
 
+/*
+ * The RPM package formats we can write a signature header for.  rpm
+ * picks between the two with the %_rpmformat macro.
+ */
+#define RPM_FORMAT_V4                4
+#define RPM_FORMAT_V6                6
+#define RPM_FORMAT_DEFAULT           RPM_FORMAT_V4
+
+/*
+ * The signature header tags rpm writes by default, one group per
+ * format.  rpmGenerateSignature() in lib/signature.cc in the rpm
+ * source puts these in and nothing else, so we build the same groups
+ * rather than carry over whatever a package we extracted happened to
+ * hold.  rpmsign(8) adds its own tags afterwards.
+ */
+#define RPMFORMAT_V4_SIGNATURE_TAGS          \
+    HEADER_SIGNATURES,                       \
+    RPMSIGTAG_SHA1,                          \
+    RPMSIGTAG_SHA256,                        \
+    RPMSIGTAG_SIZE,                          \
+    RPMSIGTAG_MD5,                           \
+    RPMSIGTAG_PAYLOADSIZE,                   \
+    RPMSIGTAG_RESERVEDSPACE
+
+#define RPMFORMAT_V6_SIGNATURE_TAGS          \
+    HEADER_SIGNATURES,                       \
+    RPMSIGTAG_SHA256,                        \
+    RPMSIGTAG_SHA3_256_VALUE,                \
+    RPMSIGTAG_RESERVED_VALUE
+
+/*
+ * The space rpm reserves in the signature header for rpmsign to write
+ * in to.  rpm always keeps 32 bytes and adds whatever
+ * %__gpg_reserved_space asks for, which is 4096.
+ */
+#define RPM_SIGNATURE_RESERVED_SIZE    4128
+
 /* RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
 #define RPM_SIGNATURE_RESERVED_DESC    "reserved"
@@ -300,5 +337,6 @@
 #define TARPM_DIGEST_SHA1              2
 #define TARPM_DIGEST_SHA256            3
 #define TARPM_DIGEST_SHA256_PAYLOAD    4
+#define TARPM_DIGEST_SHA3_256          5
 
 #endif /* _TARPM_CONSTANTS_H */
