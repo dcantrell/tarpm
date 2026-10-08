@@ -72,6 +72,7 @@ struct rpmlead *create_lead(struct json_object *header);
  */
 extern int rpmformat;
 
+void filter_format_tags(struct json_object *tags, const int format);
 int apply_rpmformat(struct json_object *header, const int format);
 int update_payload_tags(struct json_object *header, const int payloadfd, const int format);
 

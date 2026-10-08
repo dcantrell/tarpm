@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <endian.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -741,6 +742,37 @@ read_uint32_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
 }
 
 /*
+ * Read count 64-bit numbers out of the header data and add them to the
+ * list in host order.  A v6 package records the file sizes this way.
+ * Our lists hold 32 bit numbers, so a package with a file too big for
+ * one goes back untouched and the caller works that size out from the
+ * payload rather than record a wrong one.
+ */
+static uint32_list_t *
+read_uint64_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
+{
+    uint32_t i = 0;
+    uint64_t value = 0;
+    const uint8_t *p = data;
+
+    for (i = 0; i < count; i++) {
+        memcpy(&value, p + (i * sizeof(value)), sizeof(value));
+
+        if (be64toh(value) > UINT32_MAX) {
+            return list;
+        }
+    }
+
+    for (i = 0; i < count; i++) {
+        memcpy(&value, p, sizeof(value));
+        list = uint32_list_add(list, (uint32_t) be64toh(value));
+        p += sizeof(value);
+    }
+
+    return list;
+}
+
+/*
  * Read count 16 bit numbers out of the header data and add them to
  * the list in host order.
  */
@@ -796,6 +828,8 @@ collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
             fmd->dirindexes = read_uint32_list(fmd->dirindexes, data, count);
         } else if (tag == RPMTAG_FILESIZES && datatype == RPM_INT32_TYPE) {
             fmd->filesizes = read_uint32_list(fmd->filesizes, data, count);
+        } else if (tag == RPMTAG_LONGFILESIZES && datatype == RPM_INT64_TYPE) {
+            fmd->filesizes = read_uint64_list(fmd->filesizes, data, count);
         } else if (tag == RPMTAG_FILEMODES && datatype == RPM_INT16_TYPE) {
             fmd->filemodes = read_uint16_list(fmd->filemodes, data, count);
         } else if (tag == RPMTAG_FILEMTIMES && datatype == RPM_INT32_TYPE) {

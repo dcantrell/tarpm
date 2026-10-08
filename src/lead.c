@@ -114,7 +114,7 @@ create_lead(struct json_object *header)
 
     /*
      * The RPM lead is deprecated, but the major version still tells a
-     * format 4 package apart from a format 6 one.
+     * v4 package apart from a v6 one.
      * rpmLeadFromHeader() in lib/rpmlead.cc in the rpm source goes by
      * whether the header carries RPMTAG_RPMFORMAT, so we do the same.
      */

@@ -4,6 +4,7 @@
  */
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <err.h>
 #include <rpm/rpmtag.h>
@@ -14,12 +15,34 @@
 /* the format we write the package for */
 int rpmformat = RPM_FORMAT_DEFAULT;
 
-/* the main header tags rpm writes, one group per RPM format */
+/* the main header tags rpm works out at write time, one group per RPM format */
 static const rpmTagVal v4_header_tags[] = { RPMFORMAT_V4_HEADER_TAGS };
 static const rpmTagVal v6_header_tags[] = { RPMFORMAT_V6_HEADER_TAGS };
 
 #define V4_HEADER_NTAGS (sizeof(v4_header_tags) / sizeof(v4_header_tags[0]))
 #define V6_HEADER_NTAGS (sizeof(v6_header_tags) / sizeof(v6_header_tags[0]))
+
+/* the main header tags only one of the two formats carries */
+static const rpmTagVal v4_only_tags[] = { RPMFORMAT_V4_ONLY_HEADER_TAGS };
+static const rpmTagVal v6_only_tags[] = { RPMFORMAT_V6_ONLY_HEADER_TAGS };
+
+#define V4_ONLY_NTAGS (sizeof(v4_only_tags) / sizeof(v4_only_tags[0]))
+#define V6_ONLY_NTAGS (sizeof(v6_only_tags) / sizeof(v6_only_tags[0]))
+
+/*
+ * The size tags that come in a 32 bit and a 64 bit spelling.  rpm
+ * records sizes under the 32 bit tag for v4 and the 64 bit tag
+ * for v6, and a v4 package falls back to the 64 bit tag
+ * for a number that will not fit.
+ */
+static const struct {
+    rpmTagVal small;
+    rpmTagVal large;
+} size_tag_pairs[] = {
+    { RPMTAG_SIZE,      RPMTAG_LONGSIZE      },
+    { RPMTAG_FILESIZES, RPMTAG_LONGFILESIZES },
+    { 0,                0                    }
+};
 
 /*
  * The payload digest tags and what each one covers.  A tag marked
@@ -92,34 +115,148 @@ find_tag(struct json_object *tags, const rpmTagVal tag)
     return -1;
 }
 
-/*
- * Take out every tag the format we are not writing owns.  A package
- * we extracted carries the group for the format it was built as, and
- * leaving those behind would describe the package we write wrongly.
- */
+/* Take every copy of each tag in the group out of the tags array */
 static void
-drop_other_format_tags(struct json_object *tags, const rpmTagVal *keep, const size_t nkeep)
+drop_tags(struct json_object *tags, const rpmTagVal *group, const size_t ngroup)
 {
     size_t i = 0;
     int idx = -1;
-    rpmTagVal tag = 0;
 
-    for (i = 0; i < (V4_HEADER_NTAGS + V6_HEADER_NTAGS); i++) {
-        if (i < V4_HEADER_NTAGS) {
-            tag = v4_header_tags[i];
-        } else {
-            tag = v6_header_tags[i - V4_HEADER_NTAGS];
+    for (i = 0; i < ngroup; i++) {
+        idx = find_tag(tags, group[i]);
+
+        while (idx >= 0) {
+            json_object_array_del_idx(tags, idx, 1);
+            idx = find_tag(tags, group[i]);
         }
+    }
 
-        if (in_group(keep, nkeep, tag)) {
-            continue;
+    return;
+}
+
+/* Record an entry under a different tag and type, keeping its value */
+static void
+retag(struct json_object *tags, const rpmTagVal from, const rpmTagVal to, const rpmTagType type)
+{
+    int idx = -1;
+    struct json_object *entry = NULL;
+
+    idx = find_tag(tags, from);
+
+    if (idx < 0) {
+        return;
+    }
+
+    entry = json_object_array_get_idx(tags, idx);
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(to)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
+
+    return;
+}
+
+/* Return true if every number the tag records fits in 32 bits */
+static bool
+fits_uint32(struct json_object *tags, const rpmTagVal tag)
+{
+    int idx = -1;
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    idx = find_tag(tags, tag);
+
+    if (idx < 0) {
+        return true;
+    }
+
+    entry = json_object_array_get_idx(tags, idx);
+
+    if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+        return true;
+    }
+
+    if (json_object_get_type(value) != json_type_array) {
+        return json_object_get_int64(value) <= (int64_t) UINT32_MAX;
+    }
+
+    for (i = 0; i < json_object_array_length(value); i++) {
+        if (json_object_get_int64(json_object_array_get_idx(value, i)) > (int64_t) UINT32_MAX) {
+            return false;
         }
+    }
 
-        idx = find_tag(tags, tag);
+    return true;
+}
+
+/*
+ * Settle a size tag on the spelling the format we are writing uses.
+ * add_file_list_tags() rebuilds the 32 bit tag from the payload tree,
+ * so it is the fresher of the two when a header carries both and the
+ * 64 bit one goes.  v4 holds on to the 64 bit tag for a number that
+ * will not fit, which is what rpm does as well.
+ */
+static void
+normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTagVal large, const int format)
+{
+    int idx = -1;
+    rpmTagVal have = 0;
+    rpmTagVal want = 0;
+
+    if (find_tag(tags, small) >= 0) {
+        idx = find_tag(tags, large);
 
         if (idx >= 0) {
             json_object_array_del_idx(tags, idx, 1);
         }
+
+        have = small;
+    } else if (find_tag(tags, large) >= 0) {
+        have = large;
+    } else {
+        return;
+    }
+
+    want = (format == RPM_FORMAT_V6) ? large : small;
+
+    if (have == want) {
+        return;
+    }
+
+    if (want == small && !fits_uint32(tags, large)) {
+        return;
+    }
+
+    retag(tags, have, want, (want == large) ? RPM_INT64_TYPE : RPM_INT32_TYPE);
+
+    return;
+}
+
+/*
+ * Put the tags array in to the shape the format calls for.  A package
+ * we extracted carries the tags the format it was built as owns, and
+ * leaving those behind would describe the package we write wrongly,
+ * so they come out here.  The size tags move over to the spelling the
+ * format uses rather than being thrown away, since the numbers are
+ * the same either way.  Doing this twice over the same array changes
+ * nothing the second time round.
+ */
+void
+filter_format_tags(struct json_object *tags, const int format)
+{
+    size_t i = 0;
+
+    if (tags == NULL || (format != RPM_FORMAT_V4 && format != RPM_FORMAT_V6)) {
+        return;
+    }
+
+    for (i = 0; size_tag_pairs[i].small != 0; i++) {
+        normalize_size_pair(tags, size_tag_pairs[i].small, size_tag_pairs[i].large, format);
+    }
+
+    if (format == RPM_FORMAT_V6) {
+        drop_tags(tags, v4_only_tags, V4_ONLY_NTAGS);
+    } else {
+        drop_tags(tags, v6_only_tags, V6_ONLY_NTAGS);
     }
 
     return;
@@ -269,10 +406,10 @@ set_string_tag(struct json_object *tags, const rpmTagVal tag, const char *value)
 }
 
 /*
- * Set the payload compressor a format 6 package carries.  rpm picks
- * zstd from format 6 on, so a package handed to us as gzip has to
- * change over.  One that is already zstd keeps the level it came with
- * so we write the same payload back out.
+ * Set the payload compressor a v6 package carries.  rpm picks zstd
+ * from v6 on, so a package handed to us as gzip has to change over.
+ * One that is already zstd keeps the level it came with so we write
+ * the same payload back out.
  */
 static void
 set_v6_compressor(struct json_object *tags)
@@ -294,8 +431,8 @@ set_v6_compressor(struct json_object *tags)
 /*
  * Put the main header in to the shape the format calls for.  The tags
  * the other format owns come out, the ones this format needs go in
- * with placeholder values, and a format 6 package picks up the
- * compressor rpm would have given it.  Returns non-zero on failure.
+ * with placeholder values, and a v6 package picks up the compressor
+ * rpm would have given it.  Returns non-zero on failure.
  */
 int
 apply_rpmformat(struct json_object *header, const int format)
@@ -322,7 +459,7 @@ apply_rpmformat(struct json_object *header, const int format)
         return -1;
     }
 
-    drop_other_format_tags(tags, group, ntags);
+    filter_format_tags(tags, format);
 
     for (i = 0; i < ntags; i++) {
         if (find_tag(tags, group[i]) >= 0) {
@@ -402,7 +539,7 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
         free(digest);
     }
 
-    /* only a format 6 header records the payload sizes */
+    /* only a v6 header records the payload sizes */
     if (!in_group(group, ntags, RPMTAG_PAYLOADSIZE_VALUE)) {
         return 0;
     }

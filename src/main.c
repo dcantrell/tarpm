@@ -299,7 +299,7 @@ main(int argc, char **argv)
                     rpmformat = RPM_FORMAT_V4;
                 } else if (!strcmp(optarg, "6")) {
 #ifndef _HAS_RPMFORMAT_TAGS
-                    /* librpm has to know the format 6 tag names */
+                    /* librpm has to know the v6 tag names */
                     errx(EXIT_FAILURE, _("*** -F %d needs rpm 6.0.0 or newer"), RPM_FORMAT_V6);
 #endif
                     rpmformat = RPM_FORMAT_V6;

@@ -46,23 +46,24 @@
 #define RPM_LEAD_SIGTYPE               "signature type"
 
 /*
- * The payload digest algorithm tag.  rpm spells this
+ * Main header payload tags.
+ *
+ * rpm spells the payload digest algorithm tag as
  * RPMTAG_PAYLOADDIGESTALGO before 6.0.0 and RPMTAG_PAYLOADSHA256ALGO
  * from 6.0.0 on, but it's 5093 either way.
- */
-#define RPMTAG_PAYLOAD_DIGEST_ALGO     5093
-
-/*
- * Main header payload tags.  The same reasoning as the payload digest
- * algorithm applies: 5092 and 5097 were renamed at 6.0.0 and the rest
- * only arrived with 6.0.0, so we spell out the numbers rather than
- * depend on the release of rpm we build against knowing the names.
+ *
+ * Other tags were renamed in rpm 6.0.0, so
+ * define a name pattern specific to tarpm that we can use.
  */
 #define RPMTAG_PAYLOADSHA256_VALUE        5092
+#define RPMTAG_PAYLOAD_DIGEST_ALGO        5093
 #define RPMTAG_PAYLOADSHA256ALT_VALUE     5097
 #define RPMTAG_PAYLOADSIZE_VALUE          5112
 #define RPMTAG_PAYLOADSIZEALT_VALUE       5113
 #define RPMTAG_RPMFORMAT_VALUE            5114
+#define RPMTAG_FILEMIMEINDEX_VALUE        5115
+#define RPMTAG_MIMEDICT_VALUE             5116
+#define RPMTAG_SOURCENEVR_VALUE           5120
 #define RPMTAG_PAYLOADSHA512_VALUE        5121
 #define RPMTAG_PAYLOADSHA512ALT_VALUE     5122
 #define RPMTAG_PAYLOADSHA3_256_VALUE      5123
@@ -70,12 +71,9 @@
 
 /*
  * Signature header tags.  rpm names these in enum rpmSigTag_e in
- * include/rpm/rpmtag.h, but they are enum values and not macros, so
- * we cannot ask the preprocessor whether the release of rpm we build
- * against knows them.  The numbers never change, so we spell them out
- * here and use these instead.  Everything from 256 up is in the
- * signature range (HEADER_SIGBASE in the rpm source) and 999 is the
- * top of that range (HEADER_SIGTOP).
+ * include/rpm/rpmtag.h.  Everything from 256 up is in the signature
+ * range (HEADER_SIGBASE in the rpm source) and 999 is the top of that
+ * range (HEADER_SIGTOP).
  */
 #define RPMSIGTAG_PUBKEYS_VALUE             266
 #define RPMSIGTAG_FILESIGNATURES_VALUE      274
@@ -87,13 +85,13 @@
 #define RPMSIGTAG_RESERVED_VALUE            999
 
 /*
- * The signature header tags rpmsign owns.  These are the tags
- * deleteSigs() and deleteFileSigs() in sign/rpmgensig.cc in the rpm
- * source throw away before rpmsign writes new ones, which makes them
- * the tags only rpmsign can produce.  Making any of them takes the
- * private signing key, so tarpm reads them out of a package it
+ * The signature header tags rpmsign(1) is responsible for.  These are
+ * the tags deleteSigs() and deleteFileSigs() in sign/rpmgensig.cc in
+ * the rpm source discard before rpmsign writes new ones, which makes
+ * them the tags only rpmsign can produce.  Making any of them takes
+ * the private signing key, so tarpm reads them out of a package it
  * extracts but leaves them out of a package it creates.  Run
- * rpmsign(8) on the new package to put them back.
+ * rpmsign(1) on the new package to put them back.
  */
 #define RPMSIGN_SIGNATURE_TAGS               \
     RPMSIGTAG_DSA,                           \
@@ -117,10 +115,10 @@
 
 /*
  * The signature header tags rpm writes by default, one group per
- * format.  rpmGenerateSignature() in lib/signature.cc in the rpm
- * source puts these in and nothing else, so we build the same groups
- * rather than carry over whatever a package we extracted happened to
- * hold.  rpmsign(8) adds its own tags afterwards.
+ * format version.  rpmGenerateSignature() in lib/signature.cc in the
+ * rpm source puts these in and nothing else, so we build the same
+ * groups rather than carry over whatever a package we extracted
+ * happened to hold.  rpmsign(1) adds its own tags afterwards.
  */
 #define RPMFORMAT_V4_SIGNATURE_TAGS          \
     HEADER_SIGNATURES,                       \
@@ -138,12 +136,13 @@
     RPMSIGTAG_RESERVED_VALUE
 
 /*
- * The main header tags rpm writes for each format.  writeRPM() in
- * build/pack.cc in the rpm source puts these in before it writes the
- * header out, so we add the group for the format we are asked for and
- * take the other group out.  A tag ending in ALT describes the
- * uncompressed payload, the rest describe the payload as it lands in
- * the package.
+ * The main payload digest header tags specific to different RPM
+ * format versions.  writeRPM() in build/pack.cc in the rpm source
+ * puts these in before it writes the header out, so we add the group
+ * for the format we are asked for with a placeholder value and fill
+ * them in once the payload exists.  A tag ending in ALT describes the
+ * uncompressed payload, the rest describe the compressed payload that
+ * is in the package file.
  */
 #define RPMFORMAT_V4_HEADER_TAGS             \
     RPMTAG_PAYLOAD_DIGEST_ALGO,              \
@@ -162,16 +161,70 @@
     RPMTAG_PAYLOADSIZEALT_VALUE
 
 /*
- * The payload compressor a format 6 package carries.  The
- * %_binary_payload macro in macros.in in the rpm source expands to
- * w19.zstdio from format 6 on, so zstd at level 19.
+ * The main header tags exclusive to different RPM format versions.
+ * These are the tags writeRPM() in build/pack.cc,
+ * genCpioListAndHeader() in build/files.cc, rpmfcClassify() in
+ * build/rpmfc.cc and parseSpec() in build/parseSpec.cc in the rpm
+ * source write behind an rpmformat test, so a header built one way
+ * has to give them up before we write it the other way.
+ *
+ * v4 names the payload digest algorithm, classifies its files with
+ * libmagic and counts sizes in 32 bits.  v6 drops all of that: the
+ * algorithms are fixed, files carry a MIME type instead of a libmagic
+ * class, sizes are always 64 bit, and a source package records the
+ * NEVR it was built from.
+ *
+ * The last three go in the signature header.  headerMergeLegacySigs()
+ * in lib/package.cc in the rpm source lets a v4 main header carry
+ * them anyway, which is where a signed package keeps its file
+ * signatures, and turns a v6 package away for carrying any of them.
+ */
+#define RPMFORMAT_V4_ONLY_HEADER_TAGS        \
+    RPMTAG_PAYLOAD_DIGEST_ALGO,              \
+    RPMTAG_SIZE,                             \
+    RPMTAG_FILESIZES,                        \
+    RPMTAG_FILECLASS,                        \
+    RPMTAG_CLASSDICT,                        \
+    RPMTAG_ARCHIVESIZE,                      \
+    RPMTAG_FILESIGNATURES,                   \
+    RPMTAG_FILESIGNATURELENGTH
+
+#define RPMFORMAT_V6_ONLY_HEADER_TAGS        \
+    RPMTAG_RPMFORMAT_VALUE,                  \
+    RPMTAG_PAYLOADSIZE_VALUE,                \
+    RPMTAG_PAYLOADSIZEALT_VALUE,             \
+    RPMTAG_FILEMIMEINDEX_VALUE,              \
+    RPMTAG_MIMEDICT_VALUE,                   \
+    RPMTAG_SOURCENEVR_VALUE,                 \
+    RPMTAG_PAYLOADSHA512_VALUE,              \
+    RPMTAG_PAYLOADSHA512ALT_VALUE,           \
+    RPMTAG_PAYLOADSHA3_256_VALUE,            \
+    RPMTAG_PAYLOADSHA3_256ALT_VALUE
+
+/*
+ * The main header tags common to all format versions.  This is not
+ * every tag a header carries, just the ones sitting next to a group
+ * above: the SHA256 payload digests arrived in v4 and v6 kept them,
+ * and the 64 bit size tags cover every v6 package as well as a v4 one
+ * too large to count in 32 bits.
+ */
+#define RPMFORMAT_COMMON_HEADER_TAGS         \
+    RPMTAG_PAYLOADSHA256_VALUE,              \
+    RPMTAG_PAYLOADSHA256ALT_VALUE,           \
+    RPMTAG_LONGSIZE,                         \
+    RPMTAG_LONGFILESIZES
+
+/*
+ * The payload compressor a v6 package carries.  The %_binary_payload
+ * macro in macros.in in the rpm source expands to w19.zstdio from v6
+ * on, so zstd at level 19.
  */
 #define RPMFORMAT_V6_COMPRESSOR        "zstd"
 #define RPMFORMAT_V6_COMPRESSOR_LEVEL  "19"
 
 /*
  * The lead version byte.  rpmLeadFromHeader() in lib/rpmlead.cc in the
- * rpm source writes 3 for a format 4 package and 4 for a format 6 one.
+ * rpm source writes 3 for a v4 package and 4 for a v6 one.
  */
 #define RPM_LEAD_MAJOR_V4              3
 #define RPM_LEAD_MAJOR_V6              4

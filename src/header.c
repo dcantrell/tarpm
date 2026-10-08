@@ -976,6 +976,15 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         add_file_list_tags(tags_copy, files, payload_dir, dependencies);
     }
 
+    /*
+     * Take out the tags the format we are writing does not carry.
+     * This runs here rather than earlier because the file list tags
+     * we just generated are part of what the format decides.
+     */
+    if (!is_signature) {
+        filter_format_tags(tags_copy, rpmformat);
+    }
+
     /* lay the header out the way rpm would have written it */
     sort_header_tags(tags_copy, is_signature);
 
