@@ -66,6 +66,80 @@ make_test_header(const char *compressor, const char *level)
     return header;
 }
 
+/* Add one tag holding a single number to a tags array */
+static void
+add_number_tag(struct json_object *tags, const rpmTagVal tag, const rpmTagType type, const int64_t value)
+{
+    struct json_object *entry = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tag)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_int64(value));
+    json_object_array_add(tags, entry);
+
+    return;
+}
+
+/* Add one tag holding an array of numbers to a tags array */
+static void
+add_number_array_tag(struct json_object *tags, const rpmTagVal tag, const rpmTagType type, const int64_t *values, const size_t count)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    value = json_object_new_array();
+
+    for (i = 0; i < count; i++) {
+        json_object_array_add(value, json_object_new_int64(values[i]));
+    }
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tag)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, value);
+    json_object_array_add(tags, entry);
+
+    return;
+}
+
+/* Add one tag holding an array of strings to a tags array */
+static void
+add_string_array_tag(struct json_object *tags, const rpmTagVal tag, const char **values, const size_t count)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    value = json_object_new_array();
+
+    for (i = 0; i < count; i++) {
+        json_object_array_add(value, json_object_new_string(values[i]));
+    }
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tag)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_ARRAY_TYPE)));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, value);
+    json_object_array_add(tags, entry);
+
+    return;
+}
+
+/* Give back the tags array of a test header */
+static struct json_object *
+header_tags(struct json_object *header)
+{
+    struct json_object *tags = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
+        return NULL;
+    }
+
+    return tags;
+}
+
 /* Find a tag entry by number, NULL if the header does not carry it */
 static struct json_object *
 lookup_tag(struct json_object *header, const rpmTagVal tag)
@@ -104,6 +178,51 @@ tag_string(struct json_object *entry)
     }
 
     return json_object_get_string(value);
+}
+
+/* Give back the type a tag entry records */
+static rpmTagType
+entry_type(struct json_object *entry)
+{
+    struct json_object *type = NULL;
+
+    if (entry == NULL || !json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &type)) {
+        return RPM_NULL_TYPE;
+    }
+
+    return tag_type(type);
+}
+
+/* Give back the first number a tag entry records */
+static int64_t
+tag_number(struct json_object *entry)
+{
+    struct json_object *value = NULL;
+
+    if (entry == NULL || !json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+        return -1;
+    }
+
+    if (json_object_get_type(value) == json_type_array) {
+        value = json_object_array_get_idx(value, 0);
+    }
+
+    return json_object_get_int64(value);
+}
+
+/* Return true if the group holds the tag */
+static bool
+tag_in_group(const rpmTagVal *group, const size_t ngroup, const rpmTagVal tag)
+{
+    size_t i = 0;
+
+    for (i = 0; i < ngroup; i++) {
+        if (group[i] == tag) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /* Write a gzip compressed cpio payload holding one file */
@@ -195,7 +314,7 @@ test_apply_rpmformat_v6(void)
     /* the v4 digest algorithm tag has no place here */
     TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_PAYLOAD_DIGEST_ALGO));
 
-    /* and gzip gives way to the compressor rpm picks from format 6 on */
+    /* and gzip gives way to the compressor rpm picks from v6 on */
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADCOMPRESSOR)), RPMFORMAT_V6_COMPRESSOR);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADFLAGS)), RPMFORMAT_V6_COMPRESSOR_LEVEL);
 
@@ -261,6 +380,212 @@ test_apply_rpmformat_bad_input(void)
     /* a header with no tags array is no good to us */
     header = json_object_new_object();
     TARPM_ASSERT_NOT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_format_tag_groups(void)
+{
+    size_t i = 0;
+    static const rpmTagVal common[] = { RPMFORMAT_COMMON_HEADER_TAGS };
+    static const rpmTagVal v4only[] = { RPMFORMAT_V4_ONLY_HEADER_TAGS };
+    static const rpmTagVal v6only[] = { RPMFORMAT_V6_ONLY_HEADER_TAGS };
+
+    /* a tag belongs to one group and no more */
+    for (i = 0; i < (sizeof(common) / sizeof(common[0])); i++) {
+        TARPM_ASSERT_FALSE(tag_in_group(v4only, sizeof(v4only) / sizeof(v4only[0]), common[i]));
+        TARPM_ASSERT_FALSE(tag_in_group(v6only, sizeof(v6only) / sizeof(v6only[0]), common[i]));
+    }
+
+    for (i = 0; i < (sizeof(v4only) / sizeof(v4only[0])); i++) {
+        TARPM_ASSERT_FALSE(tag_in_group(v6only, sizeof(v6only) / sizeof(v6only[0]), v4only[i]));
+    }
+
+    return;
+}
+
+void
+test_filter_format_tags_to_v4(void)
+{
+    static const int64_t sizes[] = { 11, 22, 33 };
+    static const char *signatures[] = { "0302", "0302", "0302" };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* a header the way a v6 package leaves one */
+    header = make_test_header("zstd", "19");
+    tags = header_tags(header);
+    add_string_array_tag(tags, RPMTAG_FILESIGNATURES, signatures, 3);
+    add_number_tag(tags, RPMTAG_RPMFORMAT_VALUE, RPM_INT32_TYPE, 6);
+    add_number_tag(tags, RPMTAG_PAYLOADSIZE_VALUE, RPM_INT64_TYPE, 4096);
+    add_number_tag(tags, RPMTAG_LONGSIZE, RPM_INT64_TYPE, 66);
+    add_number_array_tag(tags, RPMTAG_LONGFILESIZES, RPM_INT64_TYPE, sizes, 3);
+
+    filter_format_tags(tags, RPM_FORMAT_V4);
+
+    /* the tags only a v6 header carries are gone */
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_RPMFORMAT_VALUE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_PAYLOADSIZE_VALUE));
+
+    /* and the sizes moved over to the 32 bit spelling, numbers intact */
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_SIZE)), 66);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_FILESIZES)), 11);
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_SIZE)), RPM_INT32_TYPE);
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_FILESIZES)), RPM_INT32_TYPE);
+
+    /* a v4 header may hold the file signatures */
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_FILESIGNATURES));
+
+    /* a tag neither group owns stays put */
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_NAME));
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_to_v6(void)
+{
+    static const int64_t sizes[] = { 11, 22, 33 };
+    static const int64_t classes[] = { 0, 0, 1 };
+    static const char *signatures[] = { "0302", "0302", "0302" };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* a header the way a v4 package leaves one */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_PAYLOAD_DIGEST_ALGO, RPM_INT32_TYPE, 8);
+    add_number_tag(tags, RPMTAG_SIZE, RPM_INT32_TYPE, 66);
+    add_number_array_tag(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, sizes, 3);
+    add_number_array_tag(tags, RPMTAG_FILECLASS, RPM_INT32_TYPE, classes, 3);
+    add_string_array_tag(tags, RPMTAG_FILESIGNATURES, signatures, 3);
+
+    filter_format_tags(tags, RPM_FORMAT_V6);
+
+    /* the tags only a v4 header carries are gone */
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_PAYLOAD_DIGEST_ALGO));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILECLASS));
+
+    /* including the file signatures only a v4 header may hold */
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIGNATURES));
+
+    /* and the sizes moved over to the 64 bit spelling, numbers intact */
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGSIZE)), 66);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGFILESIZES)), 11);
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_LONGSIZE)), RPM_INT64_TYPE);
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_LONGFILESIZES)), RPM_INT64_TYPE);
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_keeps_large_sizes(void)
+{
+    static const int64_t sizes[] = { 11, 5000000000LL };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* a v4 package counts in 64 bits when a number will not fit */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_LONGSIZE, RPM_INT64_TYPE, 5000000000LL);
+    add_number_array_tag(tags, RPMTAG_LONGFILESIZES, RPM_INT64_TYPE, sizes, 2);
+
+    filter_format_tags(tags, RPM_FORMAT_V4);
+
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_prefers_32_bit_sizes(void)
+{
+    static const int64_t fresh[] = { 11, 22 };
+    static const int64_t stale[] = { 99, 99 };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /*
+     * A header carrying both spellings keeps the 32 bit one, since
+     * that is the one we rebuild from the payload tree.
+     */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_array_tag(tags, RPMTAG_LONGFILESIZES, RPM_INT64_TYPE, stale, 2);
+    add_number_array_tag(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, fresh, 2);
+
+    filter_format_tags(tags, RPM_FORMAT_V6);
+
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGFILESIZES)), 11);
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_twice(void)
+{
+    static const int64_t sizes[] = { 11, 22 };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* running over the same array again changes nothing */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_SIZE, RPM_INT32_TYPE, 66);
+    add_number_array_tag(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, sizes, 2);
+
+    filter_format_tags(tags, RPM_FORMAT_V6);
+    filter_format_tags(tags, RPM_FORMAT_V6);
+
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 5);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGSIZE)), 66);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGFILESIZES)), 11);
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_bad_input(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* nothing to do and nothing thrown away */
+    filter_format_tags(NULL, RPM_FORMAT_V4);
+
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_RPMFORMAT_VALUE, RPM_INT32_TYPE, 6);
+
+    filter_format_tags(tags, 5);
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_RPMFORMAT_VALUE));
+
     json_object_put(header);
 
     return;
@@ -376,13 +701,20 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test apply_rpmformat() format 4", test_apply_rpmformat_v4) == NULL ||
-        CU_add_test(pSuite, "test apply_rpmformat() format 6", test_apply_rpmformat_v6) == NULL ||
+    if (CU_add_test(pSuite, "test apply_rpmformat() v4", test_apply_rpmformat_v4) == NULL ||
+        CU_add_test(pSuite, "test apply_rpmformat() v6", test_apply_rpmformat_v6) == NULL ||
         CU_add_test(pSuite, "test apply_rpmformat() keeps the zstd level", test_apply_rpmformat_keeps_zstd_level) == NULL ||
-        CU_add_test(pSuite, "test apply_rpmformat() format 6 back to 4", test_apply_rpmformat_v6_to_v4) == NULL ||
+        CU_add_test(pSuite, "test apply_rpmformat() v6 back to v4", test_apply_rpmformat_v6_to_v4) == NULL ||
         CU_add_test(pSuite, "test apply_rpmformat() bad input", test_apply_rpmformat_bad_input) == NULL ||
-        CU_add_test(pSuite, "test update_payload_tags() format 4", test_update_payload_tags_v4) == NULL ||
-        CU_add_test(pSuite, "test update_payload_tags() format 6", test_update_payload_tags_v6) == NULL ||
+        CU_add_test(pSuite, "test the format tag groups do not overlap", test_format_tag_groups) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() down to v4", test_filter_format_tags_to_v4) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() up to v6", test_filter_format_tags_to_v6) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() keeps large sizes", test_filter_format_tags_keeps_large_sizes) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() prefers the 32 bit sizes", test_filter_format_tags_prefers_32_bit_sizes) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() run twice", test_filter_format_tags_twice) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() bad input", test_filter_format_tags_bad_input) == NULL ||
+        CU_add_test(pSuite, "test update_payload_tags() v4", test_update_payload_tags_v4) == NULL ||
+        CU_add_test(pSuite, "test update_payload_tags() v6", test_update_payload_tags_v6) == NULL ||
         CU_add_test(pSuite, "test update_payload_tags() bad input", test_update_payload_tags_bad_input) == NULL) {
         return NULL;
     }

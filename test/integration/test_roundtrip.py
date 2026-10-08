@@ -271,7 +271,7 @@ class RoundTrip(object):
 
     def assertVerifies(self, pkg):
         """Assert rpm agrees with the header and payload digests in a package"""
-        # tarpm leaves signing to rpmsign(8), so the packages we write
+        # tarpm leaves signing to rpmsign(1), so the packages we write
         # carry digests and nothing else.  Explicitly tell rpm we are only
         # doing digest verification in the test suite.
         proc = subprocess.Popen(

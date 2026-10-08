@@ -255,11 +255,11 @@ get_suite(void)
         return NULL;
     }
 
-    if (CU_add_test(pSuite, "test make_signature() for format 4", test_make_signature_v4) == NULL) {
+    if (CU_add_test(pSuite, "test make_signature() for v4", test_make_signature_v4) == NULL) {
         return NULL;
     }
 
-    if (CU_add_test(pSuite, "test make_signature() for format 6", test_make_signature_v6) == NULL) {
+    if (CU_add_test(pSuite, "test make_signature() for v6", test_make_signature_v6) == NULL) {
         return NULL;
     }
 

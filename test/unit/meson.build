@@ -23,6 +23,8 @@ if cunit.found()
           files_src,
           listfuncs_src,
           strfuncs_src,
+          digest_src,
+          format_src,
           header_src,
           entry_src,
           joinpath_src,
@@ -34,7 +36,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -117,6 +119,8 @@ if cunit.found()
           files_src,
           listfuncs_src,
           strfuncs_src,
+          digest_src,
+          format_src,
           header_src,
           tags_src,
           read_src,
@@ -128,7 +132,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, jsonc, rpm, openssl, magic ],
+        dependencies : [ cunit, jsonc, rpm, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -315,6 +319,7 @@ if cunit.found()
           listfuncs_src,
           strfuncs_src,
           digest_src,
+          format_src,
           header_src,
           entry_src,
           tags_src,
@@ -382,6 +387,8 @@ if cunit.found()
           files_src,
           listfuncs_src,
           strfuncs_src,
+          digest_src,
+          format_src,
           header_src,
           entry_src,
           joinpath_src,
@@ -393,7 +400,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
@@ -407,6 +414,8 @@ if cunit.found()
           files_src,
           listfuncs_src,
           strfuncs_src,
+          digest_src,
+          format_src,
           header_src,
           entry_src,
           joinpath_src,
@@ -418,7 +427,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, openssl, magic ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 

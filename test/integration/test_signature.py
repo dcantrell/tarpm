@@ -469,7 +469,7 @@ class VerifyCreateIgnoresEditedSignature(TestUnpackRPM):
 
 
 class VerifyCreateFormatFour(TestUnpackRPM):
-    """Asking for format 4 gives us the same package the default does"""
+    """Asking for v4 gives us the same package the default does"""
 
     def setUp(self):
         super().setUp()
@@ -503,7 +503,7 @@ class VerifyCreateFormatFour(TestUnpackRPM):
 
 class VerifyCreateFormatSix(TestUnpackRPM):
     """
-    Asking for format 6 gives us the signature header rpm writes for
+    Asking for v6 gives us the signature header rpm writes for
     that format, which is digests of the main header and nothing else.
     """
 

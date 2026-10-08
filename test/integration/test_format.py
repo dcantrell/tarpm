@@ -17,13 +17,22 @@ from baseclass import NAME, TestUnpackRPM
 V4_HEADER_TAGS = [5092, 5093, 5097]
 V6_HEADER_TAGS = [5092, 5097, 5112, 5113, 5114, 5121, 5122, 5123, 5124]
 
+# The main header tags only one of the two formats carries.  See the
+# RPMFORMAT_V*_ONLY_HEADER_TAGS groups in include/constants.h.
+V4_ONLY_TAGS = [1009, 1028, 1046, 1141, 1142, 5090, 5091, 5093]
+V6_ONLY_TAGS = [5112, 5113, 5114, 5115, 5116, 5120, 5121, 5122, 5123, 5124]
+
+# The size tags in their 32 bit and their 64 bit spelling
+SIZE_TAGS = [1009, 1028]
+LONG_SIZE_TAGS = [5008, 5009]
+
 # The lead major version each format carries.  rpmLeadFromHeader() in
 # lib/rpmlead.cc in the rpm source goes by whether the main header
 # carries RPMTAG_RPMFORMAT.
 V4_LEAD_MAJOR = 3
 V6_LEAD_MAJOR = 4
 
-# The compressor rpm picks from format 6 on
+# The compressor rpm picks from v6 on
 V6_COMPRESSOR = "zstd"
 V6_COMPRESSOR_LEVEL = "19"
 
@@ -74,6 +83,18 @@ def tag_numbers(entries):
     return [tag for (tag, tagtype, offset, count) in entries]
 
 
+def size_values(pkg, tag, width):
+    """Return the numbers a size tag records in the main header of an RPM"""
+    entries, data = main_header(pkg)
+
+    for tagnum, tagtype, offset, count in entries:
+        if tagnum == tag:
+            fmt = ">%d%s" % (count, "I" if width == 4 else "Q")
+            return list(struct.unpack_from(fmt, data, offset))
+
+    return []
+
+
 def extracted_header(test, pkg, where):
     """Extract an RPM and return the header.json it writes"""
     out_dir = os.path.join(test.output_dir, where)
@@ -92,6 +113,21 @@ def extracted_header(test, pkg, where):
 def header_tags(header):
     """Return the tags of a header.json keyed by tag name"""
     return dict((tag["tag"], tag.get("value")) for tag in header["tags"])
+
+
+def add_string_array_tag(path, name, values):
+    """Add one tag holding an array of strings to a header.json"""
+    f = open(path)
+    header = json.load(f)
+    f.close()
+
+    header["tags"].append({"tag": name, "type": "string array", "value": values})
+
+    f = open(path, "w")
+    json.dump(header, f)
+    f.close()
+
+    return
 
 
 def set_compressor(path, compressor, level):
@@ -114,7 +150,7 @@ def set_compressor(path, compressor, level):
 
 
 class VerifyCreateFormatFourHeader(TestUnpackRPM):
-    """A format 4 package carries the payload digest tags rpm writes for format 4"""
+    """A v4 package carries the payload digest tags rpm writes for v4"""
 
     def setUp(self):
         super().setUp()
@@ -137,16 +173,16 @@ class VerifyCreateFormatFourHeader(TestUnpackRPM):
         for tag in V4_HEADER_TAGS:
             self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
 
-        # nothing only a format 6 package carries
+        # nothing only a v6 package carries
         for tag in [5112, 5113, 5114, 5121, 5122, 5123, 5124]:
             self.assertFalse(tag in tags, msg="main header carries %d" % tag)
 
-        # and the lead says format 4
+        # and the lead says v4
         self.assertEqual(lead_major(created), V4_LEAD_MAJOR)
 
 
 class VerifyCreateFormatSixHeader(TestUnpackRPM):
-    """A format 6 package carries the format tag and the format 6 digests"""
+    """A v6 package carries the format tag and the v6 digests"""
 
     def setUp(self):
         super().setUp()
@@ -169,15 +205,15 @@ class VerifyCreateFormatSixHeader(TestUnpackRPM):
         for tag in V6_HEADER_TAGS:
             self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
 
-        # the digest algorithm tag belongs to format 4 only
+        # the digest algorithm tag belongs to v4 only
         self.assertFalse(5093 in tags, msg="main header carries 5093")
 
-        # and the lead says format 6
+        # and the lead says v6
         self.assertEqual(lead_major(created), V6_LEAD_MAJOR)
 
 
 class VerifyCreateFormatSixRpmformat(TestUnpackRPM):
-    """The format tag of a format 6 package names the format"""
+    """The format tag of a v6 package names the format"""
 
     def setUp(self):
         super().setUp()
@@ -199,7 +235,7 @@ class VerifyCreateFormatSixRpmformat(TestUnpackRPM):
 
 
 class VerifyCreateFormatSixCompression(TestUnpackRPM):
-    """A format 6 package is compressed the way rpm compresses one"""
+    """A v6 package is compressed the way rpm compresses one"""
 
     def setUp(self):
         super().setUp()
@@ -225,7 +261,7 @@ class VerifyCreateFormatSixCompression(TestUnpackRPM):
 
 
 class VerifyCreateFormatFourCompression(TestUnpackRPM):
-    """A format 4 package keeps the compressor the metadata names"""
+    """A v4 package keeps the compressor the metadata names"""
 
     def setUp(self):
         super().setUp()
@@ -251,7 +287,7 @@ class VerifyCreateFormatFourCompression(TestUnpackRPM):
 
 class VerifyCreateFormatSixPayloadDigests(TestUnpackRPM):
     """
-    The payload digests of a format 6 package cover the payload, and
+    The payload digests of a v6 package cover the payload, and
     the ALT ones cover the same payload with the compression taken off.
     """
 
@@ -295,8 +331,8 @@ class VerifyCreateFormatSixPayloadDigests(TestUnpackRPM):
 
 class VerifyCreateFormatSixDropsFormatTags(TestUnpackRPM):
     """
-    Writing a format 4 package from a format 6 one takes the tags only
-    format 6 owns back out again.
+    Writing a v4 package from a v6 one takes the tags only
+    v6 owns back out again.
     """
 
     def setUp(self):
@@ -314,13 +350,13 @@ class VerifyCreateFormatSixDropsFormatTags(TestUnpackRPM):
         )
         self.assertEqual(rc, 0, msg=err)
 
-        # extracting the format 6 package gives us its format 6 tags
+        # extracting the v6 package gives us its v6 tags
         six_dir = os.path.join(self.output_dir, "six")
         os.makedirs(six_dir)
         rc, out, err = run_tarpm([self.tarpm, "-x", "-f", six, "-O", six_dir])
         self.assertEqual(rc, 0, msg=err)
 
-        # writing it back out as format 4 leaves none of them behind
+        # writing it back out as v4 leaves none of them behind
         four = os.path.join(self.output_dir, "four.rpm")
         rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", four, six_dir])
         self.assertEqual(rc, 0, msg=err)
@@ -335,3 +371,176 @@ class VerifyCreateFormatSixDropsFormatTags(TestUnpackRPM):
             self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
 
         self.assertEqual(lead_major(four), V4_LEAD_MAJOR)
+
+
+class VerifyCreateFormatFourDropsFormatTags(TestUnpackRPM):
+    """
+    Writing a v6 package from a v4 one takes the tags only
+    v4 owns back out again.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        four = os.path.join(self.output_dir, "four.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        # extracting the v4 package gives us its v4 tags
+        four_dir = os.path.join(self.output_dir, "four")
+        os.makedirs(four_dir)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", four, "-O", four_dir])
+        self.assertEqual(rc, 0, msg=err)
+
+        # writing it back out as v6 leaves none of them behind
+        six = os.path.join(self.output_dir, "six.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "6", "-f", six, four_dir])
+        self.assertEqual(rc, 0, msg=err)
+
+        entries, data = main_header(six)
+        tags = tag_numbers(entries)
+
+        for tag in V4_ONLY_TAGS:
+            self.assertFalse(tag in tags, msg="main header carries %d" % tag)
+
+        for tag in V6_HEADER_TAGS:
+            self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
+
+        self.assertEqual(lead_major(six), V6_LEAD_MAJOR)
+
+
+class VerifyCreateFormatFileSignatures(TestUnpackRPM):
+    """
+    A signed package keeps its file signatures in the main header,
+    which rpm(8) only lets a v4 package do.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        # the tag rpmsign(1) leaves in the main header of a v4 package
+        add_string_array_tag(self.header, "Filesignatures", ["0302", "0302"])
+
+        four = os.path.join(self.output_dir, "four.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        six = os.path.join(self.output_dir, "six.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "6", "-f", six, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        entries, data = main_header(four)
+        self.assertTrue(5090 in tag_numbers(entries), msg="main header is missing 5090")
+
+        entries, data = main_header(six)
+        self.assertFalse(5090 in tag_numbers(entries), msg="main header carries 5090")
+
+        # rpm(8) turns away a package that gets this wrong
+        for pkg in [four, six]:
+            rc, out, err = run_tarpm(
+                ["rpm", "--define", "_pkgverify_level digest", "-K", pkg]
+            )
+            self.assertEqual(rc, 0, msg=out + err)
+
+
+class VerifyCreateFormatFourSizeTags(TestUnpackRPM):
+    """A v4 package counts its sizes in the 32 bit size tags"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", created, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        entries, data = main_header(created)
+        tags = tag_numbers(entries)
+
+        for tag in SIZE_TAGS:
+            self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
+
+        for tag in LONG_SIZE_TAGS:
+            self.assertFalse(tag in tags, msg="main header carries %d" % tag)
+
+
+class VerifyCreateFormatSixSizeTags(TestUnpackRPM):
+    """A v6 package counts its sizes in the 64 bit size tags"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "6", "-f", created, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        entries, data = main_header(created)
+        tags = tag_numbers(entries)
+
+        for tag in LONG_SIZE_TAGS:
+            self.assertTrue(tag in tags, msg="main header is missing %d" % tag)
+
+        for tag in SIZE_TAGS:
+            self.assertFalse(tag in tags, msg="main header carries %d" % tag)
+
+
+class VerifyCreateFormatSizesMatch(TestUnpackRPM):
+    """The two spellings of the size tags count the same bytes"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        four = os.path.join(self.output_dir, "four.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        six = os.path.join(self.output_dir, "six.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "6", "-f", six, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        # the installed size and then the size of every file
+        self.assertEqual(size_values(four, 1009, 4), size_values(six, 5009, 8))
+        self.assertEqual(size_values(four, 1028, 4), size_values(six, 5008, 8))
