@@ -164,7 +164,7 @@ Core functionality that still needs to happen:
         [ ] What would be in the spec file?
 
     [ ] Binary RPM
-        [ ] Minimum required for lead.json
+        [*] Minimum required for lead.json
 
         [*] Do we need signature.json?  No, we generate the signature
             header ourselves.
