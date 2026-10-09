@@ -114,15 +114,15 @@ default is 4.  May only be used when creating an RPM.  This is the
 same thing rpm(8) does with its %_rpmformat macro.
 .RS
 .PP
-A format 4 signature header carries the Sha1, Sha256, Size, Md5, and
-Payloadsize tags along with the reserved space rpmsign(8) writes in
-to.  A format 6 one carries the Sha256 and Sha3_256 digests of the
-main header and the reserved space, and nothing else.
+A v4 signature header carries the Sha1, Sha256, Size, Md5, and
+Payloadsize tags along with the reserved space rpmsign(1) writes in
+to.  A v6 one carries the Sha256 and Sha3_256 digests of the main
+header and the reserved space, and nothing else.
 .PP
 The main header carries the payload digests the format calls for.  A
-format 4 package gets Payloadsha256, Payloadsha256alt, and the
-Payloaddigestalgo tag naming the algorithm.  A format 6 package gets
-the Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
+v4 package gets Payloadsha256, Payloadsha256alt, and the
+Payloaddigestalgo tag naming the algorithm.  A v6 package gets the
+Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
 Payloadsha256, Payloadsha512, and Payloadsha3_256 digests along with
 the alt form of each.  The alt digests cover the payload with the
 compression taken back off, the others cover the payload as it lands
@@ -130,11 +130,34 @@ in the package.  The tags the other format owns are taken out, so
 writing a package you extracted from one format as the other leaves
 nothing behind.
 .PP
-The lead records the format in its major version, which is 3 for
-format 4 and 4 for format 6.  A format 6 package is compressed with
-zstd at level 19, which is what rpm(8) picks from format 6 on.  A
-package whose metadata already names zstd keeps the level it came
-with.  Nothing else about the payload changes.
+Each format has main header tags the other one never uses.  tarpm
+takes out the ones that do not belong, so you do not have to edit
+\f[B]header.json\f[R] yourself before switching formats.  The v4 tags
+are Payloaddigestalgo, Fileclass, Classdict, Size, Filesizes,
+Archivesize, Filesignatures, and Filesignaturelength.  The v6 tags
+are Rpmformat, Payloadsize, Payloadsizealt, Filemimeindex, Mimedict,
+Sourcenevr, Payloadsha512, Payloadsha512alt, Payloadsha3_256, and
+Payloadsha3_256alt.
+.PP
+File sizes survive the switch.  A v4 package counts them in Size and
+Filesizes and a v6 package counts them in Longsize and
+Longfilesizes.  tarpm writes whichever pair the format wants and the
+numbers stay the same.  A v4 package uses the 64 bit tags when a size
+is too large for the 32 bit ones, the same as rpm(8).
+.PP
+Two things do not survive.  A v4 package describes each file with a
+Fileclass and a v6 package describes it with a MIME type, and neither
+one can be turned into the other, so the new package goes without.
+The rpmlib() entries in \f[B]dependencies\f[R] are left alone as
+well, so a package you convert to v6 keeps the ones rpm(8) only adds
+for v4.  Edit \f[B]dependencies\f[R] yourself if you do not want
+them.
+.PP
+The lead records the format in its major version, which is 3 for v4
+and 4 for v6.  A v6 package is compressed with zstd at level 19, which
+is what rpm(8) picks from v6 on.  A package whose metadata already
+names zstd keeps the level it came with.  Nothing else about the
+payload changes.
 .RE
 .TP
 \f[B]\-m\f[R], \f[B]\-\-payload\-mtime\f[R]
@@ -216,14 +239,14 @@ Just like the lead.  To reiterate this point, the tags in
 \f[B]signature.json\f[R] carry a read\-only marker, the same as in the
 \f[B]lead.json\f[R] file.
 .PP
-A package built by rpmbuild(8) and then signed by rpmsign(8) carries
-signature tags that only rpmsign(8) can make, which are Dsa, Rsa,
+A package built by rpmbuild(1) and then signed by rpmsign(1) carries
+signature tags that only rpmsign(1) can make, which are Dsa, Rsa,
 Pgp, Gpg, Pgp5, Openpgp, Filesignatures, Filesignaturelength,
 Veritysignatures, and Veritysignaturealgo.  \f[B]tarpm\f[R] reads all
 of them out of a package and writes them to \f[B]signature.json\f[R]
 so you can see what the package carries, but it leaves every one of
 them out of a package it creates because making them takes the
-private signing key.  Run rpmsign(8) on the new package to sign it
+private signing key.  Run rpmsign(1) on the new package to sign it
 again.
 .RE
 .TP
@@ -528,8 +551,8 @@ package is empty, making one up from the file mode or, for a symlink,
 from the link target. An empty class is therefore not always what
 \(dqrpm \-qp \-\-queryformat\(dq shows you.
 .SH SEE ALSO
-\f[B]rpmbuild\f[R](1), \f[B]tar\f[R](1), \f[B]file\f[R](1),
-\f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)
+\f[B]rpmbuild\f[R](1), \f[B]rpmsign\f[R](1), \f[B]tar\f[R](1),
+\f[B]file\f[R](1), \f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)
 .SH AUTHOR
 .PP
 .nf
