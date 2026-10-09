@@ -465,6 +465,34 @@ get_tag_number(struct json_object *entry, bool signature)
 }
 
 /*
+ * Given a "tags" array from a header JSON file, return true if it
+ * carries an entry for the named tag.  Unlike get_tag_value() this
+ * does not care whether the entry holds its value inline or in a
+ * file alongside header.json.
+ */
+bool
+has_tag(const struct json_object *tags, const char *tag)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    if (tags == NULL || tag == NULL || json_object_get_type(tags) != json_type_array) {
+        return false;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) && !strcmp(tag, json_object_get_string(value))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
  * Given a "tags" array from a header JSON file, find the entry whose
  * "tag" field matches name and return its value as a string.  Returns
  * NULL if there is no match.  Caller must not free the string.

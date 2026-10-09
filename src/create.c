@@ -504,7 +504,7 @@ collect_file_list_tags(struct json_object *tags, struct hdr_file_lists *hfl)
                     hfl->dirnames = value;
                 } else if (tagnum == RPMTAG_DIRINDEXES) {
                     hfl->dirindexes = value;
-                } else if (tagnum == RPMTAG_FILESIZES) {
+                } else if (tagnum == RPMTAG_FILESIZES || tagnum == RPMTAG_LONGFILESIZES) {
                     hfl->filesizes = value;
                 } else if (tagnum == RPMTAG_FILEMODES) {
                     hfl->filemodes = value;
@@ -528,6 +528,51 @@ collect_file_list_tags(struct json_object *tags, struct hdr_file_lists *hfl)
     }
 
     return;
+}
+
+/*
+ * Returns true if rpm would take the file list.  This checks what
+ * indexSane() in lib/rpmfi.cc checks: the three list tags are there
+ * together, they hold the same number of files, and every dirindex
+ * names a real dirname.  A package with no files carries none of the
+ * three and is fine.  Sets numfiles to the length of the list.
+ */
+static bool
+valid_file_list(const struct hdr_file_lists *hfl, size_t *numfiles)
+{
+    size_t i = 0;
+    size_t nbasenames = 0;
+    size_t ndirnames = 0;
+    int dirindex = 0;
+
+    *numfiles = 0;
+
+    if (hfl->basenames == NULL && hfl->dirnames == NULL && hfl->dirindexes == NULL) {
+        return true;
+    }
+
+    if (hfl->basenames == NULL || hfl->dirnames == NULL || hfl->dirindexes == NULL) {
+        return false;
+    }
+
+    nbasenames = json_object_array_length(hfl->basenames);
+    ndirnames = json_object_array_length(hfl->dirnames);
+
+    if (json_object_array_length(hfl->dirindexes) != nbasenames) {
+        return false;
+    }
+
+    for (i = 0; i < nbasenames; i++) {
+        dirindex = json_object_get_int(json_object_array_get_idx(hfl->dirindexes, i));
+
+        if (dirindex < 0 || (size_t) dirindex >= ndirnames) {
+            return false;
+        }
+    }
+
+    *numfiles = nbasenames;
+
+    return true;
 }
 
 /*
@@ -763,21 +808,32 @@ create_payload(struct json_object *header, const char *payload_dir)
         need_free_tags = true;
     }
 
-    /* Get file lists from header */
+    /*
+     * Get file lists from header.  add_file_list_tags() generated
+     * these from the "files" array, so anything wrong here is a tarpm
+     * bug and not bad input.
+     */
     collect_file_list_tags(tags, &hfl);
 
-    if (!hfl.basenames || !hfl.dirnames || !hfl.dirindexes) {
-        warnx(_("*** missing file list tags in header"));
+    if (!valid_file_list(&hfl, &numfiles)) {
+        warnx(_("*** generated file list tags are inconsistent"));
+
+        if (need_free_tags) {
+            json_object_put(tags);
+        }
+
         return -1;
     }
 
-    if (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos || !hfl.fileinodes) {
-        warnx(_("*** missing file metadata tags in header"));
+    if (numfiles > 0 && (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos || !hfl.fileinodes)) {
+        warnx(_("*** missing generated file metadata tags in header data"));
+
+        if (need_free_tags) {
+            json_object_put(tags);
+        }
+
         return -1;
     }
-
-    /* how many files in the payload */
-    numfiles = json_object_array_length(hfl.basenames);
 
     /* get the package name and create a temporary payload file */
     tag = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
@@ -1448,8 +1504,27 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
+    /*
+     * Fill in the tags we can work out ourselves.  This runs first
+     * because the payload scan below goes by the digest algorithm and
+     * the package type it leaves behind.
+     */
+    if (apply_header_defaults(header, rpmformat) != 0) {
+        json_object_put(header);
+        json_object_put(signature);
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
+
     /* pick up the files added to the payload tree */
-    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) && json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
+        /* a tree naming no files gets a list built from the payload */
+        if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
+            files = json_object_new_array();
+            json_object_object_add(header, RPM_FILES_DESC, files);
+        }
+
         add_payload_files(tags, files, payload_dir);
     }
 

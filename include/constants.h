@@ -260,6 +260,19 @@
 #define RPM_DEPENDENCY_COMPARISON_DESC "comparison"
 #define RPM_DEPENDENCY_VERSION_DESC    "version"
 #define RPM_DEPENDENCY_TYPE_DESC       "type"
+#define RPM_DEPENDENCY_PROVIDES_KEY    "provides"
+
+/*
+ * The values apply_header_defaults() writes for the main header tags
+ * a package needs but a user has no reason to name.  Name, Version
+ * and Release are the only three with no value we can work out, so
+ * they are not here.
+ */
+#define RPM_DEFAULT_OS                 "linux"
+#define RPM_DEFAULT_PAYLOADFORMAT      "cpio"
+#define RPM_DEFAULT_PAYLOADCOMPRESSOR  "gzip"
+#define RPM_DEFAULT_PAYLOADFLAGS       "9"
+#define RPM_DEFAULT_SOURCERPM          "(none)"
 
 /*
  * RPMTAG_BUILDTIME is an int32 in the header, but it is recorded in

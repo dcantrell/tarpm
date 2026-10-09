@@ -248,6 +248,22 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
 }
 
 /*
+ * Return the key an entry keeps its value under.  A file backed tag
+ * names the file holding its value, but a hand written header.json
+ * can carry that value inline instead, so fall back to the value key.
+ * NOTE: Do not free() what this function returns.
+ */
+static const char *
+entry_value_key(struct json_object *entry, const rpmTagVal tag)
+{
+    if (is_file_tag(tag) && json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, NULL)) {
+        return RPM_ENTRY_FILE_DESC;
+    }
+
+    return RPM_ENTRY_VALUE_DESC;
+}
+
+/*
  * How many bytes of padding a type needs at this point in the data
  * area.  rpm lines the numbers up on their own size.
  */
@@ -292,14 +308,8 @@ get_item_size(size_t index, struct json_object *entry, const struct tagfile *tag
     tag_number = get_tag_number(entry, is_signature);
 
     /* get the value field from the entry */
-    if (is_file_tag(tag_number)) {
-        if (!json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, &key)) {
-            return 0;
-        }
-    } else {
-        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &key)) {
-            return 0;
-        }
+    if (!json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key)) {
+        return 0;
     }
 
     if (entry_type == RPM_BIN_TYPE) {
@@ -353,7 +363,7 @@ get_item_size(size_t index, struct json_object *entry, const struct tagfile *tag
         }
     } else {
         /* string data: length + NUL */
-        if (is_file_tag(tag_number)) {
+        if (tagfiles[index].present) {
             /*
              * The file was read before the header was sized so we
              * already know the size of this tag.
@@ -373,7 +383,6 @@ get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, i
 {
     size_t datasize = 0;
     size_t i = 0;
-    const char *field = NULL;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     rpmTagVal tag_number = 0;
@@ -398,15 +407,8 @@ get_data_buffer_size(struct json_object *tags, const struct tagfile *tagfiles, i
         tag_number = get_tag_number(entry, is_signature);
         entry_type = get_entry_type(entry);
 
-        /* get the field name based on the tag number */
-        if (is_file_tag(tag_number)) {
-            field = RPM_ENTRY_FILE_DESC;
-        } else {
-            field = RPM_ENTRY_VALUE_DESC;
-        }
-
         /* get the value and calculate size */
-        if (json_object_object_get_ex(entry, field, &key)) {
+        if (json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key)) {
             item_size = get_item_size(i, entry, tagfiles, trailer_index, trailer_size, is_signature);
 
             /* sequential calculation with alignment */
@@ -553,23 +555,27 @@ write_strings(struct data_writer *w, struct json_object *key)
 
 /*
  * Write the single string a tag carries.  A file backed tag gets the
- * bytes we read before the header was sized, so this matches what
- * get_item_size() counted.  A tag with no file named for it carries
- * the empty string and both passes account for just its NUL.
+ * bytes we read before the header was sized, which is what
+ * get_item_size() counted.  Everything else writes the value the
+ * entry carries inline.
  */
 static void
-write_string(struct data_writer *w, const struct tagfile *tagfile, const rpmTagVal tag, struct json_object *key)
+write_string(struct data_writer *w, const struct tagfile *tagfile, struct json_object *key)
 {
     const char *str = NULL;
 
-    if (!is_file_tag(tag)) {
-        str = json_object_get_string(key);
-        put_string(w, str, strlen(str));
-    } else if (tagfile->present) {
+    if (tagfile->present) {
         put_string(w, (const char *) tagfile->data, tagfile->len);
-    } else {
-        put_string(w, "", 0);
+        return;
     }
+
+    str = json_object_get_string(key);
+
+    if (str == NULL) {
+        str = "";
+    }
+
+    put_string(w, str, strlen(str));
 
     return;
 }
@@ -618,7 +624,7 @@ write_entry_value(struct data_writer *w, struct rpmhdrentry *entry, const struct
         entry->count = write_strings(w, key);
     } else {
         entry->count = 1;
-        write_string(w, tagfile, entry->tag, key);
+        write_string(w, tagfile, key);
     }
 
     return 0;
@@ -672,12 +678,7 @@ add_header_tags(struct json_object *tags, const struct tagfile *tagfiles, struct
             pad_writer(&w, v->entry->type);
             v->entry->offset = w.offset;
 
-            /* the value of a file backed tag sits in a file of its own */
-            if (is_file_tag(v->entry->tag)) {
-                field = RPM_ENTRY_FILE_DESC;
-            } else {
-                field = RPM_ENTRY_VALUE_DESC;
-            }
+            field = entry_value_key(entry, v->entry->tag);
 
             if (json_object_object_get_ex(entry, field, &key) == 0) {
                 warnx(_("*** invalid header tag entry, missing '%s'"), field);

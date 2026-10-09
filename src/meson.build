@@ -4,6 +4,7 @@ abspath_src = files('abspath.c')
 changelog_src = files('changelog.c')
 class_src = files('class.c')
 create_src = files('create.c')
+defaults_src = files('defaults.c')
 deps_src = files('deps.c')
 digest_src = files('digest.c')
 entry_src = files('entry.c')
@@ -35,6 +36,7 @@ sources = [
     changelog_src,
     class_src,
     create_src,
+    defaults_src,
     deps_src,
     digest_src,
     entry_src,

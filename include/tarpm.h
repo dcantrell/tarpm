@@ -76,6 +76,9 @@ void filter_format_tags(struct json_object *tags, const int format);
 int apply_rpmformat(struct json_object *header, const int format);
 int update_payload_tags(struct json_object *header, const int payloadfd, const int format);
 
+/* defaults.c */
+int apply_header_defaults(struct json_object *header, const int format);
+
 /* signature.c */
 struct json_object *read_signature(const int fd);
 struct json_object *make_signature(const int format);
@@ -140,6 +143,7 @@ rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 bool is_rpmsign_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
+bool has_tag(const struct json_object *tags, const char *name);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 int set_tag_value(struct json_object *tags, const char *name, const char *new_value);
 

@@ -2027,6 +2027,31 @@ finish_file_list_arrays(struct file_list_tags *out)
 }
 
 /*
+ * Free the arrays without handing any of them to a tag.  Used when
+ * every entry dropped out and the header carries no file list.
+ */
+static void
+free_file_list_arrays(struct file_list_tags *out)
+{
+    size_t i = 0;
+    struct json_object **arrays[] = {
+        &out->dirnames, &out->basenames, &out->dirindexes, &out->filesizes,
+        &out->filemodes, &out->filemtimes, &out->fileusernames, &out->filegroupnames,
+        &out->filerdevs, &out->filedevices, &out->filedigests, &out->filelinktos,
+        &out->fileinodes, &out->fileclass, &out->classdict, &out->filelangs,
+        &out->filecolors, &out->fileflags, &out->fileverifyflags, &out->filedependsx,
+        &out->filedependsn, &out->dependsdict
+    };
+
+    for (i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
+        json_object_put(*arrays[i]);
+        *arrays[i] = NULL;
+    }
+
+    return;
+}
+
+/*
  * Split a path in to the directory name and the base name and add
  * them to the lists.  A path with no separator, which is how source
  * RPMs look, goes under an empty directory name.
@@ -2412,6 +2437,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     struct stat sb;
     struct stat *psb = NULL;
     struct file_list_tags *out = NULL;
+    struct json_object *verifyflags = NULL;
 
     out = build->out;
 
@@ -2502,13 +2528,16 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
 
     /*
      * rpm keeps the colors, the flags and the verify flags as
-     * bitfields.  Entries with none of them get a zero, except for
-     * the verify flags where verifyflag_value() works out what an
-     * entry that names nothing means.
+     * bitfields.  Entries with no colors or flags get a zero.  An
+     * entry carrying no verifyflags key gets RPMVERIFY_ALL, which is
+     * where rpmbuild starts every file, and one that names some keeps
+     * just those.
      */
     json_object_array_add(out->filecolors, json_object_new_int64(color_value(key_object(file, RPM_FILE_COLORS_DESC))));
     json_object_array_add(out->fileflags, json_object_new_int64(flag_value(key_object(file, RPM_FILE_FLAGS_DESC))));
-    json_object_array_add(out->fileverifyflags, json_object_new_int64(verifyflag_value(key_object(file, RPM_FILE_VERIFYFLAGS_DESC))));
+
+    verifyflags = key_object(file, RPM_FILE_VERIFYFLAGS_DESC);
+    json_object_array_add(out->fileverifyflags, json_object_new_int64((verifyflags == NULL) ? RPMVERIFY_ALL : verifyflag_value(verifyflags)));
 
     /*
      * rpm keeps the dependencies a file generated as a slice of the
@@ -2631,6 +2660,16 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     snprintf(sizebuf, sizeof(sizebuf), "%" PRId64, build.totalsize);
     set_tag_value(tags, rpmTagGetName(RPMTAG_SIZE), sizebuf);
     set_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE), sizebuf);
+
+    /*
+     * Every entry dropped out, so the package owns no files.  rpm
+     * turns away a header carrying a tag with a count of zero, so
+     * write no file list tags rather than empty ones.
+     */
+    if (build.nkept == 0) {
+        free_file_list_arrays(&out);
+        return;
+    }
 
     /* add the tags in the order rpm writes them */
     add_tag_array(tags, RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE, out.basenames);
