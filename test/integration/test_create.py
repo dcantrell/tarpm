@@ -3,10 +3,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import json
 import os
+import platform
+import shutil
 import subprocess
 import rpmfluff
 from baseclass import NAME
+from baseclass import RequiresTarpm
 from baseclass import TestUnpackRPM
 
 
@@ -447,3 +451,201 @@ class TestCreateRPMMultipleFiles(TestUnpackRPM):
             filepath = os.path.join(payload_dir, "usr/share", NAME, "file%d.txt" % i)
             self.assertTrue(os.path.isfile(filepath))
             self.assertEqual(os.path.getsize(filepath), 100 * (i + 1))
+
+
+# The three tags a user has to supply, plus the two queries expect
+MINIMAL_TAGS = [
+    {"tag": "Name", "type": "string", "value": "hello"},
+    {"tag": "Version", "type": "string", "value": "1.0"},
+    {"tag": "Release", "type": "string", "value": "1"},
+    {"tag": "Summary", "type": "i18n string", "value": "A greeting"},
+    {"tag": "License", "type": "string", "value": "MIT"},
+]
+
+
+def run_tarpm(args):
+    """Run tarpm with the given arguments and return (returncode, stdout, stderr)"""
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = proc.communicate()
+
+    return (proc.returncode, out.decode(), err.decode())
+
+
+def query_rpm(pkg, queryformat):
+    """Run rpm -qp over a package and return what it printed"""
+    proc = subprocess.Popen(
+        ["rpm", "-qp", "--qf", queryformat, pkg],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = proc.communicate()
+
+    return out.decode()
+
+
+def verify_rpm(pkg):
+    """Run rpm -K over a package at the digest level and return (returncode, stderr)"""
+    proc = subprocess.Popen(
+        ["rpm", "--define", "_pkgverify_level digest", "-K", pkg],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = proc.communicate()
+
+    return (proc.returncode, err.decode())
+
+
+def write_minimal_tree(tree, tags=MINIMAL_TAGS):
+    """Create a tree holding header.json and an empty payload subdirectory"""
+    os.makedirs(os.path.join(tree, "payload"))
+
+    f = open(os.path.join(tree, "header.json"), "w")
+    json.dump({"tags": tags}, f)
+    f.close()
+
+    return tree
+
+
+class CreateFromMinimalTree(RequiresTarpm):
+    """A tree holding only header.json and a payload makes an installable package"""
+
+    # the RPM format to write, overridden by the v6 subclass
+    rpmformat = "4"
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        bindir = os.path.join(self.tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        program = os.path.join(bindir, "hello")
+        f = open(program, "w")
+        f.write("#!/bin/sh\necho hello\n")
+        f.close()
+        os.chmod(program, 0o755)
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", self.rpmformat, "-f", pkg, self.tree]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertTrue(os.path.isfile(pkg))
+
+        # the defaults pass filled in everything rpm wants
+        fields = query_rpm(
+            pkg,
+            "%{name}|%{version}|%{release}|%{os}|%{arch}|%{summary}"
+            "|%{payloadformat}|%{sourcerpm}|%{buildhost}",
+        ).split("|")
+
+        self.assertEqual(fields[0], "hello")
+        self.assertEqual(fields[1], "1.0")
+        self.assertEqual(fields[2], "1")
+        self.assertEqual(fields[3], "linux")
+        self.assertEqual(fields[4], platform.machine())
+        self.assertEqual(fields[5], "A greeting")
+        self.assertEqual(fields[6], "cpio")
+        self.assertEqual(fields[7], "(none)")
+        self.assertNotEqual(fields[8], "(none)")
+
+        # the payload scan found the program and the directories above it
+        files = query_rpm(pkg, "[%{filenames}\n]").split()
+        self.assertEqual(files, ["/usr", "/usr/bin", "/usr/bin/hello"])
+
+        # the package provides itself at its own EVR
+        provides = query_rpm(pkg, "[%{providename} %{provideversion}\n]").split("\n")
+        self.assertIn("hello 1.0-1", provides)
+
+        # the region trailer is there, so rpm does not call this a v3 package
+        self.assertNotEqual(query_rpm(pkg, "%{headerimmutable:len}"), "(none)")
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)
+
+
+class CreateV6FromMinimalTree(CreateFromMinimalTree):
+    """The same minimal tree written as an RPM format 6 package"""
+
+    rpmformat = "6"
+
+
+class CreateWithNoFiles(RequiresTarpm):
+    """A tree with an empty payload makes a package carrying no file list tags"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+
+    def runTest(self):
+        for rpmformat in ["4", "6"]:
+            pkg = os.path.join(self.output_dir, "hello-%s.rpm" % rpmformat)
+            rc, out, err = run_tarpm(
+                [self.tarpm, "-c", "-F", rpmformat, "-f", pkg, self.tree]
+            )
+            self.assertEqual(rc, 0, msg=err)
+
+            self.assertEqual(query_rpm(pkg, "%{name}"), "hello")
+            self.assertEqual(query_rpm(pkg, "[%{filenames}\n]"), "")
+
+            rc, err = verify_rpm(pkg)
+            self.assertEqual(rc, 0, msg=err)
+
+
+class CreateRejectsHeaderWithoutNVR(RequiresTarpm):
+    """A header naming none of Name, Version and Release is turned away"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(
+            os.path.join(self.output_dir, "tree"), MINIMAL_TAGS[:2]
+        )
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("Release", err)
+        self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateWithEmptiedPayload(TestUnpackRPM):
+    """An extracted tree with everything taken back out drops the file list tags"""
+
+    def setUp(self):
+        super().setUp()
+
+        content = rpmfluff.SourceFile(
+            "README", make_random_content(256).encode("utf-8")
+        )
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, content)
+
+    def runTest(self):
+        self.rpm.do_make()
+        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+
+        tree = os.path.join(self.output_dir, "extracted")
+        os.makedirs(tree)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", original_rpm, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # take everything back out of the payload tree
+        payload = os.path.join(tree, "payload")
+
+        for entry in os.listdir(payload):
+            shutil.rmtree(os.path.join(payload, entry))
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(query_rpm(pkg, "%{name}"), NAME)
+        self.assertEqual(query_rpm(pkg, "[%{filenames}\n]"), "")
+        self.assertEqual(query_rpm(pkg, "%{size}"), "0")
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)

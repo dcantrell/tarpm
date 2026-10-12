@@ -1771,8 +1771,12 @@ test_add_file_list_tags_verifyflags(void)
     json_object_array_add(verifyflags, json_object_new_string("caps"));
     json_object_object_add(file, "verifyflags", verifyflags);
 
-    /* an entry that verifies nothing */
-    add_file(files, "/usr/share/man/man1/ls.1");
+    /* an entry that verifies nothing names an empty list */
+    file = add_file(files, "/usr/share/man/man1/ls.1");
+    json_object_object_add(file, "verifyflags", json_object_new_array());
+
+    /* an entry that names no verify flags at all gets the default */
+    add_file(files, "/usr/share/man/man1/cat.1");
 
     add_file_list_tags(tags, files, NULL, NULL);
 
@@ -1780,16 +1784,19 @@ test_add_file_list_tags_verifyflags(void)
      * Names turn back in to bits the way rpmbuild writes them, which is
      * RPMVERIFY_ALL with the named bits that are absent cleared.  The
      * nine named bits are the low nine, so everything above 0x1ff stays
-     * set and an entry with no verify flags at all is 0xfffffe00.
+     * set and an entry that verifies nothing is 0xfffffe00.  An entry
+     * carrying no verify flags at all gets RPMVERIFY_ALL, which is
+     * where rpmbuild starts every file.
      */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEVERIFYFLAGS));
     TARPM_ASSERT_PTR_NOT_NULL(values);
-    TARPM_ASSERT_EQUAL(json_object_array_length(values), 5);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 6);
     TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 0xfffffe01);
     TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 1)), 0xfffffe01);
     TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 2)), 0xfffffe5a);
     TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 3)), 0xffffffff);
     TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 4)), 0xfffffe00);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 5)), 0xffffffff);
 
     json_object_put(tags);
     json_object_put(files);

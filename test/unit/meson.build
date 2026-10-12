@@ -450,6 +450,21 @@ if cunit.found()
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
+    test_defaults = executable(
+        'test-defaults',
+        [ 'test-defaults.c',
+          'test-main.c',
+          defaults_src,
+          listfuncs_src,
+          strfuncs_src,
+          tags_src,
+          xalloc_src,
+        ],
+        include_directories : inc,
+        dependencies : [ cunit, rpm, jsonc ],
+        c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
+    )
+
     test_create = executable(
         'test-create',
         [ 'test-create.c',
@@ -457,6 +472,7 @@ if cunit.found()
           abspath_src,
           changelog_src,
           create_src,
+          defaults_src,
           deps_src,
           digest_src,
           entry_src,
@@ -508,6 +524,7 @@ if cunit.found()
     test('test-changelog', test_changelog)
     test('test-deps', test_deps)
     test('test-files', test_files)
+    test('test-defaults', test_defaults)
     test('test-create', test_create)
 else
     warning('CUnit not found, skipping unit test suite')
