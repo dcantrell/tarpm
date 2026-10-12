@@ -7,6 +7,7 @@ include/tarpm.h
 include/types.h
 src/abspath.c
 src/create.c
+src/defaults.c
 src/entry.c
 src/extract.c
 src/header.c
