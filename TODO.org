@@ -51,12 +51,12 @@ Core functionality that still needs to happen:
         [ ] Note what is happening in different stages
         [ ] Note added and removed files from the payload
 
-    [ ] What is minimally needed for creating an RPM from scratch
+    [*] What is minimally needed for creating an RPM from scratch
         [*] Missing lead.json creates lead
         [*] Missing signature.json creates a signature
-        [ ] Define minimal set of header.json tags
-            [ ] Create files array automatically
-            [ ] Command line option to create dependencies?
+        [*] Define minimal set of header.json tags
+            [*] Create files array automatically
+            [*] Command line option to create dependencies?
 
 [*] List mode
     [*] Need a strmode() function
@@ -79,6 +79,8 @@ Core functionality that still needs to happen:
         [*] Filelangs
         [*] Filecolors
         [*] Fileclass (strings from Classdict)
+        [ ] Filesignatures from signature.json (if present)
+        [ ] Verity stuff from signature.json (if present)
 
     [*] The other dependency arrays
         [*] Dependsdict
