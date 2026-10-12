@@ -289,7 +289,8 @@ then that key corresponds to a text file in the extracted RPM
 directory. Some tags are written to text files for easier editing. The
 Description, all scriptlets, and the Spec (for source RPMs only) are
 all written to text files rather than placed directly in the JSON
-file.
+file.  A header you write by hand may give any of those a value key
+instead and keep the text in the JSON file.
 .TP
 \f[B]dependencies\f[R]
 RPM dependency information is written to the \f[B]dependencies\f[R]
@@ -441,7 +442,10 @@ artifact. RPM stores these as a bitfield.
 \f[B]verifyflags\f[R]
 An array naming what rpm(8) checks when verifying the file, such as
 filedigest, filesize, mtime, mode, user, group, linkto, rdev, and
-caps. RPM stores these as a bitfield too.
+caps.  RPM stores these as a bitfield too.  An entry carrying no
+verifyflags key at all gets every check, which is where rpmbuild
+starts each file.  Write an empty array for a file that should be
+checked for none of these.
 .TP
 \f[B]provides\f[R]
 An array of the dependencies this one file generated. Each entry looks
@@ -469,6 +473,83 @@ entry. The actual value in the header is one long string, but tarpm
 splits that on newlines and presents it as an array in the JSON file
 for easier editing. The entire array is joined together when
 constructing an RPM.
+.SH MINIMAL PACKAGES
+You do not have to extract a package to create one.  A directory
+holding a \f[B]header.json\f[R] file that you construct and a
+\f[B]payload\f[R] subdirectory is enough. \f[B]tarpm\f[R] walks the
+payload tree, builds the whole file list from what it finds, and fills
+in the header tags it needs for the RPM file format you are creating.
+.PP
+A minimum \f[B]header.json\f[R] file requires \f[B]Name\f[R],
+\f[B]Version\f[R], and \f[B]Release\f[R]. If any of those are missing
+from the JSON file, tarpm treats that as an error.  \f[B]License\f[R]
+has no sensible default either, so \f[B]tarpm\f[R] warns when a header
+is missing the License tag.  \f[B]Summary\f[R] is worth writing as
+well, since queries look wrong without it.
+.PP
+These are the tags \f[B]tarpm\f[R] fills in and the value each one
+gets.  A tag the header already carries is never touched, so a tree you
+extracted goes back out unchanged:
+.TP
+\f[B]Os\f[R]
+linux
+.TP
+\f[B]Arch\f[R]
+The machine name from uname(2), or src for a source package
+.TP
+\f[B]Payloadformat\f[R]
+cpio, which is the only format rpm accepts (for now)
+.TP
+\f[B]Payloadcompressor\f[R], \f[B]Payloadflags\f[R]
+gzip at level 9 for a v4 package, zstd at level 19 for v6
+.TP
+\f[B]Sourcerpm\f[R]
+(none) for a binary package, left off for a source package
+.TP
+\f[B]Filedigestalgo\f[R]
+sha256, unless the tree already describes its files, where a missing
+tag means md5 and the digests already in it were made that way
+.TP
+\f[B]Buildtime\f[R]
+Now
+.TP
+\f[B]Buildhost\f[R]
+The name from gethostname(2)
+.TP
+\f[B]Summary\f[R], \f[B]Description\f[R]
+The Name value
+.TP
+\f[B]Headerimmutable\f[R]
+The region trailer, without which rpm reads the package as a v3 one
+and says v3 is deprecated
+.PP
+The package also gets a Provide dependency for itselfitself, which is
+its name at its own EVR, unless the \f[B]dependencies\f[R] dict
+already provides the name.
+.PP
+So the smallest tree that makes an installable package is a
+\f[B]payload\f[R] subdirectory holding the files and this
+\f[B]header.json\f[R]:
+.IP
+.EX
+{
+  \(dqtags\(dq: [
+    { \(dqtag\(dq: \(dqName\(dq,    \(dqtype\(dq: \(dqstring\(dq,      \(dqvalue\(dq: \(dqhello\(dq },
+    { \(dqtag\(dq: \(dqVersion\(dq, \(dqtype\(dq: \(dqstring\(dq,      \(dqvalue\(dq: \(dq1.0\(dq },
+    { \(dqtag\(dq: \(dqRelease\(dq, \(dqtype\(dq: \(dqstring\(dq,      \(dqvalue\(dq: \(dq1\(dq },
+    { \(dqtag\(dq: \(dqSummary\(dq, \(dqtype\(dq: \(dqi18n string\(dq, \(dqvalue\(dq: \(dqA greeting\(dq },
+    { \(dqtag\(dq: \(dqLicense\(dq, \(dqtype\(dq: \(dqstring\(dq,      \(dqvalue\(dq: \(dqMIT\(dq }
+  ]
+}
+.EE
+.PP
+Running \f[B]tarpm \-cvf hello.rpm \-F 6 ./tree\f[R] over that then
+gives you a package rpm(8) installs.
+.PP
+A package with nothing in its payload tree is fine too. rpm takes a
+package with no files at all, so \f[B]tarpm\f[R] simply leaves the
+file list tags out of the header.  The same goes for a tree you
+extracted and then emptied, where every file list entry drops out.
 .SH PAYLOAD
 The \f[B]payload\f[R] subdirectory contains the RPM payload
 contents. You may modify this subdirectory by adding files, removing
