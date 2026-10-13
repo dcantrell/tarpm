@@ -106,3 +106,32 @@ class TarpmPayloadOverrideHelp(RequiresTarpm):
             "--payload-all",
         ]:
             self.assertNotEqual(out.find(opt), -1)
+
+
+# Verify the no payload option is rejected when listing or creating
+class TarpmNoPayloadWrongMode(RequiresTarpm):
+    def runTest(self):
+        for mode in ["-t", "-c"]:
+            p = subprocess.Popen(
+                [self.tarpm, mode, "-n", "-f", self.tarpm],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = p.communicate()
+            self.assertEqual(p.returncode, 1)
+            s = "-n may only be used when extracting an RPM"
+            self.assertNotEqual(err.decode("utf-8").find(s), -1)
+
+
+# Verify the no payload option shows up in the help output
+class TarpmNoPayloadHelp(RequiresTarpm):
+    def runTest(self):
+        p = subprocess.Popen(
+            [self.tarpm, "--help"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 0)
+
+        self.assertNotEqual(out.decode("utf-8").find("--no-payload"), -1)

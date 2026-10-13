@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import json
 import os
 import stat
+import subprocess
 import rpmfluff
 from baseclass import NAME, VER, REL
 from baseclass import TestUnpackSRPM, TestUnpackRPM
@@ -378,3 +380,141 @@ class VerifyPayloadExtractSpecialChars(TestUnpackRPM):
             filepath = os.path.join(payload_dir, "usr/share", NAME, filename)
             self.assertTrue(os.path.isfile(filepath))
             self.assertEqual(os.path.getsize(filepath), 100)
+
+
+class VerifyNoPayloadSkipsThePayload(TestUnpackRPM):
+    """Test -n writes the metadata and leaves the payload alone"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-n"]
+
+        readme = rpmfluff.SourceFile(
+            "README", make_random_content(1024).encode("utf-8")
+        )
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        # the JSON metadata is all there
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "lead.json")))
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "signature.json")))
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "header.json")))
+
+        # but no payload tree was made
+        self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
+
+        # the file list comes out of the header, so it is still whole
+        f = open(os.path.join(self.output_dir, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        paths = [entry["path"] for entry in header["files"]]
+        self.assertIn("/usr/share/doc/%s/README" % NAME, paths)
+
+
+class VerifyNoPayloadWritesTagFiles(TestUnpackRPM):
+    """Test -n still writes the tag values that go to their own file"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-n"]
+        self.rpm.add_post("echo post")
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertTrue(
+            os.path.isfile(os.path.join(self.output_dir, "description.txt"))
+        )
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "postin.txt")))
+        self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
+
+
+class VerifyNoPayloadHeaderToStdout(TestUnpackRPM):
+    """Test -n with the header on stdout, which is the scripting case"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-n", "-H", "-"]
+
+    def runTest(self):
+        super().runTest()
+
+        header = json.loads(self.out.decode("utf-8"))
+
+        self.assertIn("tags", header)
+        self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
+
+        tags = {tag["tag"]: tag.get("value") for tag in header["tags"]}
+        self.assertEqual(tags["Name"], NAME)
+        self.assertEqual(tags["Version"], VER)
+
+
+class VerifyNoPayloadSRPM(TestUnpackSRPM):
+    """Test -n on a source RPM"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-n"]
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "header.json")))
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "spec.txt")))
+        self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
+
+
+class VerifyNoPayloadMetadataMatchesFullExtract(TestUnpackRPM):
+    """Test -n writes the same metadata a full extraction writes"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", make_random_content(512).encode("utf-8"))
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        # the run above was a full extraction, so keep what it wrote
+        f = open(os.path.join(self.output_dir, "header.json"))
+        full = f.read()
+        f.close()
+
+        metadata_dir = os.path.join(self.output_dir, "metaonly")
+        args = [
+            self.tarpm,
+            "-x",
+            "-n",
+            "-f",
+            self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+            "-O",
+            metadata_dir,
+        ]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err)
+
+        f = open(os.path.join(metadata_dir, "header.json"))
+        metaonly = f.read()
+        f.close()
+
+        self.assertEqual(full, metaonly)
+
+
+class VerifyNoPayloadIgnoresPayloadDir(TestUnpackRPM):
+    """Test -P says it is ignored when -n turns the payload off"""
+
+    def setUp(self):
+        super().setUp()
+        self.payload_dir = os.path.join(self.output_dir, "elsewhere")
+        self.opts = ["-n", "-P", self.payload_dir]
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertIn("-P is ignored when -n is specified", self.err.decode("utf-8"))
+        self.assertFalse(os.path.isdir(self.payload_dir))
