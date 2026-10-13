@@ -88,6 +88,7 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
 static int
 extract_metadata(const char *filename, const char *dest_dir, const char *header_dir, const struct json_paths *paths)
 {
+    int r = 0;
     int rpmfd = -1;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
@@ -134,24 +135,31 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
         warn("close");
     }
 
-    /* write out the header metadata */
+    /*
+     * Write out the header metadata.  We make the output directory as
+     * each file needs it now, so a write failure means mkdir failed.
+     * Warn the user but keep going.
+     */
     if (write_metadata(lead, dest_dir, paths->lead, OUTPUT_LEAD) != 0) {
-        warn("write_json_file");
+        warnx(_("*** unable to write %s"), OUTPUT_LEAD);
+        r = -1;
     }
 
     if (write_metadata(signature, dest_dir, paths->signature, OUTPUT_SIGNATURE) != 0) {
-        warn("write_json_file");
+        warnx(_("*** unable to write %s"), OUTPUT_SIGNATURE);
+        r = -1;
     }
 
     if (write_metadata(header, dest_dir, paths->header, OUTPUT_HEADER) != 0) {
-        warn("write_json_file");
+        warnx(_("*** unable to write %s"), OUTPUT_HEADER);
+        r = -1;
     }
 
     json_object_put(header);
     json_object_put(signature);
     json_object_put(lead);
 
-    return 0;
+    return r;
 }
 
 /*
@@ -205,9 +213,13 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
 
     /*
      * Direct extraction failed, so fall back to convert_payload().
-     * The failure would be unpack_archive() not getting libarchive to
-     * take the file handle Fdopen() in librpm gave us.
+     * The payload goes in dest_dir, so make sure that exists.
      */
+    if (mkdirp(dest_dir, OUTPUT_DIR_MODE) == -1) {
+        warnx("mkdirp");
+        return -1;
+    }
+
     if (chdir(dest_dir) == -1) {
         warn("chdir");
         return -1;
@@ -244,7 +256,6 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
 int
 extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose, const bool skip_payload)
 {
-    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     char *dest_dir = NULL;
     char *header_dir = NULL;
     char *payload_dir = NULL;
@@ -283,12 +294,6 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         return -1;
     }
 
-    /* create the output directory */
-    if (mkdirp(dest_dir, mode) == -1) {
-        warnx("mkdirp");
-        return -1;
-    }
-
     /*
      * Tag values written to their own file sit next to header.json.
      * With the header going to stdout they keep their usual home.
@@ -315,7 +320,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
      * and the cpio archive is never read.
      */
     if (!skip_payload) {
-        payload_dir = make_payload_dir(dest_dir, paths->payload, mode);
+        payload_dir = make_payload_dir(dest_dir, paths->payload, OUTPUT_DIR_MODE);
 
         if (payload_dir == NULL) {
             return -1;

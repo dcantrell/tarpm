@@ -99,6 +99,14 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
         path = strdup(tagname);
     }
 
+    /* create output directory if needed */
+    if (mkdirp_for_file(path) == -1) {
+        warnx("mkdirp_for_file");
+        free(path);
+        free(tagname);
+        return NULL;
+    }
+
     /* open the output file */
     fp = fopen(path, "wb");
 

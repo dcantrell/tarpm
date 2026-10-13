@@ -286,6 +286,12 @@ write_json_file(struct json_object *data, const char *path)
     if (tostdout) {
         fp = stdout;
     } else {
+        /* create output directory if needed */
+        if (mkdirp_for_file(path) == -1) {
+            warnx("mkdirp_for_file");
+            return -1;
+        }
+
         fp = fopen(path, "w");
 
         if (fp == NULL) {

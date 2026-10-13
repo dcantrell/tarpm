@@ -75,32 +75,6 @@ metadata_path(const char *path, const char *name)
     return r;
 }
 
-/*
- * Make the directory a JSON metadata file goes in if it is not there
- * already.  Nothing to make when the JSON goes to stdout.  Exits if
- * we cannot create it.
- */
-static void
-make_metadata_dir(const char *path)
-{
-    int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-    char *dir = NULL;
-
-    if (path == NULL || !strcmp(path, OUTPUT_STDOUT)) {
-        return;
-    }
-
-    dir = dir_name(path);
-
-    if (mkdirp(dir, mode) == -1) {
-        errx(EXIT_FAILURE, _("*** unable to create %s"), dir);
-    }
-
-    free(dir);
-
-    return;
-}
-
 static void
 usage(void)
 {
@@ -471,13 +445,6 @@ main(int argc, char **argv)
     /* we generate the signature header, so -S has nothing to say here */
     if (c_flag && paths.signature != NULL) {
         warnx(_("*** -S is ignored when creating an RPM"));
-    }
-
-    /* Make the directories the JSON metadata files are written to */
-    if (x_flag) {
-        make_metadata_dir(paths.lead);
-        make_metadata_dir(paths.signature);
-        make_metadata_dir(paths.header);
     }
 
     /* Reset librpm */

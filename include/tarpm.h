@@ -56,6 +56,7 @@ void *xrealloc(void *p, size_t s);
 
 /* mkdirp.c */
 int mkdirp(const char *path, mode_t mode);
+int mkdirp_for_file(const char *path);
 
 /* unpack.c */
 int unpack_archive(const char *archive, const char *dest, const bool verbose);

@@ -26,6 +26,9 @@
 /* output file endings (extensions) */
 #define OUTPUT_TXT_ENDING              "txt"
 
+/* mode for output directories we create */
+#define OUTPUT_DIR_MODE                (S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)
+
 /* RPM lead -- all from rpm headers and source */
 #define RPMLEAD_MAGIC0                 0xED
 #define RPMLEAD_MAGIC1                 0xAB

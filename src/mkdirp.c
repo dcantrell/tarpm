@@ -23,11 +23,40 @@
 #include <string.h>
 #include <errno.h>
 #include <err.h>
+#include <libgen.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include "tarpm.h"
+
+/*
+ * Create the directory needed to write out the specified file.
+ * Returns 0 on success, -1 on failure.
+ */
+int
+mkdirp_for_file(const char *path)
+{
+    int r = 0;
+    char *tmp = NULL;
+
+    if (path == NULL) {
+        return -1;
+    }
+
+    /* dirname(3) may modify what we hand it, so it gets a copy */
+    tmp = strdup(path);
+
+    if (tmp == NULL) {
+        warn("strdup");
+        return -1;
+    }
+
+    r = mkdirp(dirname(tmp), OUTPUT_DIR_MODE);
+    free(tmp);
+
+    return r;
+}
 
 int
 mkdirp(const char *path, mode_t mode)
