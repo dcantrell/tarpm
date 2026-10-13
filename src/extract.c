@@ -242,7 +242,7 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
 
 /* Handler for -x mode (extract) */
 int
-extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose)
+extract_rpm(const char *filename, const char *cwd, const char *output_dir, const struct json_paths *paths, const bool verbose, const bool skip_payload)
 {
     int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
     char *dest_dir = NULL;
@@ -309,15 +309,21 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         return -1;
     }
 
-    /* unpack the RPM payload where the caller asked us to */
-    payload_dir = make_payload_dir(dest_dir, paths->payload, mode);
+    /*
+     * Unpack the RPM payload where the caller asked us to.  A caller
+     * after the metadata alone skips this, so no payload tree is made
+     * and the cpio archive is never read.
+     */
+    if (!skip_payload) {
+        payload_dir = make_payload_dir(dest_dir, paths->payload, mode);
 
-    if (payload_dir == NULL) {
-        return -1;
-    }
+        if (payload_dir == NULL) {
+            return -1;
+        }
 
-    if (extract_payload(filename, cwd, dest_dir, payload_dir, verbose) != 0) {
-        return -1;
+        if (extract_payload(filename, cwd, dest_dir, payload_dir, verbose) != 0) {
+            return -1;
+        }
     }
 
     /* clean up */

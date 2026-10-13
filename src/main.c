@@ -21,6 +21,7 @@ static bool t_flag = false;
 static bool x_flag = false;
 static bool c_flag = false;
 static bool v_flag = false;
+static bool n_flag = false;
 
 /*
  * Work out where one of the JSON metadata files lives.  A single
@@ -116,6 +117,7 @@ usage(void)
     printf(_("    -S FILE, --signature=FILE   Use FILE for signature.json\n"));
     printf(_("    -H FILE, --header=FILE      Use FILE for header.json\n"));
     printf(_("    -P DIR, --payload=DIR       Use DIR for the payload tree\n"));
+    printf(_("    -n, --no-payload            Write the metadata and skip the payload\n"));
     printf(_("    -F NUM, --format=NUM        Write an RPM format NUM package (%d or %d)\n"), RPM_FORMAT_V4, RPM_FORMAT_V6);
     printf(_("    -m, --payload-mtime         Take file timestamps from the payload tree\n"));
     printf(_("    -u, --payload-user          Take file owners from the payload tree\n"));
@@ -126,6 +128,7 @@ usage(void)
     printf(_("    -?, --help                  Display this screen\n"));
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
+    printf(_("The -n option may only be used when extracting an RPM.\n"));
     printf(_("The -m, -u, -g, -l, -a, and -F options may only be used when creating an RPM.\n"));
     printf(_("The default format is %d.  The format shapes the lead, the signature\n"), RPM_FORMAT_DEFAULT);
     printf(_("header, the payload digest tags in the main header, and the payload\n"));
@@ -151,7 +154,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     char *opt = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:P:F:muglaV?";
+    char *short_opts = "txcvf:O:L:S:H:P:F:muglanV?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -163,6 +166,7 @@ main(int argc, char **argv)
         { "signature", required_argument, 0, 'S' },
         { "header", required_argument, 0, 'H' },
         { "payload", required_argument, 0, 'P' },
+        { "no-payload", no_argument, 0, 'n' },
         { "format", required_argument, 0, 'F' },
         { "payload-mtime", no_argument, 0, 'm' },
         { "payload-user", no_argument, 0, 'u' },
@@ -290,6 +294,9 @@ main(int argc, char **argv)
                 }
 
                 break;
+            case 'n':
+                n_flag = true;
+                break;
             case 'F':
                 if (haveformat) {
                     errx(EXIT_FAILURE, _("*** -F already specified; only allowed once"));
@@ -354,6 +361,8 @@ main(int argc, char **argv)
                 x_flag = true;
             } else if (*opt == 'v') {
                 v_flag = true;
+            } else if (*opt == 'n') {
+                n_flag = true;
             } else if (*opt == 'm') {
                 payload_overrides |= PAYLOAD_OVERRIDE_MTIME;
             } else if (*opt == 'u') {
@@ -444,6 +453,16 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** -F may only be used when creating an RPM"));
     }
 
+    /* there is only a payload to skip when we extract an RPM */
+    if (!x_flag && n_flag) {
+        errx(EXIT_FAILURE, _("*** -n may only be used when extracting an RPM"));
+    }
+
+    /* nothing lands in the payload tree when we skip the payload */
+    if (n_flag && paths.payload != NULL) {
+        warnx(_("*** -P is ignored when -n is specified"));
+    }
+
     /* Creating an RPM reads the JSON metadata from files, not stdin */
     if (c_flag && ((paths.lead != NULL && !strcmp(paths.lead, OUTPUT_STDOUT)) || (paths.signature != NULL && !strcmp(paths.signature, OUTPUT_STDOUT)) || (paths.header != NULL && !strcmp(paths.header, OUTPUT_STDOUT)))) {
         errx(EXIT_FAILURE, _("*** \"%s\" may not be used when creating an RPM"), OUTPUT_STDOUT);
@@ -468,7 +487,7 @@ main(int argc, char **argv)
     if (t_flag) {
         list_rpm(filename);
     } else if (x_flag) {
-        if (extract_rpm(filename, cwd, output_dir, &paths, v_flag)) {
+        if (extract_rpm(filename, cwd, output_dir, &paths, v_flag, n_flag)) {
             r = EXIT_FAILURE;
         }
     } else if (c_flag) {
