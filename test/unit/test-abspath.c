@@ -110,6 +110,41 @@ test_abspath(void)
     return;
 }
 
+void
+test_xdirname(void)
+{
+    char *d = NULL;
+
+    /* the don't crash case */
+    TARPM_ASSERT_TRUE(xdirname(NULL) == NULL);
+
+    d = xdirname("/usr/share/doc/header.json");
+    TARPM_ASSERT_STRING_EQUAL(d, "/usr/share/doc");
+    free(d);
+
+    /* a bare filename sits in the directory we are in */
+    d = xdirname("header.json");
+    TARPM_ASSERT_STRING_EQUAL(d, ".");
+    free(d);
+
+    /* a file at the root */
+    d = xdirname("/header.json");
+    TARPM_ASSERT_STRING_EQUAL(d, "/");
+    free(d);
+
+    /* a trailing slash is not a component of its own */
+    d = xdirname("/usr/share/doc/");
+    TARPM_ASSERT_STRING_EQUAL(d, "/usr/share");
+    free(d);
+
+    /* what we hand it is left alone, since it gets a copy */
+    d = xdirname("/usr/bin/tarpm");
+    TARPM_ASSERT_STRING_EQUAL(d, "/usr/bin");
+    free(d);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -123,7 +158,8 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test abspath()", test_abspath) == NULL) {
+    if (CU_add_test(pSuite, "test abspath()", test_abspath) == NULL ||
+        CU_add_test(pSuite, "test xdirname()", test_xdirname) == NULL) {
         return NULL;
     }
 
