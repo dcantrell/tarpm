@@ -119,25 +119,3 @@ char *xdirname(const char *path)
 
     return r;
 }
-
-/*
- * Return the last part of a path.  basename(3) may modify what we
- * hand it, so it gets a copy.  Caller must free the returned string.
- */
-char *base_name(const char *path)
-{
-    char *r = NULL;
-    char *tmp = NULL;
-
-    if (path == NULL) {
-        return NULL;
-    }
-
-    tmp = strdup(path);
-    assert(tmp != NULL);
-    r = strdup(basename(tmp));
-    assert(r != NULL);
-    free(tmp);
-
-    return r;
-}

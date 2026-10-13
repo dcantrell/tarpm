@@ -20,7 +20,6 @@
 /* abspath.c */
 char *abspath(const char *path);
 char *xdirname(const char *path);
-char *base_name(const char *path);
 
 /* rpm.c */
 char *convert_payload(const char *rpm);
