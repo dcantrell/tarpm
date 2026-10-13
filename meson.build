@@ -37,11 +37,6 @@ add_global_arguments('-D_GNU_SOURCE', language : 'c')
 # Define this to get around a problematic json_object.h macro
 add_global_arguments('-D__STRICT_ANSI__', language : 'c')
 
-# Check for reallocarray in libc
-if cc.has_function('reallocarray')
-    add_global_arguments('-D_HAVE_REALLOCARRAY', language : 'c')
-endif
-
 # Check for strlcpy in libc
 if cc.has_function('strlcpy')
     add_global_arguments('-D_HAVE_STRLCPY', language : 'c')
@@ -62,13 +57,6 @@ endif
 # Dependencies
 jsonc = dependency('json-c', required : true)
 libarchive = dependency('libarchive', required : true)
-
-if cc.has_function('archive_version_details', dependencies : [ libarchive ])
-    add_project_arguments('-D_HAVE_ARCHIVE_VERSION_DETAILS', language : ['c', 'cpp'])
-elif cc.has_function('archive_version_string', dependencies : [ libarchive ])
-    add_project_arguments('-D_HAVE_ARCHIVE_VERSION_STRING', language : ['c', 'cpp'])
-endif
-
 libzstd = dependency('libzstd', required : true)
 
 # libmagic
@@ -76,26 +64,10 @@ if not cc.has_function('magic_open', args : ['-lmagic'])
     error('*** unable to find magic_open() in libmagic')
 endif
 
-if cc.has_function('magic_version', args : ['-lmagic'])
-    add_project_arguments('-D_HAVE_MAGIC_VERSION', language : ['c', 'cpp'])
-endif
-
 magic = declare_dependency(link_args : ['-lmagic'])
 
 # librpm
 rpm = dependency('rpm', required : true)
-
-# See commit f14557cd521ddf95994aa6518f006eeb3fc58d87 in
-# https://github.com/rpm-software-management/rpm
-# (git tag --contains f14557cd521ddf95994aa6518f006eeb3fc58d87)
-#
-# The spelling changed for tag 5097 at version 6.0.0, but that's fine.
-# We will just use the integer in our code.  It was
-# RPMTAG_PAYLOADDIGESTALT then became RPMTAG_PAYLOADSHA256ALT, but it
-# will always be 5097 to me.
-if rpm.version().version_compare('>=4.16.0')
-    add_project_arguments('-D_USE_RPMTAG_5097', language : ['c', 'cpp'])
-endif
 
 # See commits:
 #     db46bd8bd1af3868163a88e73ee9310d896658b7
@@ -125,17 +97,6 @@ endif
 if rpm.version().version_compare('>=4.17.0')
     add_project_arguments('-D_HAS_VERITYSIGNATURES_TAG', language : ['c', 'cpp'])
     add_project_arguments('-D_HAS_VERITYSIGNATUREALGO_TAG', language : ['c', 'cpp'])
-endif
-
-# See commit:
-#     5630cf4bcbaae85d1b53e7a57ba6c7ed86b62e7d
-#     f8fb0690582b60307c7ec6f8babb48d49b2578ad
-# https://github.com/rpm-software-management/rpm
-# (git tag --contains 5630cf4bcbaae85d1b53e7a57ba6c7ed86b62e7d)
-# (git tag --contains f8fb0690582b60307c7ec6f8babb48d49b2578ad)
-if rpm.version().version_compare('>=6.0.0')
-    add_project_arguments('-D_HAS_OPENPGP_TAG', language : ['c', 'cpp'])
-    add_project_arguments('-D_HAS_SHA3_DIGEST_TAG', language : ['c', 'cpp'])
 endif
 
 # See commit:
