@@ -5,8 +5,10 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
+import tempfile
 import rpmfluff
 from baseclass import NAME, VER, REL
 from baseclass import TestUnpackSRPM, TestUnpackRPM
@@ -518,3 +520,116 @@ class VerifyNoPayloadIgnoresPayloadDir(TestUnpackRPM):
 
         self.assertIn("-P is ignored when -n is specified", self.err.decode("utf-8"))
         self.assertFalse(os.path.isdir(self.payload_dir))
+
+
+class VerifyOutputDirNotMadeWhenEverythingIsRedirected(TestUnpackRPM):
+    """Test the output directory is left alone when nothing goes in it"""
+
+    def setUp(self):
+        super().setUp()
+
+        # every piece lands somewhere other than the output directory
+        self.elsewhere = tempfile.mkdtemp(prefix="tarpm-elsewhere")
+        self.payload_dir = os.path.join(self.elsewhere, "payload")
+        self.opts = [
+            "-L",
+            os.path.join(self.elsewhere, "lead.json"),
+            "-S",
+            os.path.join(self.elsewhere, "signature.json"),
+            "-H",
+            os.path.join(self.elsewhere, "header.json"),
+            "-P",
+            self.payload_dir,
+        ]
+
+        # the baseclass hands -O a directory that is already there, so
+        # name one that is not to see whether tarpm makes it
+        shutil.rmtree(self.output_dir, True)
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertFalse(os.path.exists(self.output_dir))
+
+        for name in ["lead.json", "signature.json", "header.json"]:
+            self.assertTrue(os.path.isfile(os.path.join(self.elsewhere, name)))
+
+        # the tag value files sit next to header.json
+        self.assertTrue(os.path.isfile(os.path.join(self.elsewhere, "description.txt")))
+        self.assertTrue(os.path.isdir(self.payload_dir))
+
+    def tearDown(self):
+        super().tearDown()
+        shutil.rmtree(self.elsewhere, True)
+
+
+class VerifyOutputDirMadeWhenSomethingNeedsIt(TestUnpackRPM):
+    """Test the output directory still shows up when a file goes in it"""
+
+    def setUp(self):
+        super().setUp()
+
+        # the header goes elsewhere, so lead.json and signature.json
+        # are what keep the output directory alive
+        self.elsewhere = tempfile.mkdtemp(prefix="tarpm-elsewhere")
+        self.opts = ["-n", "-H", os.path.join(self.elsewhere, "header.json")]
+        shutil.rmtree(self.output_dir, True)
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertTrue(os.path.isdir(self.output_dir))
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "lead.json")))
+        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "signature.json")))
+
+        # the tag value files follow header.json, not the output directory
+        self.assertTrue(os.path.isfile(os.path.join(self.elsewhere, "description.txt")))
+        self.assertFalse(
+            os.path.isfile(os.path.join(self.output_dir, "description.txt"))
+        )
+
+    def tearDown(self):
+        super().tearDown()
+        shutil.rmtree(self.elsewhere, True)
+
+
+class VerifyMetadataPathDirectoriesAreMade(TestUnpackRPM):
+    """Test a -H path several directories deep gets those made for it"""
+
+    def setUp(self):
+        super().setUp()
+        self.header = os.path.join(self.output_dir, "a", "b", "c", "header.json")
+        self.opts = ["-n", "-H", self.header]
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertTrue(os.path.isfile(self.header))
+
+
+class VerifyUnwritableOutputDirFails(TestUnpackRPM):
+    """Test an output directory we cannot make is an error, not a warning"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-n", "-O", "/proc/tarpm-cannot-make-this"]
+        self.exitcode = 1
+
+    def runTest(self):
+        # the baseclass passes -O itself, so run tarpm directly here
+        self.rpm.do_make()
+
+        args = [
+            self.tarpm,
+            "-x",
+            "-n",
+            "-f",
+            self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+            "-O",
+            "/proc/tarpm-cannot-make-this",
+        ]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("unable to mkdir", err.decode("utf-8"))

@@ -70,6 +70,51 @@ test_mkdirp(void)
     return;
 }
 
+void
+test_mkdirp_for_file(void)
+{
+    char tmpdir[] = "/tmp/tarpm-test-mkdirp-XXXXXX";
+    char *path = NULL;
+    char *dir = NULL;
+    struct stat sb;
+
+    /* NULL path should fail */
+    TARPM_ASSERT_TRUE(mkdirp_for_file(NULL) == -1);
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+
+    /* the directory a nested file sits in is made for us */
+    xasprintf(&path, "%s/a/b/header.json", tmpdir);
+    TARPM_ASSERT_TRUE(mkdirp_for_file(path) == 0);
+
+    xasprintf(&dir, "%s/a/b", tmpdir);
+    TARPM_ASSERT_TRUE(stat(dir, &sb) == 0);
+    TARPM_ASSERT_TRUE(S_ISDIR(sb.st_mode));
+
+    /* only the directory, never the file itself */
+    TARPM_ASSERT_TRUE(stat(path, &sb) == -1);
+
+    /* running it again over a directory we have changes nothing */
+    TARPM_ASSERT_TRUE(mkdirp_for_file(path) == 0);
+
+    free(path);
+    free(dir);
+
+    /* a bare filename means the directory we are in, which is there */
+    TARPM_ASSERT_TRUE(mkdirp_for_file("header.json") == 0);
+
+    /* clean up */
+    xasprintf(&dir, "%s/a/b", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(dir) == 0);
+    free(dir);
+    xasprintf(&dir, "%s/a", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(dir) == 0);
+    free(dir);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -83,7 +128,8 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test mkdirp()", test_mkdirp) == NULL) {
+    if (CU_add_test(pSuite, "test mkdirp()", test_mkdirp) == NULL ||
+        CU_add_test(pSuite, "test mkdirp_for_file()", test_mkdirp_for_file) == NULL) {
         return NULL;
     }
 
