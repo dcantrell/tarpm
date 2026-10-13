@@ -301,7 +301,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     if (paths->header == NULL || !strcmp(paths->header, OUTPUT_STDOUT)) {
         header_dir = strdup(dest_dir);
     } else {
-        header_dir = dir_name(paths->header);
+        header_dir = xdirname(paths->header);
     }
 
     if (header_dir == NULL) {

@@ -19,7 +19,7 @@
 
 /* abspath.c */
 char *abspath(const char *path);
-char *dir_name(const char *path);
+char *xdirname(const char *path);
 char *base_name(const char *path);
 
 /* rpm.c */

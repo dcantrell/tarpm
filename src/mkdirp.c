@@ -23,7 +23,6 @@
 #include <string.h>
 #include <errno.h>
 #include <err.h>
-#include <libgen.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -38,22 +37,20 @@ int
 mkdirp_for_file(const char *path)
 {
     int r = 0;
-    char *tmp = NULL;
+    char *dir = NULL;
 
     if (path == NULL) {
         return -1;
     }
 
-    /* dirname(3) may modify what we hand it, so it gets a copy */
-    tmp = strdup(path);
+    dir = xdirname(path);
 
-    if (tmp == NULL) {
-        warn("strdup");
+    if (dir == NULL) {
         return -1;
     }
 
-    r = mkdirp(dirname(tmp), OUTPUT_DIR_MODE);
-    free(tmp);
+    r = mkdirp(dir, OUTPUT_DIR_MODE);
+    free(dir);
 
     return r;
 }

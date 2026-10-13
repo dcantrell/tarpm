@@ -102,7 +102,7 @@ char *abspath(const char *path)
  * Return the directory part of a path.  dirname(3) may modify what we
  * hand it, so it gets a copy.  Caller must free the returned string.
  */
-char *dir_name(const char *path)
+char *xdirname(const char *path)
 {
     char *r = NULL;
     char *tmp = NULL;

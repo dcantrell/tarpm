@@ -1469,7 +1469,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         header_path = paths->header;
 
         /* tag values kept in their own file sit next to header.json */
-        header_dir = dir_name(header_path);
+        header_dir = xdirname(header_path);
     } else {
         header_dir = strdup(input_dir);
     }
