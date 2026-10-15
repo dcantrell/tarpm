@@ -125,6 +125,39 @@ add_region_trailer(struct json_object *tags)
 }
 
 /*
+ * The NEVR of the source package this package came from.  parseSpec()
+ * in build/parseSpec.cc in the rpm source writes this tag along with
+ * the Sourcerpm rpm tag starting with the v4 format.  It's the same
+ * string found in Sourcerpm, just with the ".src.rpm" ending removed.
+ *
+ * Returns NULL when the header names no source package.
+ * NOTE: Caller must free this result.
+ */
+static char *
+source_nevr(struct json_object *tags)
+{
+    size_t len = 0;
+    size_t endlen = 0;
+    const char *srpm = NULL;
+
+    srpm = get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCERPM));
+
+    if (srpm == NULL || !strcmp(srpm, RPM_DEFAULT_SOURCERPM)) {
+        return NULL;
+    }
+
+    len = strlen(srpm);
+    endlen = strlen(SRPM_FILE_ENDING);
+
+    /* leave alone anything not shaped like a source package filename */
+    if (len <= endlen || strcmp(srpm + len - endlen, SRPM_FILE_ENDING)) {
+        return NULL;
+    }
+
+    return strndup(srpm, len - endlen);
+}
+
+/*
  * Build the EVR string the package provides itself under.  rpm leaves
  * the epoch out when it is zero or missing.
  * NOTE: Caller must free this result.
@@ -276,6 +309,17 @@ apply_header_defaults(struct json_object *header, const int format)
     /* applyRetrofits() in lib/package.cc writes this on read, so match it */
     if (!source_package) {
         add_default_tag(tags, RPMTAG_SOURCERPM, RPM_STRING_TYPE, RPM_DEFAULT_SOURCERPM);
+    }
+
+    /*
+     * A v6 format package carries the source NEVR next to Sourcerpm.
+     * Nothing in rpm reads it, but rpmbuild writes it, and without
+     * this a package converted from the v4 format excludes it.
+     */
+    if (format == RPM_FORMAT_V6 && !source_package) {
+        buf = source_nevr(tags);
+        add_default_tag(tags, RPMTAG_SOURCENEVR_VALUE, RPM_STRING_TYPE, buf);
+        free(buf);
     }
 
     /* the digests we are about to make come out of a fresh scan */

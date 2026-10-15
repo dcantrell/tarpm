@@ -12,6 +12,9 @@
 /* the "architecture" name for source RPMs */
 #define SRPM_ARCH_NAME                 "src"
 
+/* what the filename of a source RPM ends with */
+#define SRPM_FILE_ENDING               ".src.rpm"
+
 /* the subdirectory where the RPM payload is unpacked */
 #define PAYLOAD_SUBDIR                 "payload"
 
