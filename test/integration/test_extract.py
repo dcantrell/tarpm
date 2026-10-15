@@ -687,3 +687,48 @@ class VerifyStrippedPayloadRoundTrip(TestUnpackRPM):
         )
         out, err = proc.communicate()
         self.assertIn("/usr/share/doc/%s/README" % NAME, out.decode())
+
+
+class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
+    """Test the temporary tar file goes away when the fallback reader fails"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", make_random_content(128).encode("utf-8"))
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+        # a payload directory we cannot write in makes both readers
+        # fail, which is the path that used to leave the tar behind
+        self.payload_dir = os.path.join(self.output_dir, "readonly")
+        os.makedirs(self.payload_dir)
+        os.chmod(self.payload_dir, 0o500)
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        # the tar lands next to the package, so work on a copy of our
+        # own where we can see it
+        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        pkg = os.path.join(self.output_dir, os.path.basename(original))
+        shutil.copyfile(original, pkg)
+
+        args = [
+            self.tarpm,
+            "-x",
+            "-f",
+            pkg,
+            "-O",
+            os.path.join(self.output_dir, "tree"),
+            "-P",
+            self.payload_dir,
+        ]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+
+        self.assertNotEqual(proc.returncode, 0, msg=out)
+        self.assertFalse(os.path.exists(pkg + ".tar"), msg="temporary tar left behind")
+
+    def tearDown(self):
+        os.chmod(self.payload_dir, 0o700)
+        super().tearDown()

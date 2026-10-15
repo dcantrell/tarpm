@@ -200,6 +200,7 @@ make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mo
 static int
 extract_payload(const char *filename, const char *cwd, const char *dest_dir, const char *payload_dir, const bool verbose)
 {
+    int r = -1;
     char *payload_file = NULL;
 
     /*
@@ -234,22 +235,20 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
 
     if (chdir(cwd) == -1) {
         warn("chdir");
-        return -1;
-    }
-
-    if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
+    } else if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
         warnx("unpack_archive");
-        return -1;
+    } else {
+        r = 0;
     }
 
     if (unlink(payload_file) == -1) {
         warn("unlink");
-        return -1;
+        r = -1;
     }
 
     free(payload_file);
 
-    return 0;
+    return r;
 }
 
 /* Handler for -x mode (extract) */
