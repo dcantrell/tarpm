@@ -50,6 +50,11 @@ setup:
 debug: setup-debug
 	$(NINJA) -C $(MESON_BUILD_DIR) -v
 
+# The HTML manual builds with everything else, this just skips the
+# rest of the tree.  Output lands in $(MESON_BUILD_DIR)/doc/html.
+docs: setup
+	$(NINJA) -C $(MESON_BUILD_DIR) -v doc/html
+
 setup-debug:
 	$(MESON) setup $(MESON_BUILD_DIR) --werror --buildtype=debug $(MESON_OPTIONS)
 
@@ -163,6 +168,7 @@ help:
 	@echo
 	@echo "    all               Default target, setup tree to build and build"
 	@echo "    debug             Setup tree for debug build and build"
+	@echo "    docs              Build only the HTML manual"
 	@echo "    setup             Run '$(MESON) setup $(MESON_BUILD_DIR)'"
 	@echo "    setup-debug       The counterpart to 'setup'; called by 'debug'"
 	@echo "    check             Run '$(MESON) test -C $(MESON_BUILD_DIR) -v'"

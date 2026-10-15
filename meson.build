@@ -108,9 +108,10 @@ if rpm.version().version_compare('>=6.0.0')
     add_project_arguments('-D_HAS_PGPHASHALGO_SHA3_512', language : ['c', 'cpp'])
 endif
 
-# The main header tags a format 6 package carries.  We write the tag
+# The main header tags a v6 format package carries.  We write the tag
 # names in to header.json and look them back up with rpmTagGetValue(),
-# so we can only write a format 6 package when librpm knows the names.
+# so we can only write a v6 format package when librpm knows the
+# names.
 # RPMTAG_RPMFORMAT and the SHA-512 and SHA3-256 payload digests all
 # arrived with 6.0.0.
 if rpm.version().version_compare('>=6.0.0')

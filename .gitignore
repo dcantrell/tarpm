@@ -1,4 +1,5 @@
 build
+doc/_build
 .gdb_history
 gpgkey-*.gpg
 log

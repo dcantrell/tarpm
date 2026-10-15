@@ -8,6 +8,11 @@ option('tests',
        value : true,
        description : 'Run the test suite')
 
+option('docs',
+       type : 'boolean',
+       value : true,
+       description : 'Build the HTML manual with doxygen and sphinx')
+
 option('python_program',
        type : 'string',
        value : 'python3',
