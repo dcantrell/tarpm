@@ -1,12 +1,13 @@
 # Commands used during build (override in the calling environment for
 # non-standard executable names or non-standard paths to said
 # commands).
-MESON    ?= meson
-NINJA    ?= ninja
-REALPATH ?= realpath
-GREP     ?= grep
-CUT      ?= cut
-PYTHON   ?= python3
+MESON      ?= meson
+NINJA      ?= ninja
+REALPATH   ?= realpath
+GREP       ?= grep
+CUT        ?= cut
+PYTHON     ?= python3
+SHELLCHECK ?= shellcheck
 
 # Where to build
 MESON_BUILD_DIR = build
@@ -32,6 +33,12 @@ endif
 # Take additional command line argument as a positional parameter for
 # the Makefile target
 TARGET_ARG = `arg="$(filter-out $@,$(MAKECMDGOALS))" && echo $${arg:-${1}}`
+
+# The shell scripts in the source tree.  utils/git-hooks holds the
+# ones with no .sh on the end.
+SHELL_SCRIPTS = $(wildcard $(topdir)/utils/*.sh) \
+                $(wildcard $(topdir)/utils/git-hooks/*) \
+                $(wildcard $(topdir)/osdeps/*/*.sh)
 
 # regexp of email addresses of primary authors on the project
 PRIMARY_AUTHORS = dcantrell@burdell.org
@@ -87,6 +94,9 @@ flake8:
 
 black:
 	$(PYTHON) -m black --check --diff $(topdir)/test/
+
+shellcheck:
+	$(SHELLCHECK) $(SHELL_SCRIPTS)
 
 srpm:
 	$(topdir)/utils/srpm.sh
