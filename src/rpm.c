@@ -71,17 +71,6 @@ convert_payload(const char *rpm)
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
 
-    /*
-     * For at least zstd compression, Fdopen doesn't work correctly
-     * with "r.zstd" in certain RPM versions.  Catch it and return
-     * NULL here so the caller can handle a fallback approach.
-     */
-    if (compr && strcmp(compr, "zstd") == 0) {
-        Fclose(fdi);
-        fdi = NULL;
-        goto cleanup;
-    }
-
     /* default to "gzip" for compr */
     if (compr == NULL) {
         compr = "gzip";
