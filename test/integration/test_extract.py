@@ -633,3 +633,57 @@ class VerifyUnwritableOutputDirFails(TestUnpackRPM):
 
         self.assertEqual(proc.returncode, 1)
         self.assertIn("unable to mkdir", err.decode("utf-8"))
+
+
+class VerifyExtractStrippedPayload(TestUnpackRPM):
+    """Test extraction of the stripped cpio payload an RPM v6 format package carries"""
+
+    def setUp(self):
+        super().setUp()
+
+        # rpm writes the stripped payload ("07070X") rather than newc
+        # whenever the header carries Longfilesizes, which every
+        # v6 format package does.  libarchive does not know that magic,
+        # so this only works through the librpm fallback.
+        self.rpm.header += "\n%global _rpmformat 6\n"
+
+        readme = rpmfluff.SourceFile("README", make_random_content(256).encode("utf-8"))
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        payload_dir = os.path.join(self.output_dir, "payload")
+        readme = os.path.join(payload_dir, "usr/share/doc", NAME, "README")
+
+        self.assertTrue(os.path.isdir(payload_dir))
+        self.assertTrue(os.path.isfile(readme))
+        self.assertEqual(os.path.getsize(readme), 256)
+
+
+class VerifyStrippedPayloadRoundTrip(TestUnpackRPM):
+    """Test a v6 format package with a stripped payload survives a round trip"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _rpmformat 6\n"
+
+        readme = rpmfluff.SourceFile("README", make_random_content(128).encode("utf-8"))
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        pkg = os.path.join(self.output_dir, "again.rpm")
+        args = [self.tarpm, "-c", "-F", "6", "-f", pkg, self.output_dir]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err)
+
+        # the file list came back whole, which it does not when the
+        # payload failed to unpack and the tree came out empty
+        proc = subprocess.Popen(
+            ["rpm", "-qlp", pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        out, err = proc.communicate()
+        self.assertIn("/usr/share/doc/%s/README" % NAME, out.decode())

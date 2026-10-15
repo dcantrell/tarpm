@@ -45,6 +45,18 @@ def run_tarpm(args):
     return (proc.returncode, out.decode(), err.decode())
 
 
+def query(pkg, queryformat):
+    """Run rpm -qp over a package and return what it printed"""
+    proc = subprocess.Popen(
+        ["rpm", "-qp", "--qf", queryformat, pkg],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = proc.communicate()
+
+    return out.decode()
+
+
 def read_header(f):
     """Read one RPM header and return its index entries and its data"""
     magic, reserved, nentries, nbytes = struct.unpack(">IIII", f.read(16))
@@ -544,3 +556,70 @@ class VerifyCreateFormatSizesMatch(TestUnpackRPM):
         # the installed size and then the size of every file
         self.assertEqual(size_values(four, 1009, 4), size_values(six, 5009, 8))
         self.assertEqual(size_values(four, 1028, 4), size_values(six, 5008, 8))
+
+
+class VerifyCreateFormatSixSourceNevr(TestUnpackRPM):
+    """A v6 format package gets the source NEVR derived from Sourcerpm"""
+
+    def runTest(self):
+        super().runTest()
+
+        six = os.path.join(self.output_dir, "six.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "6", "-f", six, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        sourcerpm = query(six, "%{sourcerpm}")
+        self.assertTrue(sourcerpm.endswith(".src.rpm"), msg=sourcerpm)
+
+        # the same string with the ending taken off
+        self.assertEqual(query(six, "%{sourcenevr}"), sourcerpm[: -len(".src.rpm")])
+
+
+class VerifyCreateFormatFourNoSourceNevr(TestUnpackRPM):
+    """A v4 format package never carries the source NEVR"""
+
+    def runTest(self):
+        super().runTest()
+
+        four = os.path.join(self.output_dir, "four.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(query(four, "%{sourcenevr}"), "(none)")
+
+
+class VerifyFormatRoundTripKeepsSourceNevr(TestUnpackRPM):
+    """Converting a package to v4 format and back keeps the source NEVR"""
+
+    def runTest(self):
+        super().runTest()
+
+        six = os.path.join(self.output_dir, "six.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "6", "-f", six, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        nevr = query(six, "%{sourcenevr}")
+        self.assertNotEqual(nevr, "(none)")
+
+        # out to v4 format, which drops the tag, and back to v6 format
+        tree = os.path.join(self.output_dir, "astree")
+        four = os.path.join(self.output_dir, "round.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query(four, "%{sourcenevr}"), "(none)")
+
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", four, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        back = os.path.join(self.output_dir, "back.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "6", "-f", back, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(query(back, "%{sourcenevr}"), nevr)

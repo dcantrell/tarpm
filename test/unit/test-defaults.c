@@ -391,6 +391,100 @@ test_apply_header_defaults_bad_input(void)
     return;
 }
 
+/* Test apply_header_defaults() derives Sourcenevr for a v6 format package */
+void
+test_apply_header_defaults_source_nevr(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCERPM, "hello-1.0-1.fc44.src.rpm");
+
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+
+    /* the source package filename with the ending taken off */
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_SOURCENEVR_VALUE), "hello-1.0-1.fc44");
+
+    json_object_put(header);
+
+    return;
+}
+
+/* Test apply_header_defaults() leaves Sourcenevr off a v4 format package */
+void
+test_apply_header_defaults_source_nevr_v4(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCERPM, "hello-1.0-1.fc44.src.rpm");
+
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V4), 0);
+
+    /* the tag belongs to v4 format, so a v4 format header never gets one */
+    TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_SOURCENEVR_VALUE));
+
+    json_object_put(header);
+
+    return;
+}
+
+/* Test apply_header_defaults() keeps a Sourcenevr the header already has */
+void
+test_apply_header_defaults_keeps_source_nevr(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCERPM, "hello-1.0-1.fc44.src.rpm");
+    add_tag(tags, RPMTAG_SOURCENEVR_VALUE, "written-by-hand-2-2");
+
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_SOURCENEVR_VALUE), "written-by-hand-2-2");
+
+    json_object_put(header);
+
+    return;
+}
+
+/*
+ * Test apply_header_defaults() has nothing to derive Sourcenevr from
+ * when the header names no source package.
+ */
+void
+test_apply_header_defaults_no_source_nevr(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* a package with no source package carries "(none)" here */
+    header = make_minimal_header(&tags);
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_SOURCERPM), RPM_DEFAULT_SOURCERPM);
+    TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_SOURCENEVR_VALUE));
+    json_object_put(header);
+
+    /* a value not shaped like a source package filename is left alone */
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCERPM, "nonsense");
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+    TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_SOURCENEVR_VALUE));
+    json_object_put(header);
+
+    /* and a source package has no source package of its own */
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCEPACKAGE, "1");
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+    TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_SOURCENEVR_VALUE));
+    json_object_put(header);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -414,7 +508,11 @@ get_suite(void)
         CU_add_test(pSuite, "test apply_header_defaults() self provide with an epoch", test_apply_header_defaults_self_provide_epoch) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() keeps the self provide", test_apply_header_defaults_keeps_self_provide) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() run twice", test_apply_header_defaults_twice) == NULL ||
-        CU_add_test(pSuite, "test apply_header_defaults() bad input", test_apply_header_defaults_bad_input) == NULL) {
+        CU_add_test(pSuite, "test apply_header_defaults() bad input", test_apply_header_defaults_bad_input) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() source NEVR", test_apply_header_defaults_source_nevr) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() source NEVR is v6 only", test_apply_header_defaults_source_nevr_v4) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() keeps the source NEVR", test_apply_header_defaults_keeps_source_nevr) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() with no source NEVR", test_apply_header_defaults_no_source_nevr) == NULL) {
         return NULL;
     }
 

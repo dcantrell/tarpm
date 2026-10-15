@@ -566,7 +566,7 @@ class CreateFromMinimalTree(RequiresTarpm):
 
 
 class CreateV6FromMinimalTree(CreateFromMinimalTree):
-    """The same minimal tree written as an RPM format 6 package"""
+    """The same minimal tree written as an RPM v6 format package"""
 
     rpmformat = "6"
 
