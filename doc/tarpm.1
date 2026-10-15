@@ -15,6 +15,7 @@ rpmbuild(1)
 \f[I]RPMFILENAME\f[R] [\f[B]\-O\f[R] \f[I]DIRNAME\f[R]]
 [\f[B]\-L\f[R] \f[I]PATH\f[R]] [\f[B]\-S\f[R] \f[I]PATH\f[R]]
 [\f[B]\-H\f[R] \f[I]PATH\f[R]] [\f[B]\-P\f[R] \f[I]DIRNAME\f[R]]
+[\f[B]\-n\f[R]]
 .PP
 \f[B]tarpm\f[R] \f[B]\-c\f[R] [\f[B]\-v\f[R]] \f[B]\-f\f[R]
 \f[I]RPMFILENAME\f[R]
@@ -74,15 +75,24 @@ The name of the input or output RPM file.
 The name of the output directory when extracting an RPM.  Without this
 option the extracted package goes in to a subdirectory of the
 directory you are in named after the NEVRA of the package.
+.RS
+.PP
+The directory is only made when a file actually goes in it.  Send
+every piece somewhere else with \f[B]\-L\f[R], \f[B]\-S\f[R],
+\f[B]\-H\f[R], and \f[B]\-P\f[R] and no output directory is made at
+all.  The same goes for every directory \f[B]tarpm\f[R] writes, so you
+never get an empty one left behind.
+.RE
 .TP
 \f[B]\-L\f[R] PATH, \f[B]\-\-lead\f[R]=PATH
 Where \f[B]lead.json\f[R] is written when extracting an RPM.  A
 relative PATH is taken from the directory you are in.  A PATH ending
 in a slash or naming a directory gets \f[B]lead.json\f[R] added to
-it.  Any directory in PATH that is not there yet is created.  A PATH
-of a single hyphen writes the JSON to standard output instead of to a
-file.  The RPM lead is rebuilt from the header, so this is not read
-when creating an RPM.
+it.  Any directory in PATH that is not there yet is made when the file
+is written.  A PATH of a single hyphen writes the JSON to standard
+output instead of to a file, and nothing is made on disk.  The RPM
+lead is rebuilt from the header, so this is not read when creating an
+RPM.
 .TP
 \f[B]\-S\f[R] PATH, \f[B]\-\-signature\f[R]=PATH
 Where \f[B]signature.json\f[R] is written when extracting an RPM.
@@ -107,6 +117,34 @@ directory you are in.  When extracting, DIRNAME is created if it is
 not there yet and no \f[B]payload\f[R] subdirectory is made in the
 output directory.  When creating, DIRNAME has to be a directory that
 is already there.
+.TP
+\f[B]\-n\f[R], \f[B]\-\-no\-payload\f[R]
+Write the JSON metadata and skip the payload.  No \f[B]payload\f[R]
+subdirectory is made and the cpio archive in the package is never
+read.  May only be used when extracting an RPM.
+.RS
+.PP
+This is for reading a package rather than taking it apart.  The
+metadata is the same metadata a full extraction writes, so the
+\f[B]files\f[R] array still describes every file the package owns.
+That comes out of the header, not off the payload tree.  Tag values
+that go to their own file, such as \f[B]description.txt\f[R] and the
+scriptlets, are still written, since those live in the header too.
+.PP
+Pair it with \f[B]\-H \-\f[R] to send \f[B]header.json\f[R] to standard
+output for a script to read.  Note this still makes the output
+directory, because \f[B]lead.json\f[R], \f[B]signature.json\f[R], and
+the tag value files have nowhere else to go.  Add \f[B]\-L \-\f[R] and
+\f[B]\-S \-\f[R] and the only thing left in there is the tag value
+files.
+.PP
+A package carrying device nodes cannot be extracted by an ordinary
+user, because writing the nodes means calling mknod(2).  Reading the
+metadata out of one with \f[B]\-n\f[R] works fine.
+.PP
+\f[B]\-P\f[R] has nothing to say when there is no payload to write, so
+\f[B]tarpm\f[R] says so on standard error and carries on.
+.RE
 .TP
 \f[B]\-F\f[R] NUMBER, \f[B]\-\-format\f[R]=NUMBER
 The RPM format to write the package as, which is either 4 or 6.  The
@@ -152,6 +190,11 @@ The rpmlib() entries in \f[B]dependencies\f[R] are left alone as
 well, so a package you convert to v6 keeps the ones rpm(8) only adds
 for v4.  Edit \f[B]dependencies\f[R] yourself if you do not want
 them.
+.PP
+Sourcenevr does survive, even though it is a v6 tag a v4 package
+cannot carry.  It is the Sourcerpm value with the \(dq.src.rpm\(dq
+ending taken off, so \f[B]tarpm\f[R] works it out again on the way
+back to v6.
 .PP
 The lead records the format in its major version, which is 3 for v4
 and 4 for v6.  A v6 package is compressed with zstd at level 19, which
@@ -506,6 +549,11 @@ gzip at level 9 for a v4 package, zstd at level 19 for v6
 \f[B]Sourcerpm\f[R]
 (none) for a binary package, left off for a source package
 .TP
+\f[B]Sourcenevr\f[R]
+The Sourcerpm value with the \(dq.src.rpm\(dq ending taken off.  Only
+a v6 binary package gets this, and only when there is a source
+package to name
+.TP
 \f[B]Filedigestalgo\f[R]
 sha256, unless the tree already describes its files, where a missing
 tag means md5 and the digests already in it were made that way
@@ -523,9 +571,9 @@ The Name value
 The region trailer, without which rpm reads the package as a v3 one
 and says v3 is deprecated
 .PP
-The package also gets a Provide dependency for itselfitself, which is
-its name at its own EVR, unless the \f[B]dependencies\f[R] dict
-already provides the name.
+The package also gets a Provide dependency for itself, which is its
+name at its own EVR, unless the \f[B]dependencies\f[R] dict already
+provides the name.
 .PP
 So the smallest tree that makes an installable package is a
 \f[B]payload\f[R] subdirectory holding the files and this
@@ -557,6 +605,20 @@ files, and changing what is in them. \f[B]tarpm\f[R] will update the
 file metadata in the header based on the contents of this
 subdirectory, so it is not necessary to manually update the
 \f[B]files\f[R] array in \f[B]header.json\f[R].
+.PP
+The payload in the package itself is a cpio archive, written one of
+two ways.  The usual one is newc, which every cpio tool reads.  A
+package whose header carries Longfilesizes gets what rpm calls a
+stripped archive instead, with a magic of 07070X and a file index in
+each entry in place of the name, the mode, and the timestamps, since
+the main header already holds all of that.  Every v6 package is
+written that way, and so is a v4 package holding a file too large to
+count in 32 bits.
+.PP
+\f[B]tarpm\f[R] reads both.  It hands the package to libarchive
+first, which is quick but only knows newc, and falls back to librpm,
+which knows both.  A payload that fails to unpack can therefore
+complain twice, once per reader.  \f[B]tarpm\f[R] always writes newc.
 .PP
 When you create a package, \f[B]tarpm\f[R] walks the payload tree and
 the file list together and reconciles them:
@@ -631,6 +693,12 @@ Note that rpm(8) invents a class at query time when the one in the
 package is empty, making one up from the file mode or, for a symlink,
 from the link target. An empty class is therefore not always what
 \(dqrpm \-qp \-\-queryformat\(dq shows you.
+.PP
+All of this is v4 only.  A v6 package records a MIME type per file in
+the Mimedict and Filemimeindex tags rather than a class, and
+\f[B]tarpm\f[R] leaves those two in the \f[B]tags\f[R] array instead
+of folding them in to the file list.  A file list out of a v6 package
+therefore carries no \f[B]class\f[R] key at all.
 .SH SEE ALSO
 \f[B]rpmbuild\f[R](1), \f[B]rpmsign\f[R](1), \f[B]tar\f[R](1),
 \f[B]file\f[R](1), \f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)
