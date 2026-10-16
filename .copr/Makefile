@@ -46,12 +46,16 @@ ifeq ($(BUILDTYPE),copr)
 GITDATE          := $(shell date +'%Y%m%d%H%M')
 GITHASH          := $(shell git rev-parse --short HEAD)
 TARBALL_BASENAME := $(PKG)-$(VER)-$(GITDATE)git$(GITHASH)
-TAG              := HEAD
+
+# First try to take a snapshot on HEAD + staged commits.  Fall back on
+# HEAD if the tree is clean.  This lets local development use the
+# 'make copr-srpm' target to create an SRPM for scratch building.
+TAG              := $(shell git stash create)
 else
 TAG              := $(shell git tag -l | sort -V | tail -n 1)
 endif
 
-# Backup case if there are no tags defined
+# Backup case for a clean tree or no tags defined
 ifeq ($(TAG),)
 TAG              := HEAD
 endif
