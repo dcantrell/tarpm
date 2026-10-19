@@ -1,4 +1,5 @@
 CUnit-devel
+doxygen
 file-devel
 gcc
 gettext
@@ -8,7 +9,10 @@ libzstd-devel
 meson
 ninja-build
 openssl-devel
+python3-breathe
 python3-devel
 python3-rpm
+python3-sphinx
+python3-sphinx_rtd_theme
 rpm-build
 rpm-devel
