@@ -274,6 +274,7 @@ make_header_tag(const rpmTagVal tag, const int format)
 {
     size_t i = 0;
     char *nul = NULL;
+    const char *tag_name = NULL;
     rpmTagType type = RPM_NULL_TYPE;
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
@@ -322,8 +323,16 @@ make_header_tag(const rpmTagVal tag, const int format)
         return NULL;
     }
 
+    tag_name = rpmTagGetName(tag);
+
+    /* skip tags that don't exist in this rpm version */
+    if (strcmp(tag_name, "(unknown)") == 0) {
+        json_object_put(value);
+        return NULL;
+    }
+
     entry = json_object_new_object();
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tag)));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(tag_name));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
     json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, value);
 
@@ -469,7 +478,8 @@ apply_rpmformat(struct json_object *header, const int format)
         entry = make_header_tag(group[i], format);
 
         if (entry == NULL) {
-            return -1;
+            /* tag may not exist in this rpm version, skip it */
+            continue;
         }
 
         json_object_array_add(tags, entry);
@@ -495,6 +505,7 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
     uint64_t payloadsize = 0;
     uint64_t archivesize = 0;
     char *digest = NULL;
+    const char *tag_name = NULL;
     const rpmTagVal *group = NULL;
     struct json_object *tags = NULL;
 
@@ -531,7 +542,15 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
         }
 
         if (set_payload_tag(tags, payload_digests[i].tag, digest) != 0) {
-            warnx(_("*** failed to update %s in the header"), rpmTagGetName(payload_digests[i].tag));
+            tag_name = rpmTagGetName(payload_digests[i].tag);
+
+            /* older rpm versions may not have all payload digest tags, skip them gracefully */
+            if (strcmp(tag_name, "(unknown)") == 0) {
+                free(digest);
+                continue;
+            }
+
+            warnx(_("*** failed to update %s in the header"), tag_name);
             free(digest);
             return -1;
         }
