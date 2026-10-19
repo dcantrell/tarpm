@@ -14,6 +14,51 @@
 #include "tarpm.h"
 
 /*
+ * Main header tags rpm renamed in 6.0.0, in commit f14557cd5
+ * ("Rename PAYLOADDIGEST tags to PAYLOADSHA256 to match reality").
+ * The numbers did not move.
+ *
+ * We write the name used by the librpm we are linked to gives us for
+ * the name in header.json.  But for writing we need to honor either
+ * name, which is what this array helps accomplish.
+ */
+static struct {
+    const char *name;
+    rpmTagVal tag;
+} renamed_tags[] = {
+    { "Payloaddigest", RPMTAG_PAYLOADSHA256_VALUE },
+    { "Payloadsha256", RPMTAG_PAYLOADSHA256_VALUE },
+    { "Payloaddigestalgo", RPMTAG_PAYLOAD_DIGEST_ALGO },
+    { "Payloadsha256algo", RPMTAG_PAYLOAD_DIGEST_ALGO },
+    { "Payloaddigestalt", RPMTAG_PAYLOADSHA256ALT_VALUE },
+    { "Payloadsha256alt", RPMTAG_PAYLOADSHA256ALT_VALUE },
+    { NULL, 0 }
+};
+
+/*
+ * Map tag name spellings to tag numbers for tags that were renamed in
+ * major RPM versions.  Returns RPMTAG_NOT_FOUND to an unknown tag
+ * name.
+ */
+rpmTagVal
+renamed_tag_number(const char *tag)
+{
+    int i = 0;
+
+    if (tag == NULL) {
+        return RPMTAG_NOT_FOUND;
+    }
+
+    for (i = 0; renamed_tags[i].name != NULL; i++) {
+        if (!strcasecmp(tag, renamed_tags[i].name)) {
+            return renamed_tags[i].tag;
+        }
+    }
+
+    return RPMTAG_NOT_FOUND;
+}
+
+/*
  * Known file digest algorithms.  The names are the PGPHASHALGO_*
  * constants from librpm (include/rpm/rpmpgp.h) turned in to
  * human-readable strings.  We would use the RPM_HASH_* constants from
@@ -457,11 +502,18 @@ get_tag_number(struct json_object *entry, bool signature)
 
     t = rpmTagGetValue(tagname);
 
-    if (t == RPMTAG_NOT_FOUND) {
-        return sig_tag_number(tagname);
-    } else {
+    if (t != RPMTAG_NOT_FOUND) {
         return t;
     }
+
+    /* the header may have come from an rpm that spelled this differently */
+    t = renamed_tag_number(tagname);
+
+    if (t != RPMTAG_NOT_FOUND) {
+        return t;
+    }
+
+    return sig_tag_number(tagname);
 }
 
 /*

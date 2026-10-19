@@ -114,6 +114,18 @@ endif
 # names.
 # RPMTAG_RPMFORMAT and the SHA-512 and SHA3-256 payload digests all
 # arrived with 6.0.0.
+# See commit:
+#     5a685fb5e51f9f2d5b7e0bbb1d1d5b2e7f9b2c4a
+# https://github.com/rpm-software-management/rpm
+#
+# rpmLeadFromHeader() filled the lead in with the arch and the os of
+# the build machine up to version 6.0.0.  Starting with rpm 6.0.0, the
+# arch and os values are zero.  We write the lead ourselves, so match
+# whichever librpm we were built against to maintain compatibility.
+if rpm.version().version_compare('<6.0.0')
+    add_project_arguments('-D_LEAD_HAS_ARCH_OS', language : ['c', 'cpp'])
+endif
+
 if rpm.version().version_compare('>=6.0.0')
     add_project_arguments('-D_HAS_RPMFORMAT_TAGS', language : ['c', 'cpp'])
 endif

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
+#include <rpm/rpmlib.h>
 #include <rpm/header.h>
 #include <json.h>
 
@@ -88,6 +89,12 @@ read_lead(const int fd)
 struct rpmlead *
 create_lead(struct json_object *header)
 {
+    int archnum = 0;
+    int osnum = 0;
+#ifdef _LEAD_HAS_ARCH_OS
+    const char *archname = NULL;
+    const char *osname = NULL;
+#endif
     struct rpmlead *lead = NULL;
     struct json_object *obj = NULL;
     const char *n = NULL;
@@ -128,9 +135,23 @@ create_lead(struct json_object *header)
     lead->signature_type = htons(RPMSIGTYPE_HEADERSIG);
     memcpy(lead->magic, lead_magic, sizeof(lead->magic));
 
-    /* the archnum and osnum are always zero, legacy now */
-    lead->archnum = htons(0);
-    lead->osnum = htons(0);
+    /*
+     * rpm >= 6.0.0 set the arch os to zero.  Before that
+     * rpmLeadFromHeader() in lib/rpmlead.c read them from the build
+     * machine.  To maintain compatibility with older versions of rpm,
+     * do the same thing for the arch and os values.
+     *
+     * Both values come from the rpmrc tables and reset_librpm() has
+     * cleared those, so read them back in here.
+     */
+#ifdef _LEAD_HAS_ARCH_OS
+    rpmReadConfigFiles(NULL, NULL);
+    rpmGetArchInfo(&archname, &archnum);
+    rpmGetOsInfo(&osname, &osnum);
+#endif
+
+    lead->archnum = htons(archnum);
+    lead->osnum = htons(osnum);
 
     /*
      * this is RPMTAG_SOURCEPACKAGE and if it's present, it means we

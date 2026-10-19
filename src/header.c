@@ -38,6 +38,7 @@ struct data_writer {
 static rpmTagType
 get_entry_type(struct json_object *entry)
 {
+    rpmTagVal tag = RPMTAG_NOT_FOUND;
     struct json_object *key = NULL;
     rpmTagType type = RPM_NULL_TYPE;
 
@@ -55,9 +56,14 @@ get_entry_type(struct json_object *entry)
      * there, but all of them are an int32 in the header itself.
      */
     if (type == RPM_STRING_TYPE && json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key)) {
-        if (!strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_FILEDIGESTALGO))
-            || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_PAYLOAD_DIGEST_ALGO))
-            || !strcmp(json_object_get_string(key), rpmTagGetName(RPMTAG_BUILDTIME))) {
+        /*
+         * Go by the tag number rather than the name.  rpm renamed the
+         * payload digest algorithm tag in 6.0.0 and get_tag_number()
+         * takes either spelling.
+         */
+        tag = get_tag_number(entry, false);
+
+        if (tag == RPMTAG_FILEDIGESTALGO || tag == RPMTAG_PAYLOAD_DIGEST_ALGO || tag == RPMTAG_BUILDTIME) {
             type = RPM_INT32_TYPE;
         }
     }

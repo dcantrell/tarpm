@@ -143,6 +143,7 @@ rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 bool is_rpmsign_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
+rpmTagVal renamed_tag_number(const char *tag);
 bool has_tag(const struct json_object *tags, const char *name);
 const char *get_tag_value(const struct json_object *tags, const char *name);
 int set_tag_value(struct json_object *tags, const char *name, const char *new_value);
