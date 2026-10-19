@@ -8,7 +8,13 @@ import os
 import subprocess
 import rpmfluff
 from baseclass import NAME
+from baseclass import CLASSIFIES_BY_EXTENSION
 from baseclass import TestUnpackRPM
+
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 # Bytes libmagic has nothing to say about, so it calls them "data",
 # which is not a class rpm keeps.
@@ -146,7 +152,7 @@ class TestFileClassUnchanged(TestFileClass):
 
     def runTest(self):
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
         self.recreate()
@@ -161,8 +167,13 @@ class TestFileClassUnchanged(TestFileClass):
         self.assertEqual(before["/usr/share/%s/empty.txt" % NAME], "empty")
         self.assertIn("script", before["/usr/bin/%s-run" % NAME])
 
-        # "C Header" holds no token rpm keeps, so the file has no class
-        self.assertEqual(before["/usr/include/%s/foo.h" % NAME], "")
+        # rpm answers for a .h without asking libmagic from 4.18.0 on,
+        # and "C Header" holds no token it keeps, so the file has no
+        # class.  An older rpm asks libmagic and keeps what it says.
+        if CLASSIFIES_BY_EXTENSION:
+            self.assertEqual(before["/usr/include/%s/foo.h" % NAME], "")
+        else:
+            self.assertNotEqual(before["/usr/include/%s/foo.h" % NAME], "")
 
 
 class TestFileClassChangesWithContent(TestFileClass):
@@ -182,7 +193,7 @@ class TestFileClassChangesWithContent(TestFileClass):
         untouched = "/usr/share/%s/other.txt" % NAME
 
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
 
@@ -216,7 +227,7 @@ class TestFileClassGoesAwayWithContent(TestFileClass):
         changed = "/usr/share/%s/readme.txt" % NAME
 
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
         self.assertEqual(self.classes(original_rpm)[changed], "ASCII text")
@@ -249,7 +260,7 @@ class TestFileClassOnNewPayloadFiles(TestFileClass):
         }
 
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
 
@@ -289,7 +300,7 @@ class TestFileClassChangesWithType(TestFileClass):
         changed = "/usr/share/%s/readme.txt" % NAME
 
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
         self.assertEqual(self.classes(original_rpm)[changed], "ASCII text")
@@ -326,13 +337,17 @@ class TestFileClassInJSON(TestFileClass):
         header = "/usr/include/%s/foo.h" % NAME
 
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         self.extract(original_rpm)
 
         # a file with no class has no class key at all
         self.assertEqual(self.json_class(text), "ASCII text")
-        self.assertEqual(self.json_class(header), "")
+
+        if CLASSIFIES_BY_EXTENSION:
+            self.assertEqual(self.json_class(header), "")
+        else:
+            self.assertNotEqual(self.json_class(header), "")
 
         self.recreate()
         after = self.classes(self.recreated_rpm)

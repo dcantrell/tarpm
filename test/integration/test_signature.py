@@ -8,8 +8,15 @@ import json
 import os
 import struct
 import subprocess
+import unittest
 import rpmfluff
 from baseclass import NAME, TestUnpackSRPM, TestUnpackRPM
+from baseclass import HAVE_RPM_FORMAT_SIX
+
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 # The signature header tags rpm writes by default, one set per RPM
 # format.  rpmGenerateSignature() in lib/signature.cc in the rpm
@@ -400,7 +407,7 @@ class VerifyCreateWithoutSignatureJson(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
         os.unlink(self.signature)
 
         created = os.path.join(self.output_dir, "created.rpm")
@@ -452,7 +459,7 @@ class VerifyCreateIgnoresEditedSignature(TestUnpackRPM):
         json.dump(signature, f)
         f.close()
 
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
         created = os.path.join(self.output_dir, "created.rpm")
         rc, out, err = run_tarpm([self.tarpm, "-c", "-f", created, self.output_dir])
         self.assertEqual(rc, 0, msg=err)
@@ -480,7 +487,7 @@ class VerifyCreateFormatFour(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
         created = os.path.join(self.output_dir, "created.rpm")
         rc, out, err = run_tarpm(
             [self.tarpm, "-c", "--format", "4", "-f", created, self.output_dir]
@@ -501,6 +508,9 @@ class VerifyCreateFormatFour(TestUnpackRPM):
         self.assertEqual(one, two, "the package came out different")
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSix(TestUnpackRPM):
     """
     Asking for v6 gives us the signature header rpm writes for
@@ -570,7 +580,9 @@ class VerifyFormatRejectedOnExtract(TestUnpackRPM):
     def setUp(self):
         super().setUp()
 
-        self.opts = ["-F", "6"]
+        # any format does, the point is that -F has nothing to say
+        # on extract, and format 4 works against every rpm
+        self.opts = ["-F", "4"]
         self.exitcode = 1
 
     def runTest(self):

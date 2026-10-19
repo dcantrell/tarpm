@@ -289,6 +289,12 @@ test_apply_rpmformat_v4(void)
     return;
 }
 
+/*
+ * These two need an rpm that knows the format 6 tag names.  An
+ * older one cannot name tags 5112 through 5124, so there is
+ * nothing to look the result up by.
+ */
+#ifdef _HAS_RPMFORMAT_TAGS
 void
 test_apply_rpmformat_v6(void)
 {
@@ -322,6 +328,7 @@ test_apply_rpmformat_v6(void)
 
     return;
 }
+#endif
 
 void
 test_apply_rpmformat_keeps_zstd_level(void)
@@ -584,7 +591,11 @@ test_filter_format_tags_bad_input(void)
     add_number_tag(tags, RPMTAG_RPMFORMAT_VALUE, RPM_INT32_TYPE, 6);
 
     filter_format_tags(tags, 5);
+
+#ifdef _HAS_RPMFORMAT_TAGS
+    /* an older rpm cannot name this tag, so there is nothing to find */
     TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_RPMFORMAT_VALUE));
+#endif
 
     json_object_put(header);
 
@@ -623,6 +634,7 @@ test_update_payload_tags_v4(void)
     return;
 }
 
+#ifdef _HAS_RPMFORMAT_TAGS
 void
 test_update_payload_tags_v6(void)
 {
@@ -663,6 +675,7 @@ test_update_payload_tags_v6(void)
 
     return;
 }
+#endif
 
 void
 test_update_payload_tags_bad_input(void)
@@ -702,7 +715,6 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test apply_rpmformat() v4", test_apply_rpmformat_v4) == NULL ||
-        CU_add_test(pSuite, "test apply_rpmformat() v6", test_apply_rpmformat_v6) == NULL ||
         CU_add_test(pSuite, "test apply_rpmformat() keeps the zstd level", test_apply_rpmformat_keeps_zstd_level) == NULL ||
         CU_add_test(pSuite, "test apply_rpmformat() v6 back to v4", test_apply_rpmformat_v6_to_v4) == NULL ||
         CU_add_test(pSuite, "test apply_rpmformat() bad input", test_apply_rpmformat_bad_input) == NULL ||
@@ -714,10 +726,17 @@ get_suite(void)
         CU_add_test(pSuite, "test filter_format_tags() run twice", test_filter_format_tags_twice) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() bad input", test_filter_format_tags_bad_input) == NULL ||
         CU_add_test(pSuite, "test update_payload_tags() v4", test_update_payload_tags_v4) == NULL ||
-        CU_add_test(pSuite, "test update_payload_tags() v6", test_update_payload_tags_v6) == NULL ||
         CU_add_test(pSuite, "test update_payload_tags() bad input", test_update_payload_tags_bad_input) == NULL) {
         return NULL;
     }
+
+#ifdef _HAS_RPMFORMAT_TAGS
+    /* only an rpm that can name the format 6 tags can run these */
+    if (CU_add_test(pSuite, "test apply_rpmformat() v6", test_apply_rpmformat_v6) == NULL ||
+        CU_add_test(pSuite, "test update_payload_tags() v6", test_update_payload_tags_v6) == NULL) {
+        return NULL;
+    }
+#endif
 
     return pSuite;
 }

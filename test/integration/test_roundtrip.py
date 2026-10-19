@@ -17,6 +17,11 @@ from baseclass import VER
 from baseclass import TestUnpackRPM
 from baseclass import TestUnpackSRPM
 
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
+
 
 def run_tarpm(tarpm, args, env=None, cwd=None):
     """Run tarpm with the given arguments and return (returncode, stdout, stderr)"""
@@ -304,7 +309,7 @@ class TestRoundTripBinaryRPM(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         recreated = self.create(self.extract(original))
 
@@ -346,7 +351,7 @@ class TestCreateWithoutLeadBinaryRPM(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         # we build the lead from header.json, so drop lead.json
         extract_dir = self.extract(original)
@@ -394,7 +399,7 @@ class TestCreateIgnoresEditedLead(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         lead_path = os.path.join(extract_dir, "lead.json")
@@ -433,7 +438,7 @@ class TestCreateRecomputesFileDigests(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         edited = self.payload_path(extract_dir, "/usr/share/%s/edited.txt" % NAME)
@@ -478,7 +483,7 @@ class TestCreateRecomputesFileSizes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         edits = {
@@ -525,7 +530,7 @@ class TestCreateKeepsSymlinkSizes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         recreated = self.create(self.extract(original))
         sizes = dict(size_list(recreated))
@@ -552,7 +557,7 @@ class TestCreateKeepsGhostFileSizes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         ghost = "/var/lib/%s/ghost.txt" % NAME
@@ -579,7 +584,7 @@ class TestCreateHonorsFileDigestAlgo(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         header = read_header(extract_dir)
@@ -620,7 +625,7 @@ class TestCreateDropsMissingPayloadFiles(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         dropped = "/usr/share/%s/file1.txt" % NAME
@@ -662,7 +667,7 @@ class TestCreateKeepsGhostFiles(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         ghost = "/var/lib/%s/ghost.txt" % NAME
@@ -702,7 +707,7 @@ class TestCreateRenumbersHardLinkInodes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         # rpm gives every hard link of a file the same inode number
         inodes = dict(inode_list(original))
@@ -750,7 +755,7 @@ class TestRoundTripTagsWrittenByName(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         header = read_header(extract_dir)
@@ -807,7 +812,7 @@ class TestCreateEmptyTagFile(TagFile, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
 
@@ -825,7 +830,7 @@ class TestCreateRejectsMissingTagFile(TagFile, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         os.unlink(self.tagfile(extract_dir))
@@ -838,7 +843,7 @@ class TestCreateRejectsNulInTagFile(TagFile, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
 
@@ -887,7 +892,7 @@ class Changelog(RoundTrip):
         """Build the package the changelog tests work with"""
         self.rpm.do_make()
 
-        return self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        return self.rpm.get_built_rpm(get_expected_arch())
 
     def times(self, pkg):
         """Return the changelog timestamps an RPM carries, newest first"""
@@ -1127,7 +1132,7 @@ class TestCreateAddsNewPayloadFiles(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1240,7 +1245,7 @@ class TestCreateLeavesUnchangedPayloadAlone(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         recreated, err = self.create_warns(self.extract(original))
 
@@ -1274,7 +1279,7 @@ class TestRoundTripFileTypes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         types = dict(
@@ -1305,7 +1310,7 @@ class TestCreateAddedPayloadFileTypes(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1355,7 +1360,7 @@ class TestCreateFixesFileTypeMismatch(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1402,7 +1407,7 @@ class TestCreateFixesMismatchValues(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1483,7 +1488,7 @@ class TestCreateFillsMissingFileMetadata(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1572,7 +1577,7 @@ class TestCreateFillsMissingSymlinkMetadata(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         base = "/usr/share/%s" % NAME
@@ -1636,7 +1641,7 @@ class TestCreateLeavesGhostMetadataAlone(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         real = "/usr/share/%s/real.txt" % NAME
@@ -1694,7 +1699,7 @@ class PayloadOverride(RoundTrip):
         """Build the package the payload override tests work with"""
         self.rpm.do_make()
 
-        return self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        return self.rpm.get_built_rpm(get_expected_arch())
 
     def retime(self, extract_dir, path, mtime):
         """Set the modification time of a file in the payload tree"""
@@ -1729,7 +1734,7 @@ class TestCreateKeepsHeaderMetadataByDefault(PayloadOverride, TestUnpackRPM):
     def runTest(self):
         extract_dir = self.extract(self.build())
         original = dict(
-            mtime_list(self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()))
+            mtime_list(self.rpm.get_built_rpm(get_expected_arch()))
         )
 
         self.retime(extract_dir, self.data, self.mtime)
@@ -1890,7 +1895,7 @@ class TestCreateSaysNothingWhenPayloadMatches(PayloadOverride, TestUnpackRPM):
     def runTest(self):
         extract_dir = self.extract(self.build())
         original = dict(
-            mtime_list(self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()))
+            mtime_list(self.rpm.get_built_rpm(get_expected_arch()))
         )
 
         # the payload tree came out of the package, so nothing differs
@@ -1949,7 +1954,7 @@ class TestCreateRecomputesInstalledSize(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         # rpm adds up the file sizes to get the installed size
         self.assertEqual(
@@ -2008,7 +2013,7 @@ class TestCreateCountsHardLinkSizeOnce(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         # the three links are one file as far as the size goes
         self.assertEqual(installed_size(original), len(b"the same content\n"))
@@ -2031,7 +2036,7 @@ class TestMetadataPathsRoundTrip(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         meta_dir = os.path.join(extract_dir, "meta", "sub")
@@ -2103,7 +2108,7 @@ class TestMetadataPathsAreRelative(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
 
@@ -2146,7 +2151,7 @@ class TestPayloadPathRoundTrip(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         payload_dir = os.path.join(self.output_dir, "tree", "files")
@@ -2194,7 +2199,7 @@ class TestPayloadPathIsRelative(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         rc, out, err = run_tarpm(
             self.tarpm,
@@ -2240,7 +2245,7 @@ class TestPayloadPathMissing(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
 
@@ -2278,7 +2283,7 @@ class TestLeadToStdoutRoundTrip(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
 
@@ -2330,7 +2335,7 @@ class TestMetadataToStdout(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
 
@@ -2381,7 +2386,7 @@ class TestMetadataStdoutRejectedOnCreate(RoundTrip, TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = self.extract(original)
         pkg = os.path.join(self.output_dir, "recreated.rpm")

@@ -4,9 +4,18 @@
 #
 
 import json
-from packaging.version import parse as parse_version
+import rpm
 from baseclass import NAME, VER, REL
+from baseclass import LEAD_CARRIES_ARCH_OS
 from baseclass import TestUnpackSRPM, TestUnpackRPM
+
+
+def parse_version(v):
+    """Simple version parser for comparing lead version field"""
+    try:
+        return tuple(int(x) for x in str(v).split(".")[:2])
+    except (ValueError, AttributeError):
+        return (0, 0)
 
 
 class VerifyLeadExtractSRPM(TestUnpackSRPM):
@@ -36,10 +45,15 @@ class VerifyLeadExtractSRPM(TestUnpackSRPM):
                 self.assertEqual(lead[key], "source")
             elif key == "name":
                 self.assertEqual(lead[key], "%s-%s-%s" % (NAME, VER, REL))
-            elif key == "architecture":
-                self.assertEqual(lead[key], 0)
-            elif key == "os":
-                self.assertEqual(lead[key], 0)
+            elif key in ["architecture", "os"]:
+                # rpmLeadFromHeader() read both off the machine doing
+                # the build until 6.0.0, which leaves them zero.  The
+                # number an older rpm writes depends on the arch, so
+                # only check that it said something.
+                if LEAD_CARRIES_ARCH_OS:
+                    self.assertTrue(isinstance(lead[key], int))
+                else:
+                    self.assertEqual(lead[key], 0)
             elif key == "signature type":
                 self.assertEqual(lead[key], 5)
 
@@ -71,9 +85,14 @@ class VerifyLeadExtractRPM(TestUnpackRPM):
                 self.assertEqual(lead[key], "binary")
             elif key == "name":
                 self.assertEqual(lead[key], "%s-%s-%s" % (NAME, VER, REL))
-            elif key == "architecture":
-                self.assertEqual(lead[key], 0)
-            elif key == "os":
-                self.assertEqual(lead[key], 0)
+            elif key in ["architecture", "os"]:
+                # rpmLeadFromHeader() read both off the machine doing
+                # the build until 6.0.0, which leaves them zero.  The
+                # number an older rpm writes depends on the arch, so
+                # only check that it said something.
+                if LEAD_CARRIES_ARCH_OS:
+                    self.assertTrue(isinstance(lead[key], int))
+                else:
+                    self.assertEqual(lead[key], 0)
             elif key == "signature type":
                 self.assertEqual(lead[key], 5)

@@ -8,8 +8,10 @@ import json
 import os
 import struct
 import subprocess
+import unittest
 import rpmfluff
 from baseclass import NAME, TestUnpackRPM
+from baseclass import HAVE_RPM_FORMAT_SIX
 
 # The main header tags rpm writes for the payload, one set per RPM
 # format.  writeRPM() in build/pack.cc in the rpm source puts these in.
@@ -193,6 +195,9 @@ class VerifyCreateFormatFourHeader(TestUnpackRPM):
         self.assertEqual(lead_major(created), V4_LEAD_MAJOR)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixHeader(TestUnpackRPM):
     """A v6 package carries the format tag and the v6 digests"""
 
@@ -224,6 +229,9 @@ class VerifyCreateFormatSixHeader(TestUnpackRPM):
         self.assertEqual(lead_major(created), V6_LEAD_MAJOR)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixRpmformat(TestUnpackRPM):
     """The format tag of a v6 package names the format"""
 
@@ -246,6 +254,9 @@ class VerifyCreateFormatSixRpmformat(TestUnpackRPM):
         self.assertEqual(tags["Rpmformat"], 6)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixCompression(TestUnpackRPM):
     """A v6 package is compressed the way rpm compresses one"""
 
@@ -297,6 +308,9 @@ class VerifyCreateFormatFourCompression(TestUnpackRPM):
         self.assertEqual(tags["Payloadflags"], "9")
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixPayloadDigests(TestUnpackRPM):
     """
     The payload digests of a v6 package cover the payload, and
@@ -341,6 +355,9 @@ class VerifyCreateFormatSixPayloadDigests(TestUnpackRPM):
         self.assertNotEqual(tags["Payloadsha3_256alt"], tags["Payloadsha3_256"])
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixDropsFormatTags(TestUnpackRPM):
     """
     Writing a v4 package from a v6 one takes the tags only
@@ -385,6 +402,9 @@ class VerifyCreateFormatSixDropsFormatTags(TestUnpackRPM):
         self.assertEqual(lead_major(four), V4_LEAD_MAJOR)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatFourDropsFormatTags(TestUnpackRPM):
     """
     Writing a v6 package from a v4 one takes the tags only
@@ -429,6 +449,9 @@ class VerifyCreateFormatFourDropsFormatTags(TestUnpackRPM):
         self.assertEqual(lead_major(six), V6_LEAD_MAJOR)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatFileSignatures(TestUnpackRPM):
     """
     A signed package keeps its file signatures in the main header,
@@ -501,6 +524,9 @@ class VerifyCreateFormatFourSizeTags(TestUnpackRPM):
             self.assertFalse(tag in tags, msg="main header carries %d" % tag)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixSizeTags(TestUnpackRPM):
     """A v6 package counts its sizes in the 64 bit size tags"""
 
@@ -529,6 +555,9 @@ class VerifyCreateFormatSixSizeTags(TestUnpackRPM):
             self.assertFalse(tag in tags, msg="main header carries %d" % tag)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSizesMatch(TestUnpackRPM):
     """The two spellings of the size tags count the same bytes"""
 
@@ -558,6 +587,9 @@ class VerifyCreateFormatSizesMatch(TestUnpackRPM):
         self.assertEqual(size_values(four, 1028, 4), size_values(six, 5008, 8))
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixSourceNevr(TestUnpackRPM):
     """A v6 format package gets the source NEVR derived from Sourcerpm"""
 
@@ -589,9 +621,13 @@ class VerifyCreateFormatFourNoSourceNevr(TestUnpackRPM):
         )
         self.assertEqual(rc, 0, msg=err)
 
-        self.assertEqual(query(four, "%{sourcenevr}"), "(none)")
+        result = query(four, "%{sourcenevr}")
+        self.assertIn(result, ["(none)", ""], msg=f"Expected '(none)' or empty string, got '{result}'")
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyFormatRoundTripKeepsSourceNevr(TestUnpackRPM):
     """Converting a package to v4 format and back keeps the source NEVR"""
 

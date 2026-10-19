@@ -586,6 +586,36 @@ test_buildtime_value(void)
     return;
 }
 
+/*
+ * Test renamed_tag_number() takes either spelling of the three main
+ * header tags rpm renamed in 6.0.0.
+ */
+void
+test_renamed_tag_number(void)
+{
+    /* the spelling before 6.0.0 */
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloaddigest"), RPMTAG_PAYLOADSHA256_VALUE);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloaddigestalgo"), RPMTAG_PAYLOAD_DIGEST_ALGO);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloaddigestalt"), RPMTAG_PAYLOADSHA256ALT_VALUE);
+
+    /* and from 6.0.0 on */
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloadsha256"), RPMTAG_PAYLOADSHA256_VALUE);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloadsha256algo"), RPMTAG_PAYLOAD_DIGEST_ALGO);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payloadsha256alt"), RPMTAG_PAYLOADSHA256ALT_VALUE);
+
+    /* the names are not case sensitive */
+    TARPM_ASSERT_EQUAL(renamed_tag_number("payloaddigest"), RPMTAG_PAYLOADSHA256_VALUE);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("PAYLOADSHA256"), RPMTAG_PAYLOADSHA256_VALUE);
+
+    /* anything else is not ours to answer for */
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Name"), RPMTAG_NOT_FOUND);
+    TARPM_ASSERT_EQUAL(renamed_tag_number("Payload"), RPMTAG_NOT_FOUND);
+    TARPM_ASSERT_EQUAL(renamed_tag_number(""), RPMTAG_NOT_FOUND);
+    TARPM_ASSERT_EQUAL(renamed_tag_number(NULL), RPMTAG_NOT_FOUND);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -609,7 +639,8 @@ get_suite(void)
         CU_add_test(pSuite, "test strdigestalgo()", test_strdigestalgo) == NULL ||
         CU_add_test(pSuite, "test digest_algo()", test_digest_algo) == NULL ||
         CU_add_test(pSuite, "test strbuildtime()", test_strbuildtime) == NULL ||
-        CU_add_test(pSuite, "test buildtime_value()", test_buildtime_value) == NULL) {
+        CU_add_test(pSuite, "test buildtime_value()", test_buildtime_value) == NULL ||
+        CU_add_test(pSuite, "test renamed_tag_number()", test_renamed_tag_number) == NULL) {
         return NULL;
     }
 

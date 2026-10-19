@@ -8,11 +8,17 @@ import os
 import platform
 import shutil
 import subprocess
+import unittest
 import rpmfluff
 from baseclass import NAME
+from baseclass import HAVE_RPM_FORMAT_SIX
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackRPM
 
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 def make_random_content(size):
     """Generate random printable ASCII content of given size"""
@@ -50,7 +56,7 @@ class TestCreateRPMRoundTrip(TestUnpackRPM):
     def runTest(self):
         # Step 1: Build RPM with rpmbuild
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         # Step 2: Extract the original RPM with tarpm
         extract_dir = os.path.join(self.output_dir, "extracted")
@@ -193,7 +199,7 @@ class TestCreateRPMWithSymlinks(TestUnpackRPM):
     def runTest(self):
         # Build original RPM
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         # Extract with tarpm
         extract_dir = os.path.join(self.output_dir, "extracted")
@@ -248,7 +254,7 @@ class TestCreateRPMWithDirectories(TestUnpackRPM):
     def runTest(self):
         # Build, extract, recreate, and re-extract
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         os.makedirs(extract_dir)
@@ -311,7 +317,7 @@ class TestCreateRPMPreservesPermissions(TestUnpackRPM):
     def runTest(self):
         # Build, extract, recreate, and re-extract
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         os.makedirs(extract_dir)
@@ -368,7 +374,7 @@ class TestCreateRPMWithEmptyFiles(TestUnpackRPM):
     def runTest(self):
         # Build, extract, recreate, and re-extract
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         os.makedirs(extract_dir)
@@ -421,7 +427,7 @@ class TestCreateRPMMultipleFiles(TestUnpackRPM):
     def runTest(self):
         # Build, extract, recreate, and re-extract
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         extract_dir = os.path.join(self.output_dir, "extracted")
         os.makedirs(extract_dir)
@@ -565,6 +571,9 @@ class CreateFromMinimalTree(RequiresTarpm):
         self.assertEqual(rc, 0, msg=err)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class CreateV6FromMinimalTree(CreateFromMinimalTree):
     """The same minimal tree written as an RPM v6 format package"""
 
@@ -580,7 +589,9 @@ class CreateWithNoFiles(RequiresTarpm):
         self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
 
     def runTest(self):
-        for rpmformat in ["4", "6"]:
+        formats = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+
+        for rpmformat in formats:
             pkg = os.path.join(self.output_dir, "hello-%s.rpm" % rpmformat)
             rc, out, err = run_tarpm(
                 [self.tarpm, "-c", "-F", rpmformat, "-f", pkg, self.tree]
@@ -626,7 +637,7 @@ class CreateWithEmptiedPayload(TestUnpackRPM):
 
     def runTest(self):
         self.rpm.do_make()
-        original_rpm = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
 
         tree = os.path.join(self.output_dir, "extracted")
         os.makedirs(tree)

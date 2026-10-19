@@ -11,6 +11,7 @@ import platform
 import rpm
 import time
 from baseclass import TestUnpackSRPM, TestUnpackRPM
+from baseclass import PAYLOAD_DIGEST, PAYLOAD_DIGEST_ALGO, PAYLOAD_DIGEST_ALT
 
 
 def build_host():
@@ -182,14 +183,14 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Encoding":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "utf-8")
-                    elif t == "Payloadsha256":
+                    elif t == PAYLOAD_DIGEST:
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
-                    elif t == "Payloadsha256algo":
+                    elif t == PAYLOAD_DIGEST_ALGO:
                         # recorded by name, the same as Filedigestalgo
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "sha256")
-                    elif t == "Payloadsha256alt":
+                    elif t == PAYLOAD_DIGEST_ALT:
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
                     elif t == "Spec":
@@ -438,16 +439,18 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Encoding":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "utf-8")
-                    elif t == "Payloadsha256":
+                    elif t == PAYLOAD_DIGEST:
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
-                    elif t == "Payloadsha256algo":
+                    elif t == PAYLOAD_DIGEST_ALGO:
                         # recorded by name, the same as Filedigestalgo
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "sha256")
-                    elif t == "Payloadsha256alt":
+                    elif t == PAYLOAD_DIGEST_ALT:
                         self.assertTrue(tag["type"] == "string array")
                         self.assertTrue(len(tag["value"][0]) == 64)
+                    elif t == "Sourcepkgid":
+                        self.assertTrue(tag["type"] == "binary blob")
                     else:
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)

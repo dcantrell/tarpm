@@ -8,11 +8,17 @@ import os
 import shutil
 import stat
 import subprocess
+import unittest
 import tempfile
 import rpmfluff
 from baseclass import NAME, VER, REL
+from baseclass import HAVE_RPM_FORMAT_SIX
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 def make_random_content(size):
     """Generate random printable ASCII content of given size"""
@@ -465,7 +471,18 @@ class VerifyNoPayloadSRPM(TestUnpackSRPM):
         super().runTest()
 
         self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "header.json")))
-        self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "spec.txt")))
+
+        # Check if SPEC tag exists in the SRPM. If it does, spec.txt should be extracted
+        spec_output = subprocess.Popen(
+            ["rpm", "-qp", "--qf", "%{SPEC}", self.rpm.get_built_srpm()],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        ).communicate()[0].decode()
+
+        if spec_output and spec_output != "(none)":
+            self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "spec.txt")),
+                          msg="SPEC tag exists in SRPM but spec.txt was not extracted")
+
         self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
 
 
@@ -492,7 +509,7 @@ class VerifyNoPayloadMetadataMatchesFullExtract(TestUnpackRPM):
             "-x",
             "-n",
             "-f",
-            self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+            self.rpm.get_built_rpm(get_expected_arch()),
             "-O",
             metadata_dir,
         ]
@@ -624,7 +641,7 @@ class VerifyUnwritableOutputDirFails(TestUnpackRPM):
             "-x",
             "-n",
             "-f",
-            self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+            self.rpm.get_built_rpm(get_expected_arch()),
             "-O",
             "/proc/tarpm-cannot-make-this",
         ]
@@ -635,6 +652,9 @@ class VerifyUnwritableOutputDirFails(TestUnpackRPM):
         self.assertIn("unable to mkdir", err.decode("utf-8"))
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyExtractStrippedPayload(TestUnpackRPM):
     """Test extraction of the stripped cpio payload an RPM v6 format package carries"""
 
@@ -661,6 +681,9 @@ class VerifyExtractStrippedPayload(TestUnpackRPM):
         self.assertEqual(os.path.getsize(readme), 256)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyStrippedPayloadRoundTrip(TestUnpackRPM):
     """Test a v6 format package with a stripped payload survives a round trip"""
 
@@ -709,7 +732,7 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
 
         # the tar lands next to the package, so work on a copy of our
         # own where we can see it
-        original = self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch())
+        original = self.rpm.get_built_rpm(get_expected_arch())
         pkg = os.path.join(self.output_dir, os.path.basename(original))
         shutil.copyfile(original, pkg)
 

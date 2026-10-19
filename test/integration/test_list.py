@@ -8,9 +8,14 @@ import re
 import subprocess
 import rpmfluff
 from baseclass import NAME
+from baseclass import BUILD_FILES_OWNED_BY_ROOT
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 def list_entries(out):
     """Turn the output of tarpm -t in to a dict of payload path to fields"""
@@ -40,6 +45,9 @@ class ListPayload(object):
     of the baseclass test cases.
     """
 
+    # a source package test sets this, see assertEntry() below
+    source_package = False
+
     def assertEntry(self, entries, path, mode=None, size=None):
         """Assert the payload path was listed and check what was said about it"""
         self.assertTrue(path in entries, "%s was not listed" % path)
@@ -56,8 +64,13 @@ class ListPayload(object):
                 entry["size"], size, "%s is %d bytes" % (path, entry["size"])
             )
 
-        # every entry carries the ownership and the modification time
-        self.assertEqual(entry["owner"], "root/root")
+        # Every entry carries the ownership and the modification time.
+        # rpm recorded the building user on a source package until
+        # 4.20.0, so only a binary package is sure to say root/root.
+        if BUILD_FILES_OWNED_BY_ROOT or not self.source_package:
+            self.assertEqual(entry["owner"], "root/root")
+        else:
+            self.assertTrue(re.fullmatch(r"\S+/\S+", entry["owner"]))
         self.assertTrue(re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["date"]))
         self.assertTrue(re.fullmatch(r"\d{2}:\d{2}", entry["time"]))
 
@@ -203,6 +216,8 @@ class VerifyListEmptyFile(ListPayload, TestUnpackRPM):
 class VerifyListSRPM(ListPayload, TestUnpackSRPM):
     """Test listing the payload of a source RPM"""
 
+    source_package = True
+
     def setUp(self):
         super().setUp()
         self.mode = "-t"
@@ -238,7 +253,7 @@ class VerifyListShortSyntax(TestUnpackRPM):
             [
                 self.tarpm,
                 "tvf",
-                self.rpm.get_built_rpm(rpmfluff.utils.get_expected_arch()),
+                self.rpm.get_built_rpm(get_expected_arch()),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
