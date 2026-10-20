@@ -20,6 +20,7 @@ try:
 except ImportError:
     from rpmfluff import get_expected_arch
 
+
 def make_random_content(size):
     """Generate random printable ASCII content of given size"""
     import random

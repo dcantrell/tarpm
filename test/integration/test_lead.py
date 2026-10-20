@@ -4,7 +4,6 @@
 #
 
 import json
-import rpm
 from baseclass import NAME, VER, REL
 from baseclass import LEAD_CARRIES_ARCH_OS
 from baseclass import TestUnpackSRPM, TestUnpackRPM

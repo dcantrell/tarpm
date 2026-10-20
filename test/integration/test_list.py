@@ -17,6 +17,7 @@ try:
 except ImportError:
     from rpmfluff import get_expected_arch
 
+
 def list_entries(out):
     """Turn the output of tarpm -t in to a dict of payload path to fields"""
     entries = {}

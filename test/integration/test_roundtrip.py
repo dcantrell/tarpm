@@ -411,10 +411,15 @@ class TestCreateWithoutLeadSourceRPM(RoundTrip, TestUnpackSRPM):
             #     sig_type(78-80)
             #     reserved(80-96)
             # Check if the only difference is in the arch field (bytes 8-9)
-            if (original_lead[:8] == recreated_lead[:8] and original_lead[10:] == recreated_lead[10:]):
+            if (
+                original_lead[:8] == recreated_lead[:8]
+                and original_lead[10:] == recreated_lead[10:]
+            ):
                 pass
             else:
-                self.assertEqual(recreated_lead, original_lead, "lead bytes differ beyond arch field")
+                self.assertEqual(
+                    recreated_lead, original_lead, "lead bytes differ beyond arch field"
+                )
         self.assertVerifies(recreated)
 
 
@@ -1764,9 +1769,7 @@ class TestCreateKeepsHeaderMetadataByDefault(PayloadOverride, TestUnpackRPM):
 
     def runTest(self):
         extract_dir = self.extract(self.build())
-        original = dict(
-            mtime_list(self.rpm.get_built_rpm(get_expected_arch()))
-        )
+        original = dict(mtime_list(self.rpm.get_built_rpm(get_expected_arch())))
 
         self.retime(extract_dir, self.data, self.mtime)
         self.relink(extract_dir, self.link, "elsewhere.txt")
@@ -1925,9 +1928,7 @@ class TestCreateSaysNothingWhenPayloadMatches(PayloadOverride, TestUnpackRPM):
 
     def runTest(self):
         extract_dir = self.extract(self.build())
-        original = dict(
-            mtime_list(self.rpm.get_built_rpm(get_expected_arch()))
-        )
+        original = dict(mtime_list(self.rpm.get_built_rpm(get_expected_arch())))
 
         # the payload tree came out of the package, so nothing differs
         recreated, err = self.create_warns(extract_dir, args=["-m", "-l"])

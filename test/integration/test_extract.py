@@ -20,6 +20,7 @@ try:
 except ImportError:
     from rpmfluff import get_expected_arch
 
+
 def make_random_content(size):
     """Generate random printable ASCII content of given size"""
     import random
@@ -473,15 +474,21 @@ class VerifyNoPayloadSRPM(TestUnpackSRPM):
         self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "header.json")))
 
         # Check if SPEC tag exists in the SRPM. If it does, spec.txt should be extracted
-        spec_output = subprocess.Popen(
-            ["rpm", "-qp", "--qf", "%{SPEC}", self.rpm.get_built_srpm()],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        ).communicate()[0].decode()
+        spec_output = (
+            subprocess.Popen(
+                ["rpm", "-qp", "--qf", "%{SPEC}", self.rpm.get_built_srpm()],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            .communicate()[0]
+            .decode()
+        )
 
         if spec_output and spec_output != "(none)":
-            self.assertTrue(os.path.isfile(os.path.join(self.output_dir, "spec.txt")),
-                          msg="SPEC tag exists in SRPM but spec.txt was not extracted")
+            self.assertTrue(
+                os.path.isfile(os.path.join(self.output_dir, "spec.txt")),
+                msg="SPEC tag exists in SRPM but spec.txt was not extracted",
+            )
 
         self.assertFalse(os.path.isdir(os.path.join(self.output_dir, "payload")))
 

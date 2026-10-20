@@ -218,7 +218,7 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                             "%description",
                             "%changelog",
                             "0.1-1",
-                            "Initial version"
+                            "Initial version",
                         ]
                         for required in essential_content:
                             self.assertIn(required, spec_content)

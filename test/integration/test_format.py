@@ -23,7 +23,11 @@ _v4_tags = [5092, 5093, 5097]
 
 # Build V4_HEADER_TAGS dynamically to account for tags that don't
 # exist in older RPM versions.
-V4_HEADER_TAGS = [tag for tag in _v4_tags if rpm.tagnames.get(tag) and rpm.tagnames.get(tag) != "(unknown)"]
+V4_HEADER_TAGS = [
+    tag
+    for tag in _v4_tags
+    if rpm.tagnames.get(tag) and rpm.tagnames.get(tag) != "(unknown)"
+]
 
 # The header tags always present in v6 headers.
 V6_HEADER_TAGS = [5092, 5097, 5112, 5113, 5114, 5121, 5122, 5123, 5124]
@@ -631,7 +635,11 @@ class VerifyCreateFormatFourNoSourceNevr(TestUnpackRPM):
         self.assertEqual(rc, 0, msg=err)
 
         result = query(four, "%{sourcenevr}")
-        self.assertIn(result, ["(none)", ""], msg=f"Expected '(none)' or empty string, got '{result}'")
+        self.assertIn(
+            result,
+            ["(none)", ""],
+            msg=f"Expected '(none)' or empty string, got '{result}'",
+        )
 
 
 @unittest.skipUnless(
