@@ -10,13 +10,22 @@ import struct
 import subprocess
 import unittest
 import rpmfluff
+import rpm
 from baseclass import NAME, TestUnpackRPM
 from baseclass import HAVE_RPM_FORMAT_SIX
 
 # The main header tags rpm writes for the payload, one set per RPM
 # format.  writeRPM() in build/pack.cc in the rpm source puts these in.
 # See the RPMFORMAT_V*_HEADER_TAGS groups in include/constants.h.
-V4_HEADER_TAGS = [5092, 5093, 5097]
+
+# The header tags we *hope* we can get in a v4 format header.
+_v4_tags = [5092, 5093, 5097]
+
+# Build V4_HEADER_TAGS dynamically to account for tags that don't
+# exist in older RPM versions.
+V4_HEADER_TAGS = [tag for tag in _v4_tags if rpm.tagnames.get(tag) and rpm.tagnames.get(tag) != "(unknown)"]
+
+# The header tags always present in v6 headers.
 V6_HEADER_TAGS = [5092, 5097, 5112, 5113, 5114, 5121, 5122, 5123, 5124]
 
 # The main header tags only one of the two formats carries.  See the
