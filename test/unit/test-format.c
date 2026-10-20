@@ -264,6 +264,11 @@ test_apply_rpmformat_v4(void)
 {
     struct json_object *header = NULL;
 
+    /* skip if this RPM version doesn't have PAYLOADSHA256ALT */
+    if (strcmp(rpmTagGetName(RPMTAG_PAYLOADSHA256ALT_VALUE), "(unknown)") == 0) {
+        return;
+    }
+
     header = make_test_header("gzip", "9");
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
 
@@ -350,6 +355,11 @@ void
 test_apply_rpmformat_v6_to_v4(void)
 {
     struct json_object *header = NULL;
+
+    /* skip if this RPM version doesn't have PAYLOADSHA256ALT */
+    if (strcmp(rpmTagGetName(RPMTAG_PAYLOADSHA256ALT_VALUE), "(unknown)") == 0) {
+        return;
+    }
 
     /* going the other way takes the v6 group back out */
     header = make_test_header("zstd", "19");
@@ -608,6 +618,11 @@ test_update_payload_tags_v4(void)
     int fd = -1;
     char *digest = NULL;
     struct json_object *header = NULL;
+
+    /* skip if this RPM version doesn't have PAYLOADSHA256ALT */
+    if (strcmp(rpmTagGetName(RPMTAG_PAYLOADSHA256ALT_VALUE), "(unknown)") == 0) {
+        return;
+    }
 
     fd = make_test_payload("v4 payload data");
     TARPM_ASSERT_TRUE(fd != -1);
