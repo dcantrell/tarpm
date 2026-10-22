@@ -132,6 +132,15 @@ Core functionality that still needs to happen:
     [*] Integration tests for create mode
     [*] Integration tests for list mode
 
+    [ ] Build and test success on:
+        [*] Fedora rawhide
+        [*] Fedora 44
+        [*] CentOS Stream 10 + EPEL
+        [*] CentOS Stream 9 + EPEL
+        [*] CentOS Stream 8 + EPEL
+        [ ] RHEL 7 + EPEL?
+        [ ] RHEL 6 + EPEL?
+
 [ ] Followups
     [ ] Verbose messages.  Restrict informational messages to -v being
         specified and make sure output goes to stdout, not warnx().
@@ -140,6 +149,12 @@ Core functionality that still needs to happen:
         text files.
         [ ] This will require dumping a list of tag names, so an
             option for that separately.
+        [ ] Suppress by tag number.
+        [ ] Suppress by tag name (symbolic name, case insensitive).
+
+    [ ] Command line option to use provided tag values as-is on create
+        for anything that is recomputed at create time.  Meant to
+        allow constructing known bad RPMs (e.g., incorrect digests).
 
 [*] signature.json
     [*] Unknown signature tags in signature.json -- figure these out
@@ -150,30 +165,38 @@ Core functionality that still needs to happen:
     [*] Exclude all signature tags that rpmsign(1) generates when
         creating an RPM
 
-[ ] Documentation
-    [ ] Basic info
-    [ ] How to build
-    [ ] How to list RPM contents
-    [ ] How to extract an RPM
-    [ ] How to create an RPM
+[ ] CI jobs on GitHub
+    [ ] Get 'make check' CI jobs implemented (copy over from
+        rpminspect)
 
-[ ] Document creating an RPM from scratch
-    [ ] Source RPM
-        [ ] First off, why?
+    [ ] Shellcheck CI jobs for scripts
 
-        [ ] Minimum set of tags required.
+    [ ] Python black and flake8 for Python code
 
-        [ ] What would be in the spec file?
+[*] Documentation
+    [*] Basic info
+    [*] How to build
+    [*] How to list RPM contents
+    [*] How to extract an RPM
+    [*] How to create an RPM
 
-    [ ] Binary RPM
+[*] Document creating an RPM from scratch
+    [*] Source RPM
+        [*] First off, why?
+
+        [*] Minimum set of tags required.
+
+        [*] What would be in the spec file?
+
+    [*] Binary RPM
         [*] Minimum required for lead.json
 
         [*] Do we need signature.json?  No, we generate the signature
             header ourselves.
 
-        [ ] Minimum required for header.json
+        [*] Minimum required for header.json
 
-        [ ] How to specify dependencies
-            [ ] Run find-provides
+        [*] How to specify dependencies
+            [*] Run find-provides
 
-            [ ] Run find-requires
+            [*] Run find-requires
