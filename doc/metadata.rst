@@ -84,6 +84,12 @@ does not need one.
 The ``version`` field tracks the RPM format.  It reads ``3.0`` for a
 format 4 package and ``4.0`` for a format 6 package.
 
+``architecture`` and ``os`` are zero above because rpm 6.0.0 stopped
+filling them in.  An older rpm wrote the numbers of the machine doing
+the build rather than anything out of the header, and tarpm does the
+same when it was built against one, so a package it writes still
+matches the one rpmbuild(1) would have written.
+
 signature.json
 ==============
 
@@ -174,6 +180,13 @@ JSON type name     rpm type
 
 An array type carries an array for its ``value``.  A binary blob
 carries base64.
+
+The name is the one the rpm tarpm was built against uses, and rpm
+renamed three tags in 6.0.0.  A tree extracted with an older rpm calls
+them ``Payloaddigest``, ``Payloaddigestalgo``, and ``Payloaddigestalt``
+where a newer one says ``Payloadsha256``, ``Payloadsha256algo``, and
+``Payloadsha256alt``.  The numbers did not move and tarpm takes either
+spelling, so a tree stays usable whichever rpm made it.
 
 Three tags come out differently than the raw header has them, because
 the raw form is unreadable.  Note that the ``type`` of the first two
