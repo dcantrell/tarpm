@@ -34,7 +34,7 @@ struct file_metadata {
     str_list_t *dirnames;
     str_list_t *basenames;
     uint32_list_t *dirindexes;
-    uint32_list_t *filesizes;
+    uint64_list_t *filesizes;
     uint32_list_t *filemodes;
     uint32_list_t *filemtimes;
     str_list_t *fileusernames;
@@ -76,7 +76,7 @@ struct file_cursors {
     str_entry_t *linkto;
     str_entry_t *filelang;
     uint32_entry_t *dirindex;
-    uint32_entry_t *filesize;
+    uint64_entry_t *filesize;
     uint32_entry_t *filemode;
     uint32_entry_t *filemtime;
     uint32_entry_t *filerdev;
@@ -311,8 +311,8 @@ type_bits(const char *name)
 
 /*
  * Free all of the lists held in a struct file_metadata.  String lists go
- * through list_free() and the integer lists through uint32_list_free().
- * Safe to call with a NULL pointer.
+ * through list_free() and the integer lists through uint32_list_free()
+ * or uint64_list_free().  Safe to call with a NULL pointer.
  */
 static void
 free_file_metadata(struct file_metadata *fmd)
@@ -331,7 +331,7 @@ free_file_metadata(struct file_metadata *fmd)
     list_free(fmd->mimedict, free);
     list_free(fmd->filelangs, free);
     uint32_list_free(fmd->dirindexes);
-    uint32_list_free(fmd->filesizes);
+    uint64_list_free(fmd->filesizes);
     uint32_list_free(fmd->filemodes);
     uint32_list_free(fmd->filemtimes);
     uint32_list_free(fmd->filerdevs);
@@ -734,7 +734,7 @@ read_str_list(str_list_t *list, const uint8_t *data, const uint32_t count)
 }
 
 /*
- * Read count 32 bit numbers out of the header data and add them to
+ * Read count 32-bit numbers out of the header data and add them to
  * the list in host order.
  */
 static uint32_list_t *
@@ -754,31 +754,28 @@ read_uint32_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
 }
 
 /*
- * Read count 64-bit numbers out of the header data and add them to the
- * list in host order.  A v6 package records the file sizes this way.
- * Our lists hold 32 bit numbers, so a package with a file too big for
- * one goes back untouched and the caller works that size out from the
- * payload rather than record a wrong one.
+ * Read count file sizes out of the header data and add them to the
+ * list in host order.  Filesizes holds 32-bit numbers and
+ * Longfilesizes holds 64-bit numbers.
  */
-static uint32_list_t *
-read_uint64_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
+static uint64_list_t *
+read_size_list(uint64_list_t *list, const uint8_t *data, const uint32_t count, const rpmTagType datatype)
 {
     uint32_t i = 0;
-    uint64_t value = 0;
+    uint32_t value32 = 0;
+    uint64_t value64 = 0;
     const uint8_t *p = data;
 
     for (i = 0; i < count; i++) {
-        memcpy(&value, p + (i * sizeof(value)), sizeof(value));
-
-        if (be64toh(value) > UINT32_MAX) {
-            return list;
+        if (datatype == RPM_INT64_TYPE) {
+            memcpy(&value64, p, sizeof(value64));
+            list = uint64_list_add(list, be64toh(value64));
+            p += sizeof(value64);
+        } else {
+            memcpy(&value32, p, sizeof(value32));
+            list = uint64_list_add(list, ntohl(value32));
+            p += sizeof(value32);
         }
-    }
-
-    for (i = 0; i < count; i++) {
-        memcpy(&value, p, sizeof(value));
-        list = uint32_list_add(list, (uint32_t) be64toh(value));
-        p += sizeof(value);
     }
 
     return list;
@@ -839,9 +836,9 @@ collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         } else if (tag == RPMTAG_DIRINDEXES && datatype == RPM_INT32_TYPE) {
             fmd->dirindexes = read_uint32_list(fmd->dirindexes, data, count);
         } else if (tag == RPMTAG_FILESIZES && datatype == RPM_INT32_TYPE) {
-            fmd->filesizes = read_uint32_list(fmd->filesizes, data, count);
+            fmd->filesizes = read_size_list(fmd->filesizes, data, count, datatype);
         } else if (tag == RPMTAG_LONGFILESIZES && datatype == RPM_INT64_TYPE) {
-            fmd->filesizes = read_uint64_list(fmd->filesizes, data, count);
+            fmd->filesizes = read_size_list(fmd->filesizes, data, count, datatype);
         } else if (tag == RPMTAG_FILEMODES && datatype == RPM_INT16_TYPE) {
             fmd->filemodes = read_uint16_list(fmd->filemodes, data, count);
         } else if (tag == RPMTAG_FILEMTIMES && datatype == RPM_INT32_TYPE) {
@@ -905,7 +902,7 @@ first_file_cursors(const struct file_metadata *fmd, struct file_cursors *fc)
     fc->linkto = first_str(fmd->filelinktos);
     fc->filelang = first_str(fmd->filelangs);
     fc->dirindex = first_uint32(fmd->dirindexes);
-    fc->filesize = first_uint32(fmd->filesizes);
+    fc->filesize = first_uint64(fmd->filesizes);
     fc->filemode = first_uint32(fmd->filemodes);
     fc->filemtime = first_uint32(fmd->filemtimes);
     fc->filerdev = first_uint32(fmd->filerdevs);
@@ -939,7 +936,7 @@ next_file_cursors(struct file_cursors *fc)
     fc->linkto = next_str(fc->linkto);
     fc->filelang = next_str(fc->filelang);
     fc->dirindex = next_uint32(fc->dirindex);
-    fc->filesize = next_uint32(fc->filesize);
+    fc->filesize = next_uint64(fc->filesize);
     fc->filemode = next_uint32(fc->filemode);
     fc->filemtime = next_uint32(fc->filemtime);
     fc->filerdev = next_uint32(fc->filerdev);
@@ -994,7 +991,7 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
      */
     if (fc->filesize != NULL && fc->filemode != NULL) {
         if (S_ISREG(fc->filemode->value) || S_ISLNK(fc->filemode->value)) {
-            json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64(fc->filesize->value));
+            json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) fc->filesize->value));
         }
     }
 

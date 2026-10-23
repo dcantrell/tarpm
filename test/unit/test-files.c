@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <endian.h>
 #include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
@@ -316,6 +317,45 @@ test_generate_files_valid(void)
 
     /* the second file verifies nothing, so no verifyflags key */
     TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "verifyflags", &verifyflags));
+
+    json_object_put(files);
+
+    return;
+}
+
+/* Test generate_files() keeps Longfilesizes values of 4 GiB or more */
+void
+test_generate_files_long_sizes(void)
+{
+    struct rpmhdr hdr;
+    struct rpmhdrinfo hdrinfo;
+    struct rpmhdrentry entries[NUM_ENTRIES];
+    uint8_t data[DATA_SIZE + (2 * sizeof(uint64_t))];
+    uint64_t val64 = 0;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    build_header(&hdr, &hdrinfo, entries, data);
+
+    /* swap Filesizes for Longfilesizes after the rest of the data */
+    val64 = htobe64(4294967295ULL);
+    memcpy(data + DATA_SIZE, &val64, sizeof(val64));
+    val64 = htobe64(5000000000ULL);
+    memcpy(data + DATA_SIZE + sizeof(val64), &val64, sizeof(val64));
+    set_entry(&entries[3], RPMTAG_LONGFILESIZES, RPM_INT64_TYPE, DATA_SIZE, 2);
+
+    files = generate_files(&hdr, &hdrinfo, NULL);
+    TARPM_ASSERT_PTR_NOT_NULL(files);
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
+
+    file = json_object_array_get_idx(files, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "size", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 4294967295LL);
+
+    file = json_object_array_get_idx(files, 1);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "size", &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int64(value), 5000000000LL);
 
     json_object_put(files);
 
@@ -2630,6 +2670,7 @@ get_suite(void)
         CU_add_test(pSuite, "test generate_files() with mismatched lengths", test_generate_files_mismatched_lengths) == NULL ||
         CU_add_test(pSuite, "test generate_files() with a valid file list", test_generate_files_valid) == NULL ||
         CU_add_test(pSuite, "test generate_files() with each file type", test_generate_files_types) == NULL ||
+        CU_add_test(pSuite, "test generate_files() with Longfilesizes", test_generate_files_long_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with NULL", test_add_file_list_tags_null) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with empty files", test_add_file_list_tags_empty) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with invalid type", test_add_file_list_tags_invalid_type) == NULL ||

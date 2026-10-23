@@ -279,6 +279,84 @@ test_first_uint32_and_next_uint32(void)
     return;
 }
 
+void
+test_uint64_list_add(void)
+{
+    uint64_list_t *list = NULL;
+    uint64_entry_t *entry = NULL;
+    uint32_t expected = 0;
+
+    list = uint64_list_add(list, 47);
+    TARPM_ASSERT_PTR_NOT_NULL(list);
+
+    list = uint64_list_add(list, 0);
+    list = uint64_list_add(list, 5000000000ULL);
+
+    TAILQ_FOREACH(entry, list, items) {
+        TARPM_ASSERT_PTR_NOT_NULL(entry);
+
+        if (expected == 0) {
+            TARPM_ASSERT_EQUAL(entry->value, 47);
+        } else if (expected == 1) {
+            TARPM_ASSERT_EQUAL(entry->value, 0);
+        } else {
+            TARPM_ASSERT_EQUAL(entry->value, 5000000000ULL);
+        }
+
+        expected++;
+    }
+
+    TARPM_ASSERT_EQUAL(expected, 3);
+    uint64_list_free(list);
+
+    return;
+}
+
+void
+test_uint64_list_free(void)
+{
+    uint64_list_t *list = NULL;
+
+    /* a NULL list is safe to free */
+    uint64_list_free(NULL);
+
+    list = uint64_list_add(list, 47);
+    TARPM_ASSERT_PTR_NOT_NULL(list);
+    uint64_list_free(list);
+
+    return;
+}
+
+void
+test_first_uint64_and_next_uint64(void)
+{
+    uint64_list_t *list = NULL;
+    uint64_entry_t *entry = NULL;
+
+    /* a NULL list and a NULL entry have no members */
+    TARPM_ASSERT_TRUE(first_uint64(NULL) == NULL);
+    TARPM_ASSERT_TRUE(next_uint64(NULL) == NULL);
+
+    list = uint64_list_add(list, 47);
+    list = uint64_list_add(list, 4294967296ULL);
+
+    entry = first_uint64(list);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_EQUAL(entry->value, 47);
+
+    entry = next_uint64(entry);
+    TARPM_ASSERT_PTR_NOT_NULL(entry);
+    TARPM_ASSERT_EQUAL(entry->value, 4294967296ULL);
+
+    /* walking past the last entry gives nothing */
+    entry = next_uint64(entry);
+    TARPM_ASSERT_TRUE(entry == NULL);
+
+    uint64_list_free(list);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -302,7 +380,10 @@ get_suite(void)
         CU_add_test(pSuite, "test str_list_nth()", test_str_list_nth) == NULL ||
         CU_add_test(pSuite, "test uint32_list_nth()", test_uint32_list_nth) == NULL ||
         CU_add_test(pSuite, "test first_str() and next_str()", test_first_str_and_next_str) == NULL ||
-        CU_add_test(pSuite, "test first_uint32() and next_uint32()", test_first_uint32_and_next_uint32) == NULL) {
+        CU_add_test(pSuite, "test first_uint32() and next_uint32()", test_first_uint32_and_next_uint32) == NULL ||
+        CU_add_test(pSuite, "test uint64_list_add()", test_uint64_list_add) == NULL ||
+        CU_add_test(pSuite, "test uint64_list_free()", test_uint64_list_free) == NULL ||
+        CU_add_test(pSuite, "test first_uint64() and next_uint64()", test_first_uint64_and_next_uint64) == NULL) {
         return NULL;
     }
 

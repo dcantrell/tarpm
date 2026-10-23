@@ -157,6 +157,51 @@ uint32_list_add(uint32_list_t *list, const uint32_t value)
 }
 
 /*
+ * Helper function to free a uint64_list_t and each entry.  Safe to
+ * call with a NULL list.
+ */
+void
+uint64_list_free(uint64_list_t *list)
+{
+    uint64_entry_t *entry = NULL;
+
+    if (list == NULL) {
+        return;
+    }
+
+    while (!TAILQ_EMPTY(list)) {
+        entry = TAILQ_FIRST(list);
+        TAILQ_REMOVE(list, entry, items);
+        free(entry);
+    }
+
+    free(list);
+    return;
+}
+
+/*
+ * Append the value to the uint64_list_t and return the list.  A NULL
+ * list starts a new list with the value in it.  Caller handles all
+ * memory management.
+ */
+uint64_list_t *
+uint64_list_add(uint64_list_t *list, const uint64_t value)
+{
+    uint64_entry_t *entry = NULL;
+
+    if (list == NULL) {
+        list = xalloc(sizeof(*list));
+        TAILQ_INIT(list);
+    }
+
+    entry = xalloc(sizeof(*entry));
+    entry->value = value;
+    TAILQ_INSERT_TAIL(list, entry, items);
+
+    return list;
+}
+
+/*
  * Return the number of entries in a str_list_t.  A NULL list has no
  * entries.
  */
@@ -286,6 +331,26 @@ next_str(str_entry_t *entry)
 
 uint32_entry_t *
 next_uint32(uint32_entry_t *entry)
+{
+    if (entry == NULL) {
+        return NULL;
+    } else {
+        return TAILQ_NEXT(entry, items);
+    }
+}
+
+uint64_entry_t *
+first_uint64(uint64_list_t *list)
+{
+    if (list == NULL) {
+        return NULL;
+    } else {
+        return TAILQ_FIRST(list);
+    }
+}
+
+uint64_entry_t *
+next_uint64(uint64_entry_t *entry)
 {
     if (entry == NULL) {
         return NULL;
