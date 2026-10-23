@@ -38,7 +38,6 @@ convert_payload(const char *rpm)
     struct archive *archive = NULL;
     struct archive_entry *entry = NULL;
     char *buf = NULL;
-    char *hardlink = NULL;
     rpm_mode_t mode = 0;
     int nlink = 0;
     int rc = 0;
@@ -188,19 +187,11 @@ convert_payload(const char *rpm)
             archive_entry_set_symlink(entry, rpmfiFLink(fi));
         }
 
-        if (nlink > 1) {
-            if (rpmfiArchiveHasContent(fi)) {
-                free(hardlink);
-                hardlink = strdup(archive_entry_pathname(entry));
+        archive_entry_set_ino64(entry, rpmfiFInode(fi));
+        archive_entry_set_nlink(entry, nlink);
 
-                if (hardlink == NULL) {
-                    err(EXIT_FAILURE, "strdup");
-                }
-            } else if (hardlink != NULL) {
-                archive_entry_set_hardlink(entry, hardlink);
-            } else {
-                warnx(_("*** hardlink target missing for %s"), archive_entry_pathname(entry));
-            }
+        if (nlink > 1 && !rpmfiArchiveHasContent(fi)) {
+            archive_entry_set_size(entry, 0);
         }
 
         if (archive_write_header(archive, entry) != ARCHIVE_OK) {
@@ -235,7 +226,6 @@ cleanup:
         Fclose(fdi);
     }
 
-    free(hardlink);
     free(buf);
 
     if (entry) {
