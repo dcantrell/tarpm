@@ -9,6 +9,7 @@ import subprocess
 import rpmfluff
 from baseclass import NAME
 from baseclass import CLASSIFIES_BY_EXTENSION
+from baseclass import HAVE_RPM_FORMAT_SIX
 from baseclass import TestUnpackRPM
 
 try:
@@ -26,11 +27,18 @@ DATA_BYTES = b"\x00" * 1024
 # tree, and then creates a new RPM and reads the file classes back out
 # of it.  rpmbuild wrote the classes in the original package, so the
 # classes in the original are what tarpm has to match.
+#
+# Only a v4 format package carries classes, so we have rpmbuild write
+# one whatever %_rpmformat says.  test_mime.py covers the MIME types a
+# v6 format package carries in their place.
 class TestFileClass(TestUnpackRPM):
     def setUp(self):
         super().setUp()
         self.extract_dir = None
         self.recreated_rpm = None
+
+        if HAVE_RPM_FORMAT_SIX:
+            self.rpm.header += "\n%global _rpmformat 4\n"
 
     # Pull the RPM apart in to self.extract_dir
     def extract(self, rpm):

@@ -81,36 +81,71 @@ test_wanted_class(void)
 }
 
 void
-test_skipped_class(void)
+test_skipped_extension(void)
 {
+    const struct class_extension *ext = NULL;
+
     /* nothing to look at */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class(NULL), NULL);
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension(NULL));
 
     /* every ending we answer ourselves */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/perl5/Foo.pm"), "Perl5 module source text");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/src/hello.c"), "C Code");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/include/stdio.h"), "C Header");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/lib64/libfoo.la"), "libtool library file");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/lib64/pkgconfig/foo.pc"), "pkgconfig file");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/doc/foo/index.html"), "HTML document");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/icons/foo.png"), "PNG image data");
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/icons/foo.svg"), "SVG Scalable Vector Graphics image");
+    ext = skipped_extension("/usr/share/perl5/Foo.pm");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "Perl5 module source text");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/plain");
+
+    ext = skipped_extension("/usr/src/hello.c");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "C Code");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/x-c");
+
+    ext = skipped_extension("/usr/include/stdio.h");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "C Header");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/x-c");
+
+    ext = skipped_extension("/usr/lib64/libfoo.la");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "libtool library file");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/plain");
+
+    ext = skipped_extension("/usr/lib64/pkgconfig/foo.pc");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "pkgconfig file");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/plain");
+
+    ext = skipped_extension("/usr/share/doc/foo/index.html");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "HTML document");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "text/html");
+
+    ext = skipped_extension("/usr/share/icons/foo.png");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "PNG image data");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "image/png");
+
+    ext = skipped_extension("/usr/share/icons/foo.svg");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "SVG Scalable Vector Graphics image");
+    TARPM_ASSERT_STRING_EQUAL(ext->mime, "image/svg+xml");
 
     /* the ending may be the whole path */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class(".c"), "C Code");
+    ext = skipped_extension(".c");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) ext);
+    TARPM_ASSERT_STRING_EQUAL(ext->name, "C Code");
 
     /* endings we have nothing to say about */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class(""), NULL);
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/bin/ls"), NULL);
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/lib64/libfoo.so.1"), NULL);
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/doc/foo/index.htm"), NULL);
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension(""));
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/bin/ls"));
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/lib64/libfoo.so.1"));
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/share/doc/foo/index.htm"));
 
     /* the ending has to be at the end */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/foo.c/bar"), NULL);
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/share/foo.c/bar"));
 
     /* and the dot has to be there */
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/bin/c"), NULL);
-    TARPM_ASSERT_STRING_EQUAL(skipped_class("/usr/share/misc/catalog.pm.gz"), NULL);
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/bin/c"));
+    TARPM_ASSERT_PTR_NULL((void *) skipped_extension("/usr/share/misc/catalog.pm.gz"));
 
     return;
 }
@@ -292,6 +327,87 @@ test_file_class(void)
     return;
 }
 
+void
+test_file_mime(void)
+{
+    char *path = NULL;
+    char *name = NULL;
+    char self[PATH_MAX];
+    struct stat sb;
+
+    memset(self, 0, sizeof(self));
+
+    /* nothing to look at */
+    set_mode(&sb, S_IFREG | 0644);
+    TARPM_ASSERT_PTR_NULL(file_mime(NULL, "/usr/bin/ls", &sb));
+    TARPM_ASSERT_PTR_NULL(file_mime("/usr/bin/ls", NULL, &sb));
+    TARPM_ASSERT_PTR_NULL(file_mime("/usr/bin/ls", "/usr/bin/ls", NULL));
+
+    /* unlike the class, a directory goes to libmagic like everything else */
+    set_mode(&sb, S_IFDIR | 0755);
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/foo", tmpdir, &sb), "inode/directory");
+
+    /* and a path ending only counts for a regular file or a symlink */
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/foo.png", tmpdir, &sb), "inode/directory");
+
+    /* a path ending we answer ourselves wins over what libmagic would say */
+    set_mode(&sb, S_IFREG | 0644);
+    path = make_file("foo.png", "this is not really a PNG\n");
+    ASSERT_AND_FREE(file_mime("/usr/share/icons/foo.png", path, &sb), "image/png");
+    drop_file(path);
+
+    /* a file under /dev/ still gets a MIME type */
+    path = make_file("null.h", "#define FOO 1\n");
+    ASSERT_AND_FREE(file_mime("/dev/null.h", path, &sb), "text/x-c");
+    drop_file(path);
+
+    /* the rest go to libmagic */
+    path = make_file("plain.txt", "hello world\n");
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/plain.txt", path, &sb), "text/plain");
+    drop_file(path);
+
+    path = make_file("empty.txt", NULL);
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/empty.txt", path, &sb), "inode/x-empty");
+    drop_file(path);
+
+    path = make_file("run.sh", "#!/bin/sh\necho hi\n");
+    ASSERT_AND_FREE(file_mime("/usr/bin/run", path, &sb), "text/x-shellscript");
+    drop_file(path);
+
+    /* an ELF binary gets one of the application types */
+    set_mode(&sb, S_IFREG | 0755);
+
+    if (readlink("/proc/self/exe", self, sizeof(self) - 1) > 0) {
+        name = file_mime("/usr/bin/test-class", self, &sb);
+        TARPM_ASSERT_PTR_NOT_NULL(name);
+        TARPM_ASSERT_PTR_NOT_NULL(strstr(name, "application/"));
+        free(name);
+    }
+
+    /* libmagic describes a symlink rather than what it points at */
+    set_mode(&sb, S_IFLNK | 0777);
+    path = NULL;
+    xasprintf(&path, "%s/link", tmpdir);
+    TARPM_ASSERT_EQUAL(symlink("/usr/bin/ls", path), 0);
+    ASSERT_AND_FREE(file_mime("/usr/bin/link", path, &sb), "inode/symlink");
+    drop_file(path);
+
+    /* nothing there to look at means no MIME type */
+    set_mode(&sb, S_IFREG | 0644);
+    path = NULL;
+    xasprintf(&path, "%s/gone", tmpdir);
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/gone", path, &sb), RPM_FILE_MIME_NONE);
+    free(path);
+
+    /* closing the handles in the middle is fine */
+    close_magic();
+    path = make_file("again.txt", "hello world\n");
+    ASSERT_AND_FREE(file_mime("/usr/share/doc/again.txt", path, &sb), "text/plain");
+    drop_file(path);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -314,11 +430,15 @@ get_suite(void)
         return NULL;
     }
 
-    if (CU_add_test(pSuite, "test skipped_class()", test_skipped_class) == NULL) {
+    if (CU_add_test(pSuite, "test skipped_extension()", test_skipped_extension) == NULL) {
         return NULL;
     }
 
     if (CU_add_test(pSuite, "test file_class()", test_file_class) == NULL) {
+        return NULL;
+    }
+
+    if (CU_add_test(pSuite, "test file_mime()", test_file_mime) == NULL) {
         return NULL;
     }
 

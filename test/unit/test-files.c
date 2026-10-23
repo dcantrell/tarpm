@@ -379,16 +379,16 @@ test_add_file_list_tags_null(void)
     struct json_object *files = NULL;
 
     /* all NULL should not crash */
-    add_file_list_tags(NULL, NULL, NULL, NULL);
+    add_file_list_tags(NULL, NULL, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* NULL files should add no tags */
     tags = json_object_new_array();
-    add_file_list_tags(tags, NULL, NULL, NULL);
+    add_file_list_tags(tags, NULL, NULL, NULL, RPM_FORMAT_DEFAULT);
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
 
     /* NULL tags should not crash */
     files = json_object_new_array();
-    add_file_list_tags(NULL, files, NULL, NULL);
+    add_file_list_tags(NULL, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     json_object_put(tags);
     json_object_put(files);
@@ -406,7 +406,7 @@ test_add_file_list_tags_empty(void)
     tags = json_object_new_array();
     files = json_object_new_array();
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* an empty files array should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -427,7 +427,7 @@ test_add_file_list_tags_invalid_type(void)
     tags = json_object_new_array();
     files = json_object_new_string("not an array");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* an invalid type should add no tags */
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
@@ -458,10 +458,14 @@ test_add_file_list_tags_file_list(void)
     file = add_file(files, "/usr/share/man/man1/ls.1");
     json_object_object_add(file, "linkto", json_object_new_string("/usr/bin/ls"));
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
-    /* all nineteen file list tags should be present */
+    /* all nineteen file list tags should be present, and the two MIME type tags */
+#ifdef _HAS_RPMFORMAT_TAGS
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 21);
+#else
     TARPM_ASSERT_EQUAL(json_object_array_length(tags), 19);
+#endif
 
     /* basenames come from the last path component */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_BASENAMES));
@@ -666,7 +670,7 @@ test_add_file_list_tags_sizes(void)
     /* a directory carries no size at all */
     add_file(files, "/usr/bin");
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     /* the regular files are measured and everything else is left alone */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
@@ -716,7 +720,7 @@ test_add_file_list_tags_sizes_no_payload(void)
 
     add_file(files, "/usr/bin");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -759,7 +763,7 @@ test_add_file_list_tags_types(void)
     file = add_file(files, "notype");
     json_object_object_add(file, "mode", json_object_new_string("0755"));
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -827,7 +831,7 @@ test_add_file_list_tags_type_from_payload(void)
     json_object_array_add(flags, json_object_new_string("ghost"));
     json_object_object_add(file, "flags", flags);
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMODES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -894,7 +898,7 @@ test_add_file_list_tags_type_mismatch(void)
     json_object_object_add(file, "type", json_object_new_string("file"));
     json_object_object_add(file, "size", json_object_new_int64(3));
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     /* the file list now says what the payload holds */
     file = json_object_array_get_idx(files, 0);
@@ -982,7 +986,7 @@ test_add_file_list_tags_mismatch_values(void)
     json_object_object_add(file, "size", json_object_new_int64(99));
     json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     /* the directory keeps none of what it carried as a file */
     file = json_object_array_get_idx(files, 0);
@@ -1095,7 +1099,7 @@ test_add_file_list_tags_mismatch_rdev(void)
         json_object_object_add(file, "digest", json_object_new_string("0123456789abcdef0123456789abcdef"));
     }
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     rdevs = get_tag_values(tags, rpmTagGetName(RPMTAG_FILERDEVS));
     TARPM_ASSERT_PTR_NOT_NULL(rdevs);
@@ -1206,7 +1210,7 @@ test_add_file_list_tags_total_size(void)
     tags = json_object_new_array();
     add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "4279"));
 
@@ -1216,7 +1220,7 @@ test_add_file_list_tags_total_size(void)
     tags = json_object_new_array();
     add_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE), "1");
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "4279"));
 
@@ -1225,7 +1229,7 @@ test_add_file_list_tags_total_size(void)
     /* a header carrying neither tag does not gain one */
     tags = json_object_new_array();
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)) == NULL);
     TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)) == NULL);
@@ -1492,7 +1496,7 @@ test_payload_dir_elsewhere(void)
     TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "/usr/bin/added"));
 
     /* and the sizes come from the tree the caller named */
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
@@ -1533,7 +1537,7 @@ test_add_file_list_tags_class(void)
 
     add_file(files, "/usr/share/doc");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* the class dictionary holds each unique class once */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_CLASSDICT));
@@ -1555,6 +1559,212 @@ test_add_file_list_tags_class(void)
 
     return;
 }
+
+#ifdef _HAS_RPMFORMAT_TAGS
+/* Count the copies of a tag in a tags array */
+static size_t
+count_tag(struct json_object *tags, const char *name)
+{
+    size_t i = 0;
+    size_t n = 0;
+    struct json_object *tag = NULL;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        if (json_object_object_get_ex(json_object_array_get_idx(tags, i), RPM_ENTRY_TAG_DESC, &tag) && !strcmp(json_object_get_string(tag), name)) {
+            n++;
+        }
+    }
+
+    return n;
+}
+
+/* Test add_file_list_tags() with MIME type values */
+void
+test_add_file_list_tags_mime(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+    struct json_object *entry = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    /* a header.json from before tarpm knew about MIME types carries the tags */
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_int(7));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_MIMEDICT_VALUE)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string("stale/type"));
+    json_object_array_add(tags, entry);
+
+    file = add_file(files, "/usr/bin/ls");
+    json_object_object_add(file, "mime", json_object_new_string("application/x-pie-executable"));
+
+    file = add_file(files, "/usr/share/doc/README");
+    json_object_object_add(file, "mime", json_object_new_string("text/plain"));
+
+    file = add_file(files, "/usr/bin/cat");
+    json_object_object_add(file, "mime", json_object_new_string("application/x-pie-executable"));
+
+    add_file(files, "/usr/bin/gone");
+
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_V6);
+
+    /* the old tags gave way to the ones built from the file list */
+    TARPM_ASSERT_EQUAL(count_tag(tags, rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE)), 1);
+    TARPM_ASSERT_EQUAL(count_tag(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE)), 1);
+
+    /* the MIME dictionary holds each unique type once, in order of first appearance */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "application/x-pie-executable");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "text/plain");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 2)), "");
+
+    /* each file indexes in to the MIME dictionary */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 4);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), 0);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 3)), 2);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() works out the MIME type of a file that has
+ * none for a v6 format package and the class of a file that came from
+ * one for a v4 format package.
+ */
+void
+test_add_file_list_tags_mime_from_payload(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    const char *name = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+
+    /*
+     * The MD5 of what README holds.  A header with no Filedigestalgo
+     * uses MD5, and an entry carrying the right digest is one whose
+     * bytes did not change.
+     */
+    const char *readme_digest = "45ed9cc2f92b77cd8b2f5bd59ff635f8";
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    mkdir_payload(payload_dir, "/usr/share/doc");
+    write_payload(payload_dir, "/usr/share/doc/README", 16);
+    link_payload(payload_dir, "/usr/share/doc/link", "README");
+
+    /* a v4 format package carries no MIME types, so these get one each */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/share/doc");
+    add_file(files, "/usr/share/doc/README");
+    file = add_file(files, "/usr/share/doc/link");
+    json_object_object_add(file, "linkto", json_object_new_string("README"));
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V6);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "inode/directory");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), "text/plain");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 2)), "inode/symlink");
+
+    /* and the entries say so too */
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(json_object_array_get_idx(files, 1), "mime")), "text/plain");
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* a MIME type we already have is kept even when the bytes say otherwise */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    file = add_file(files, "/usr/share/doc/README");
+    json_object_object_add(file, "digest", json_object_new_string(readme_digest));
+    json_object_object_add(file, "mime", json_object_new_string("text/x-kept"));
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V6);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "text/x-kept");
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* a v4 format package goes without the MIME types */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    file = add_file(files, "/usr/share/doc/README");
+    json_object_object_add(file, "digest", json_object_new_string(readme_digest));
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V4);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "");
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_CLASSDICT));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "");
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* but an entry from a v6 format package gets the class it lacks */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    file = add_file(files, "/usr/share/doc/README");
+    json_object_object_add(file, "digest", json_object_new_string(readme_digest));
+    json_object_object_add(file, "mime", json_object_new_string("text/plain"));
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V4);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_CLASSDICT));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    name = json_object_get_string(json_object_array_get_idx(values, 0));
+    TARPM_ASSERT_PTR_NOT_NULL((void *) name);
+    TARPM_ASSERT_PTR_NOT_NULL((void *) strstr(name, "text"));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* clean up the payload tree */
+    remove_payload(payload_dir, "/usr/share/doc/link");
+    remove_payload(payload_dir, "/usr/share/doc/README");
+    remove_payload(payload_dir, "/usr/share/doc");
+    remove_payload(payload_dir, "/usr/share");
+    remove_payload(payload_dir, "/usr");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+#endif
 
 /* Test add_file_list_tags() with langs values */
 void
@@ -1586,7 +1796,7 @@ test_add_file_list_tags_langs(void)
     /* a file with no languages at all */
     add_file(files, "/usr/bin/ls");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* languages are joined with a "|" and missing ones are empty strings */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELANGS));
@@ -1643,7 +1853,7 @@ test_add_file_list_tags_colors(void)
     /* an entry with no color at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* names turn back in to bits and missing colors are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILECOLORS));
@@ -1705,7 +1915,7 @@ test_add_file_list_tags_flags(void)
     /* an entry with no flags at all */
     add_file(files, "/usr/share/man/man1/ls.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /* names turn back in to bits and missing flags are zero */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEFLAGS));
@@ -1778,7 +1988,7 @@ test_add_file_list_tags_verifyflags(void)
     /* an entry that names no verify flags at all gets the default */
     add_file(files, "/usr/share/man/man1/cat.1");
 
-    add_file_list_tags(tags, files, NULL, NULL);
+    add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_DEFAULT);
 
     /*
      * Names turn back in to bits the way rpmbuild writes them, which is
@@ -1883,7 +2093,7 @@ test_add_file_list_tags_provides(void)
     /* a file that generated nothing */
     add_file(files, "/usr/share/doc/foo/README");
 
-    add_file_list_tags(tags, files, NULL, dependencies);
+    add_file_list_tags(tags, files, NULL, dependencies, RPM_FORMAT_DEFAULT);
 
     /*
      * Every provides entry becomes one dictionary value holding the
@@ -2035,7 +2245,7 @@ test_add_file_list_tags_no_overrides(void)
     files = json_object_new_array();
     make_override_tree(payload_dir, files);
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     /* 2020-01-01T00:00:00Z */
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
@@ -2084,7 +2294,7 @@ test_add_file_list_tags_override_mtime(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_MTIME;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -2136,7 +2346,7 @@ test_add_file_list_tags_override_user(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_USER;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEUSERNAME));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -2184,7 +2394,7 @@ test_add_file_list_tags_override_group(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_GROUP;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEGROUPNAME));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -2231,7 +2441,7 @@ test_add_file_list_tags_override_linkto(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_LINKTO;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILELINKTOS));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -2277,7 +2487,7 @@ test_add_file_list_tags_override_all(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_ALL;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMTIMES));
     TARPM_ASSERT_PTR_NOT_NULL(values);
@@ -2330,7 +2540,7 @@ test_add_file_list_tags_override_entries(void)
 
     payload_overrides = PAYLOAD_OVERRIDE_ALL;
 
-    add_file_list_tags(tags, files, payload_dir, NULL);
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
     file = find_file(files, "/usr/bin/ls");
     TARPM_ASSERT_PTR_NOT_NULL(file);
@@ -2437,6 +2647,10 @@ get_suite(void)
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||
         CU_add_test(pSuite, "test a payload tree of its own", test_payload_dir_elsewhere) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
+#ifdef _HAS_RPMFORMAT_TAGS
+        CU_add_test(pSuite, "test add_file_list_tags() with MIME type values", test_add_file_list_tags_mime) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with MIME types from the payload", test_add_file_list_tags_mime_from_payload) == NULL ||
+#endif
         CU_add_test(pSuite, "test add_file_list_tags() with langs values", test_add_file_list_tags_langs) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with color values", test_add_file_list_tags_colors) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with flag values", test_add_file_list_tags_flags) == NULL ||

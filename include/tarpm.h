@@ -114,13 +114,14 @@ extern uint32_t payload_overrides;
 
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
-void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies);
+void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);
 bool is_file_list_tag(rpmTagVal tag);
 
 /* class.c */
 bool wanted_class(const char *name);
-const char *skipped_class(const char *path);
+const struct class_extension *skipped_extension(const char *path);
 char *file_class(const char *path, const char *file_path, const struct stat *sb);
+char *file_mime(const char *path, const char *file_path, const struct stat *sb);
 void close_magic(void);
 
 /* joinpath.c */

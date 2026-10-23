@@ -46,6 +46,8 @@ struct file_metadata {
     uint32_list_t *fileinodes;
     uint32_list_t *fileclass;
     str_list_t *classdict;
+    uint32_list_t *filemimeindex;
+    str_list_t *mimedict;
     str_list_t *filelangs;
     uint32_list_t *filecolors;
     uint32_list_t *fileflags;
@@ -81,6 +83,7 @@ struct file_cursors {
     uint32_entry_t *filedevice;
     uint32_entry_t *fileinode;
     uint32_entry_t *fileclass;
+    uint32_entry_t *filemimeindex;
     uint32_entry_t *filecolor;
     uint32_entry_t *fileflag;
     uint32_entry_t *fileverifyflag;
@@ -102,7 +105,7 @@ struct payload_scan {
  * Helper struct for add_file_list_tags().  One array per file list
  * tag, all of them parallel to the file list.  The rest tracks what
  * rpm stores once and has each file point at: the directory names,
- * the file classes and the hard link groups.
+ * the file classes, the MIME types and the hard link groups.
  */
 struct file_list_tags {
     struct json_object *dirnames;
@@ -120,6 +123,8 @@ struct file_list_tags {
     struct json_object *fileinodes;
     struct json_object *fileclass;
     struct json_object *classdict;
+    struct json_object *filemimeindex;
+    struct json_object *mimedict;
     struct json_object *filelangs;
     struct json_object *filecolors;
     struct json_object *fileflags;
@@ -136,6 +141,10 @@ struct file_list_tags {
     char **classes;
     size_t nclasses;
 
+    /* the MIME types, in the order they first show up */
+    char **mimes;
+    size_t nmimes;
+
     /* what each hard link group carried and the number rpm gives it */
     int *inodes;
     int *mapped;
@@ -151,6 +160,7 @@ struct file_list_build {
     struct file_list_tags *out;
     struct json_object *dependencies;
     const char *payload_dir;
+    int format;
     uint32_t digestalgo;
     size_t nkept;
     int64_t totalsize;
@@ -318,6 +328,7 @@ free_file_metadata(struct file_metadata *fmd)
     list_free(fmd->filedigests, free);
     list_free(fmd->filelinktos, free);
     list_free(fmd->classdict, free);
+    list_free(fmd->mimedict, free);
     list_free(fmd->filelangs, free);
     uint32_list_free(fmd->dirindexes);
     uint32_list_free(fmd->filesizes);
@@ -327,6 +338,7 @@ free_file_metadata(struct file_metadata *fmd)
     uint32_list_free(fmd->filedevices);
     uint32_list_free(fmd->fileinodes);
     uint32_list_free(fmd->fileclass);
+    uint32_list_free(fmd->filemimeindex);
     uint32_list_free(fmd->filecolors);
     uint32_list_free(fmd->fileflags);
     uint32_list_free(fmd->fileverifyflags);
@@ -852,6 +864,10 @@ collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
             fmd->fileclass = read_uint32_list(fmd->fileclass, data, count);
         } else if (tag == RPMTAG_CLASSDICT && datatype == RPM_STRING_ARRAY_TYPE) {
             fmd->classdict = read_str_list(fmd->classdict, data, count);
+        } else if (tag == RPMTAG_FILEMIMEINDEX_VALUE && datatype == RPM_INT32_TYPE) {
+            fmd->filemimeindex = read_uint32_list(fmd->filemimeindex, data, count);
+        } else if (tag == RPMTAG_MIMEDICT_VALUE && datatype == RPM_STRING_ARRAY_TYPE) {
+            fmd->mimedict = read_str_list(fmd->mimedict, data, count);
         } else if (tag == RPMTAG_FILELANGS && datatype == RPM_STRING_ARRAY_TYPE) {
             fmd->filelangs = read_str_list(fmd->filelangs, data, count);
         } else if (tag == RPMTAG_FILECOLORS && datatype == RPM_INT32_TYPE) {
@@ -896,6 +912,7 @@ first_file_cursors(const struct file_metadata *fmd, struct file_cursors *fc)
     fc->filedevice = first_uint32(fmd->filedevices);
     fc->fileinode = first_uint32(fmd->fileinodes);
     fc->fileclass = first_uint32(fmd->fileclass);
+    fc->filemimeindex = first_uint32(fmd->filemimeindex);
     fc->filecolor = first_uint32(fmd->filecolors);
     fc->fileflag = first_uint32(fmd->fileflags);
     fc->fileverifyflag = first_uint32(fmd->fileverifyflags);
@@ -929,6 +946,7 @@ next_file_cursors(struct file_cursors *fc)
     fc->filedevice = next_uint32(fc->filedevice);
     fc->fileinode = next_uint32(fc->fileinode);
     fc->fileclass = next_uint32(fc->fileclass);
+    fc->filemimeindex = next_uint32(fc->filemimeindex);
     fc->filecolor = next_uint32(fc->filecolor);
     fc->fileflag = next_uint32(fc->fileflag);
     fc->fileverifyflag = next_uint32(fc->fileverifyflag);
@@ -951,6 +969,7 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
     time_t mtime = 0;
     struct tm *tm_info = NULL;
     const char *classname = NULL;
+    const char *mimename = NULL;
     str_entry_t *lang = NULL;
     str_list_t *langs = NULL;
     struct json_object *file = NULL;
@@ -1062,6 +1081,20 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
 
         if (classname != NULL && classname[0] != '\0') {
             json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(classname));
+        }
+    }
+
+    /*
+     * Add the MIME type for entries that have one.  v6 format
+     * packages have this instead of the old FILECLASS.  FILEMIMEINDEX
+     * is the index to the MIMEDICT string array the same way
+     * FILECLASS does for CLASSDICT.
+     */
+    if (fc->filemimeindex != NULL) {
+        mimename = str_list_nth(fmd->mimedict, fc->filemimeindex->value);
+
+        if (mimename != NULL && mimename[0] != '\0') {
+            json_object_object_add(file, RPM_FILE_MIME_DESC, json_object_new_string(mimename));
         }
     }
 
@@ -1381,9 +1414,8 @@ new_in_payload(struct json_object *files, const char *path, const struct stat *s
 }
 
 /*
- * Work out the class of a file the way rpmbuild does and put it on the
- * entry.  A file rpm would record no class for loses the key, which is
- * how generate_files() writes one out.
+ * Set the file class in a manner compatible with rpmbuild.  Missing the
+ * class excludes the key from the JSON dict.
  */
 static void
 set_file_class(struct json_object *file, const char *path, const char *file_path, const struct stat *sb)
@@ -1400,6 +1432,32 @@ set_file_class(struct json_object *file, const char *path, const char *file_path
         json_object_object_del(file, RPM_FILE_CLASS_DESC);
     } else {
         json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(name));
+    }
+
+    free(name);
+
+    return;
+}
+
+/*
+ * Set the MIME type in a manner compatible with rpmbuild.  Missing the
+ * type excludes the key from the JSON dict.
+ */
+static void
+set_file_mime(struct json_object *file, const char *path, const char *file_path, const struct stat *sb)
+{
+    char *name = NULL;
+
+    name = file_mime(path, file_path, sb);
+
+    if (name == NULL) {
+        return;
+    }
+
+    if (name[0] == '\0') {
+        json_object_object_del(file, RPM_FILE_MIME_DESC);
+    } else {
+        json_object_object_add(file, RPM_FILE_MIME_DESC, json_object_new_string(name));
     }
 
     free(name);
@@ -1501,6 +1559,7 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
 
     /* what kind of thing the file is, the way rpmbuild works it out */
     set_file_class(file, path, file_path, sb);
+    set_file_mime(file, path, file_path, sb);
 
     /* rpmbuild starts every file out verifying all of its attributes */
     verifyflags = verifyflag_names(RPMVERIFY_ALL);
@@ -1697,6 +1756,7 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
 
     /* the class went with the old type, so work it out again */
     set_file_class(file, path, file_path, sb);
+    set_file_mime(file, path, file_path, sb);
 
     return;
 }
@@ -1970,6 +2030,7 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
 {
     out->dirs = xcalloc(count, sizeof(char *));
     out->classes = xcalloc(count, sizeof(char *));
+    out->mimes = xcalloc(count, sizeof(char *));
     out->inodes = xcalloc(count, sizeof(int));
     out->mapped = xcalloc(count, sizeof(int));
 
@@ -1988,6 +2049,8 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
     out->fileinodes = json_object_new_array();
     out->fileclass = json_object_new_array();
     out->classdict = json_object_new_array();
+    out->filemimeindex = json_object_new_array();
+    out->mimedict = json_object_new_array();
     out->filelangs = json_object_new_array();
     out->filecolors = json_object_new_array();
     out->fileflags = json_object_new_array();
@@ -2000,8 +2063,9 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
 }
 
 /*
- * Turn the directory names and the class strings we collected in to
- * their arrays and let go of what we tracked them with.
+ * Turn the directory names, the class strings and the MIME types we
+ * collected in to their arrays and let go of what we tracked them
+ * with.
  */
 static void
 finish_file_list_arrays(struct file_list_tags *out)
@@ -2018,8 +2082,14 @@ finish_file_list_arrays(struct file_list_tags *out)
         free(out->classes[i]);
     }
 
+    for (i = 0; i < out->nmimes; i++) {
+        json_object_array_add(out->mimedict, json_object_new_string(out->mimes[i]));
+        free(out->mimes[i]);
+    }
+
     free(out->dirs);
     free(out->classes);
+    free(out->mimes);
     free(out->inodes);
     free(out->mapped);
 
@@ -2038,9 +2108,9 @@ free_file_list_arrays(struct file_list_tags *out)
         &out->dirnames, &out->basenames, &out->dirindexes, &out->filesizes,
         &out->filemodes, &out->filemtimes, &out->fileusernames, &out->filegroupnames,
         &out->filerdevs, &out->filedevices, &out->filedigests, &out->filelinktos,
-        &out->fileinodes, &out->fileclass, &out->classdict, &out->filelangs,
-        &out->filecolors, &out->fileflags, &out->fileverifyflags, &out->filedependsx,
-        &out->filedependsn, &out->dependsdict
+        &out->fileinodes, &out->fileclass, &out->classdict, &out->filemimeindex,
+        &out->mimedict, &out->filelangs, &out->filecolors, &out->fileflags,
+        &out->fileverifyflags, &out->filedependsx, &out->filedependsn, &out->dependsdict
     };
 
     for (i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++) {
@@ -2501,6 +2571,20 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      */
     if (olddigest != NULL && strcmp(olddigest, str)) {
         set_file_class(file, path, file_path, psb);
+        set_file_mime(file, path, file_path, psb);
+    }
+
+    /*
+     * File class vs. file MIME type.  In v4 format packages we have the
+     * file class arrays.  In v6 format packages that is now a MIME type.
+     * Probably the most noticeable difference is that in a v4 format
+     * package, a file can have an empty file class.  In the v6 format,
+     * everything gets a MIME type.
+     */
+    if (psb != NULL && build->format == RPM_FORMAT_V6 && !json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL)) {
+        set_file_mime(file, path, file_path, psb);
+    } else if (psb != NULL && build->format == RPM_FORMAT_V4 && json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL) && !json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, NULL)) {
+        set_file_class(file, path, file_path, psb);
     }
 
     json_object_array_add(out->filedigests, json_object_new_string(str));
@@ -2519,8 +2603,9 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
         build->totalsize += size;
     }
 
-    /* entries with no class point at an empty string */
+    /* entries with no class or MIME type point at an empty string */
     json_object_array_add(out->fileclass, json_object_new_int(dict_index(out->classes, &out->nclasses, key_string(file, RPM_FILE_CLASS_DESC, ""))));
+    json_object_array_add(out->filemimeindex, json_object_new_int(dict_index(out->mimes, &out->nmimes, key_string(file, RPM_FILE_MIME_DESC, ""))));
 
     str = file_langs_value(file);
     json_object_array_add(out->filelangs, json_object_new_string(str));
@@ -2608,12 +2693,31 @@ build_file_lists(struct file_list_build *build, struct json_object *files)
     return;
 }
 
+/* Take every copy of a tag out of the tags array */
+static void
+drop_tag(struct json_object *tags, const rpmTagVal tag)
+{
+    size_t i = 0;
+
+    while (i < json_object_array_length(tags)) {
+        if (get_tag_number(json_object_array_get_idx(tags, i), false) == tag) {
+            json_object_array_del_idx(tags, i, 1);
+        } else {
+            i++;
+        }
+    }
+
+    return;
+}
+
 /*
  * Rebuild the file list tags from the "files" array and add them to
- * the tags array.
+ * the tags array.  The format is the RPM format we are writing, which
+ * determines whether a file missing a class or a MIME type gets one
+ * assigned based on the files in the payload tree.
  */
 void
-add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies)
+add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format)
 {
     char sizebuf[32];
     bool source_package = false;
@@ -2640,6 +2744,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     build.out = &out;
     build.dependencies = dependencies;
     build.payload_dir = payload_dir;
+    build.format = format;
 
     /*
      * We read the digests back out of the payload, so we need the
@@ -2650,6 +2755,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     /* walk the files and fill in the lists */
     build_file_lists(&build, files);
     finish_file_list_arrays(&out);
+
+    /*
+     * A header.json from before tarpm folded the MIME types in to the
+     * file list holds them as tags.  We rebuild them from the file
+     * list, so the old ones come out.
+     */
+    drop_tag(tags, RPMTAG_FILEMIMEINDEX_VALUE);
+    drop_tag(tags, RPMTAG_MIMEDICT_VALUE);
 
     /*
      * Update the installed size.  The payload tree may have gained,
@@ -2699,6 +2812,24 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         add_tag_array(tags, RPMTAG_FILECLASS, RPM_INT32_TYPE, out.fileclass);
         add_tag_array(tags, RPMTAG_CLASSDICT, RPM_STRING_ARRAY_TYPE, out.classdict);
     }
+
+    /*
+     * The MIME types go in for a binary package the same way.
+     * filter_format_tags() takes them back out of a v4 format package
+     * later.  librpm has to know the tag names to write them.
+     */
+#ifdef _HAS_RPMFORMAT_TAGS
+    if (source_package) {
+        json_object_put(out.filemimeindex);
+        json_object_put(out.mimedict);
+    } else {
+        add_tag_array(tags, RPMTAG_FILEMIMEINDEX_VALUE, RPM_INT32_TYPE, out.filemimeindex);
+        add_tag_array(tags, RPMTAG_MIMEDICT_VALUE, RPM_STRING_ARRAY_TYPE, out.mimedict);
+    }
+#else
+    json_object_put(out.filemimeindex);
+    json_object_put(out.mimedict);
+#endif
 
     add_tag_array(tags, RPMTAG_FILELANGS, RPM_STRING_ARRAY_TYPE, out.filelangs);
 
@@ -2751,6 +2882,8 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_FILEINODES:
         case RPMTAG_FILECLASS:
         case RPMTAG_CLASSDICT:
+        case RPMTAG_FILEMIMEINDEX_VALUE:
+        case RPMTAG_MIMEDICT_VALUE:
         case RPMTAG_FILELANGS:
         case RPMTAG_FILECOLORS:
         case RPMTAG_FILEFLAGS:

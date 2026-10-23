@@ -925,7 +925,7 @@ create_payload(struct json_object *header, const char *payload_dir)
             dependencies = NULL;
         }
 
-        add_file_list_tags(tags_with_files, files, payload_dir, dependencies);
+        add_file_list_tags(tags_with_files, files, payload_dir, dependencies, rpmformat);
 
         /* Use the copy for processing */
         tags = tags_with_files;

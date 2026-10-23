@@ -330,6 +330,7 @@
 #define RPM_FILE_LINKTO_DESC           "linkto"
 #define RPM_FILE_INODE_DESC            "inode"
 #define RPM_FILE_CLASS_DESC            "class"
+#define RPM_FILE_MIME_DESC             "mime"
 #define RPM_FILE_LANGS_DESC            "langs"
 #define RPM_FILE_COLORS_DESC           "colors"
 #define RPM_FILE_FLAGS_DESC            "flags"
@@ -377,6 +378,9 @@
 #define RPM_FILE_TYPE_SYMLINK          "symlink"
 #define RPM_FILE_TYPE_SOCKET           "socket"
 
+/* libmagic flags rpm classifies with, see rpmfcClassify() in build/rpmfc.cc */
+#define RPM_MAGIC_FLAGS                (MAGIC_CHECK | MAGIC_COMPRESS | MAGIC_NO_CHECK_TOKENS | MAGIC_ERROR)
+
 /* class strings rpm writes itself rather than ask libmagic for */
 /*
  * See rpmfcClassify() in build/rpmfc.cc in the rpm source.  Anything
@@ -392,6 +396,15 @@
 #define RPM_FILE_CLASS_DATA            "data"
 #define RPM_FILE_CLASS_NONE            ""
 #define RPM_FILE_CLASS_DEV_PREFIX      "/dev/"
+
+/* MIME types rpm writes itself rather than ask libmagic for */
+/*
+ * See rpmfcClassify() in build/rpmfc.cc in the rpm source.  A file
+ * that is not there has no MIME type.  A file libmagic cannot read is
+ * application/octet-stream.
+ */
+#define RPM_FILE_MIME_NONE             ""
+#define RPM_FILE_MIME_UNKNOWN          "application/octet-stream"
 
 /* names used for the file color bits in the "files" array   */
 /* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */

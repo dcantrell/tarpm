@@ -980,7 +980,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
          * as well because the depends dictionary rebuilt here holds
          * indexes in to them.
          */
-        add_file_list_tags(tags_copy, files, payload_dir, dependencies);
+        add_file_list_tags(tags_copy, files, payload_dir, dependencies, rpmformat);
     }
 
     /*

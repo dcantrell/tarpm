@@ -228,6 +228,13 @@ struct dep_arrays {
     uint32_t nversions;
 };
 
+/* A path ending and the class and MIME type rpm gives every file that has it. */
+struct class_extension {
+    const char *extension;
+    const char *name;
+    const char *mime;
+};
+
 /* Function pointers */
 typedef void (*list_entry_data_free_func)(void *);
 
