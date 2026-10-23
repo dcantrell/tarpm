@@ -535,6 +535,80 @@ test_filter_format_tags_keeps_large_sizes(void)
 }
 
 void
+test_filter_format_tags_widens_large_sizes(void)
+{
+    static const int64_t sizes[] = { 11, 5000000000LL, 6 };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /*
+     * add_file_list_tags() always writes the 32 bit tags.  A v4 format
+     * package with a file too big for them moves to the 64 bit ones.
+     */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_SIZE, RPM_INT32_TYPE, 5000000017LL);
+    add_number_array_tag(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, sizes, 3);
+
+    filter_format_tags(tags, RPM_FORMAT_V4);
+
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_LONGSIZE)), RPM_INT64_TYPE);
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_LONGFILESIZES)), RPM_INT64_TYPE);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGSIZE)), 5000000017LL);
+    TARPM_ASSERT_EQUAL(tag_number(lookup_tag(header, RPMTAG_LONGFILESIZES)), 11);
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_filter_format_tags_uint32_max(void)
+{
+    static const int64_t fits[] = { 11, 4294967294LL };
+    static const int64_t big[] = { 11, 4294967295LL };
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* rpm counts UINT32_MAX itself as too big for the 32 bit tags */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_SIZE, RPM_INT32_TYPE, 4294967295LL);
+    add_number_array_tag(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, big, 2);
+
+    filter_format_tags(tags, RPM_FORMAT_V4);
+
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+
+    json_object_put(header);
+
+    /* and one less still fits */
+    header = make_test_header("gzip", "9");
+    tags = header_tags(header);
+    add_number_tag(tags, RPMTAG_LONGSIZE, RPM_INT64_TYPE, 4294967294LL);
+    add_number_array_tag(tags, RPMTAG_LONGFILESIZES, RPM_INT64_TYPE, fits, 2);
+
+    filter_format_tags(tags, RPM_FORMAT_V4);
+
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_SIZE));
+    TARPM_ASSERT_PTR_NOT_NULL(lookup_tag(header, RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_LONGSIZE));
+    TARPM_ASSERT_PTR_NULL(lookup_tag(header, RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_EQUAL(entry_type(lookup_tag(header, RPMTAG_FILESIZES)), RPM_INT32_TYPE);
+
+    json_object_put(header);
+
+    return;
+}
+
+void
 test_filter_format_tags_prefers_32_bit_sizes(void)
 {
     static const int64_t fresh[] = { 11, 22 };
@@ -737,6 +811,8 @@ get_suite(void)
         CU_add_test(pSuite, "test filter_format_tags() down to v4", test_filter_format_tags_to_v4) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() up to v6", test_filter_format_tags_to_v6) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() keeps large sizes", test_filter_format_tags_keeps_large_sizes) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() widens large sizes", test_filter_format_tags_widens_large_sizes) == NULL ||
+        CU_add_test(pSuite, "test filter_format_tags() at UINT32_MAX", test_filter_format_tags_uint32_max) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() prefers the 32 bit sizes", test_filter_format_tags_prefers_32_bit_sizes) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() run twice", test_filter_format_tags_twice) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() bad input", test_filter_format_tags_bad_input) == NULL ||

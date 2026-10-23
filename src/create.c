@@ -981,12 +981,23 @@ create_payload(struct json_object *header, const char *payload_dir)
     payload = archive_write_new();
 
     /*
-     * A v6 format package carries Longfilesizes, so rpm writes a stripped
-     * cpio payload.  libarchive cannot write one, so we lay out the
-     * cpio ourselves and pass it through the raw format to get the
-     * compression.  Everything else is newc.
+     * rpm writes a stripped down cpio payload when a package has
+     * Longfilesizes header tags.  A v6 format package always has them
+     * and a v4 format package has them when a file is too big for
+     * Filesizes.  libarchive cannot write this modified cpio format,
+     * so we construct it manually and use libarchive's raw format to
+     * still get compression via libarchive.  through the raw format
+     * to get the compression.  Everything else is in the newc cpio
+     * format.
      */
     stripped = (rpmformat == RPM_FORMAT_V6);
+
+    for (i = 0; !stripped && i < numfiles; i++) {
+        if (json_object_get_int64(json_object_array_get_idx(hfl.filesizes, i)) >= (int64_t) UINT32_MAX) {
+            stripped = true;
+        }
+    }
+
     payload_offset = 0;
 
     if (stripped) {
@@ -1325,8 +1336,8 @@ write_payload(FILE *rpm, int fd)
 }
 
 /*
- * Rename a signature size tag to its 64 bit counterpart.  rpm does
- * this in rpmGenerateSignature() for a package too big for the 32 bit
+ * Rename a signature size tag to its 64-bit counterpart.  rpm does
+ * this in rpmGenerateSignature() for a package too big for the 32-bit
  * tags to describe.  Returns non-zero on failure.
  */
 static int
@@ -1354,6 +1365,60 @@ widen_size_tag(struct json_object *tags, const char *tag, const char *wide)
 }
 
 /*
+ * Return the number of bytes the signature header uses minus the
+ * padding that follows it, 0 on failure.
+ */
+static size_t
+signature_size(struct json_object *signature)
+{
+    size_t size = 0;
+    struct rpmhdr *sig = NULL;
+    struct rpmhdrinfo *siginfo = NULL;
+
+    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
+        return 0;
+    }
+
+    size = sizeof(*sig) + (ntohl(sig->nentries) * sizeof(struct rpmhdrentry)) + ntohl(sig->nbytes);
+    free_header(sig, siginfo);
+    return size;
+}
+
+/*
+ * Remove bytes from the reserved space in the signature.  rpm does
+ * this in rpmGenerateSignature() after moving to the 64-bit size
+ * tags.  Returns non-zero on failure.
+ */
+static int
+shrink_reserved_space(struct json_object *tags, const size_t bytes)
+{
+    int r = 0;
+    char *value = NULL;
+    void *blob = NULL;
+
+    if (bytes == 0) {
+        return 0;
+    }
+
+    if (bytes >= RPM_SIGNATURE_RESERVED_SIZE) {
+        return -1;
+    }
+
+    blob = xcalloc(RPM_SIGNATURE_RESERVED_SIZE - bytes, sizeof(char));
+    value = rpmBase64Encode(blob, RPM_SIGNATURE_RESERVED_SIZE - bytes, -1);
+    free(blob);
+
+    if (value == NULL) {
+        warnx("rpmBase64Encode");
+        return -1;
+    }
+
+    r = set_tag_value(tags, sig_tag_name(RPMSIGTAG_RESERVEDSPACE), value);
+    free(value);
+    return r;
+}
+
+/*
  * Update the digests and sizes in the signature using the header and
  * payload data.  Returns non-zero on failure.
  */
@@ -1374,6 +1439,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     uint64_t hdrsize = 0;
     uint64_t nentries = 0;
     uint64_t nbytes = 0;
+    size_t oldsize = 0;
+    size_t newsize = 0;
 
     if (signature == NULL || header == NULL || hdr == NULL || hdrinfo == NULL || payloadfd == -1) {
         return -1;
@@ -1427,13 +1494,22 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 
         free(buf);
 
-        /* a package too big for the 32 bit tags gets the 64 bit ones */
-        if (totalsize > UINT32_MAX || archivesize > UINT32_MAX) {
+        /* a package too big for the 32-bit tags gets the 64-bit ones */
+        if (totalsize >= UINT32_MAX || archivesize >= UINT32_MAX) {
             sizetag = sig_tag_name(RPMSIGTAG_LONGSIZE);
             payloadtag = sig_tag_name(RPMSIGTAG_LONGARCHIVESIZE);
+            oldsize = signature_size(signature);
 
             if (widen_size_tag(tags, sig_tag_name(RPMSIGTAG_SIZE), sizetag) != 0 || widen_size_tag(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), payloadtag) != 0) {
                 warnx(_("*** failed to widen the size tags in signature"));
+                return -1;
+            }
+
+            /* the 64-bit tags come out of the reserved space */
+            newsize = signature_size(signature);
+
+            if (oldsize == 0 || newsize < oldsize || shrink_reserved_space(tags, newsize - oldsize) != 0) {
+                warnx(_("*** failed to resize the reserved space in signature"));
                 return -1;
             }
         } else {

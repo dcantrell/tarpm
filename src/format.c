@@ -30,9 +30,9 @@ static const rpmTagVal v6_only_tags[] = { RPMFORMAT_V6_ONLY_HEADER_TAGS };
 #define V6_ONLY_NTAGS (sizeof(v6_only_tags) / sizeof(v6_only_tags[0]))
 
 /*
- * The size tags that come in a 32 bit and a 64 bit spelling.  rpm
- * records sizes under the 32 bit tag for v4 and the 64 bit tag
- * for v6, and a v4 package falls back to the 64 bit tag
+ * The size tags that come in a 32-bit and a 64-bit spelling.  rpm
+ * records sizes under the 32-bit tag for v4 format and the 64-bit tag
+ * for v6 format, and a v4 format package falls back to the 64-bit tag
  * for a number that will not fit.
  */
 static const struct {
@@ -154,7 +154,11 @@ retag(struct json_object *tags, const rpmTagVal from, const rpmTagVal to, const 
     return;
 }
 
-/* Return true if every number the tag records fits in 32 bits */
+/*
+ * Return true if every number the tag records fits in 32 bits.  rpm
+ * counts UINT32_MAX itself as too big (see genCpioListAndHeader() in
+ * build/files.cc in the rpm source).
+ */
 static bool
 fits_uint32(struct json_object *tags, const rpmTagVal tag)
 {
@@ -176,11 +180,11 @@ fits_uint32(struct json_object *tags, const rpmTagVal tag)
     }
 
     if (json_object_get_type(value) != json_type_array) {
-        return json_object_get_int64(value) <= (int64_t) UINT32_MAX;
+        return json_object_get_int64(value) < (int64_t) UINT32_MAX;
     }
 
     for (i = 0; i < json_object_array_length(value); i++) {
-        if (json_object_get_int64(json_object_array_get_idx(value, i)) > (int64_t) UINT32_MAX) {
+        if (json_object_get_int64(json_object_array_get_idx(value, i)) >= (int64_t) UINT32_MAX) {
             return false;
         }
     }
@@ -190,10 +194,10 @@ fits_uint32(struct json_object *tags, const rpmTagVal tag)
 
 /*
  * Settle a size tag on the spelling the format we are writing uses.
- * add_file_list_tags() rebuilds the 32 bit tag from the payload tree,
- * so it is the fresher of the two when a header carries both and the
- * 64 bit one goes.  v4 holds on to the 64 bit tag for a number that
- * will not fit, which is what rpm does as well.
+ * add_file_list_tags() rebuilds the 32-bit tag from the payload tree,
+ * so it is the newer of the two when a header carries both and the
+ * 64-bit one goes.  A v4 format package uses the 64-bit tag when a
+ * number will not fit in the 32-bit one.
  */
 static void
 normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTagVal large, const int format)
@@ -216,13 +220,9 @@ normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTa
         return;
     }
 
-    want = (format == RPM_FORMAT_V6) ? large : small;
+    want = (format == RPM_FORMAT_V6 || !fits_uint32(tags, have)) ? large : small;
 
     if (have == want) {
-        return;
-    }
-
-    if (want == small && !fits_uint32(tags, large)) {
         return;
     }
 

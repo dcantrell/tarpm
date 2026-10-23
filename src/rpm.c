@@ -6,6 +6,7 @@
 
 #include <string.h>
 #include <err.h>
+#include <locale.h>
 #include <archive.h>
 #include <archive_entry.h>
 #include <rpm/rpmlib.h>
@@ -43,6 +44,8 @@ convert_payload(const char *rpm)
     int rc = 0;
     const char *dn = NULL;
     char *filename = NULL;
+    char *hardlink = NULL;
+    char *ctype = NULL;
     rpm_loff_t left;
     size_t len = 0;
     size_t rd = 0;
@@ -94,7 +97,8 @@ convert_payload(const char *rpm)
         goto cleanup;
     }
 
-    fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE);
+    /* a tar hardlink names an earlier entry, so the content comes first */
+    fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
 
     if (fi == NULL) {
         warnx("*** rpmfiNewArchiveReader returned NULL");
@@ -135,10 +139,24 @@ convert_payload(const char *rpm)
         }
     }
 
-    /* the RPM payload is sort of cpio */
-    if (archive_write_set_format_cpio_newc(archive) != ARCHIVE_OK) {
-        warnx("*** archive_write_set_format_cpio_newc: %s", archive_error_string(archive));
+    /*
+     * Write pax the way rpm2archive does.  newc cannot hold a file of
+     * 4 GiB or more, which a package carrying Longfilesizes can have.
+     * The paths are UTF-8.
+     */
+    if (archive_write_set_format_pax_restricted(archive) != ARCHIVE_OK) {
+        warnx("*** archive_write_set_format_pax_restricted: %s", archive_error_string(archive));
         goto cleanup;
+    }
+
+    ctype = setlocale(LC_CTYPE, NULL);
+    ctype = (ctype == NULL) ? NULL : strdup(ctype);
+    setlocale(LC_CTYPE, "C");
+    (void) archive_write_set_options(archive, "hdrcharset=UTF-8");
+
+    if (ctype != NULL) {
+        setlocale(LC_CTYPE, ctype);
+        free(ctype);
     }
 
     xasprintf(&payload, "%s.tar", rpm);
@@ -187,15 +205,22 @@ convert_payload(const char *rpm)
             archive_entry_set_symlink(entry, rpmfiFLink(fi));
         }
 
-        archive_entry_set_ino64(entry, rpmfiFInode(fi));
         archive_entry_set_nlink(entry, nlink);
 
-        if (nlink > 1 && !rpmfiArchiveHasContent(fi)) {
-            archive_entry_set_size(entry, 0);
+        /* the first link carries the content and the rest name it */
+        if (nlink > 1) {
+            if (rpmfiArchiveHasContent(fi)) {
+                free(hardlink);
+                hardlink = strdup(archive_entry_pathname(entry));
+            } else {
+                archive_entry_set_hardlink(entry, hardlink);
+                archive_entry_set_size(entry, 0);
+            }
         }
 
         if (archive_write_header(archive, entry) != ARCHIVE_OK) {
             warnx(_("archive_write_header: %s"), archive_error_string(archive));
+            failed = true;
             goto cleanup;
         }
 
@@ -227,6 +252,7 @@ cleanup:
     }
 
     free(buf);
+    free(hardlink);
 
     if (entry) {
         archive_entry_free(entry);
