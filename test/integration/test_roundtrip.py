@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import pwd
+import struct
 import subprocess
 import unittest
 import rpmfluff
@@ -146,6 +147,38 @@ def payload_bytes(pkg):
     out, err = proc.communicate()
 
     return out
+
+
+def payload_start(pkg):
+    """Return the offset of the compressed payload in an RPM"""
+    f = open(pkg, "rb")
+    data = f.read()
+    f.close()
+
+    # the lead, then the signature header padded to 8 bytes, then
+    # the main header, and the payload right after
+    offset = 96
+
+    for pad in [True, False]:
+        nindex, hsize = struct.unpack(">II", data[offset + 8 : offset + 16])
+        offset += 16 + (16 * nindex) + hsize
+
+        if pad:
+            offset += (8 - (offset % 8)) % 8
+
+    return offset
+
+
+def gzip_header(pkg):
+    """Return the 10 byte gzip header at the front of an RPM payload"""
+    offset = payload_start(pkg)
+
+    f = open(pkg, "rb")
+    f.seek(offset)
+    header = f.read(10)
+    f.close()
+
+    return header
 
 
 def lead_bytes(pkg):
@@ -352,6 +385,71 @@ class TestRoundTripSourceRPM(RoundTrip, TestUnpackSRPM):
         self.assertEqual(inode_list(recreated), inode_list(original))
         self.assertEqual(payload_bytes(recreated), payload_bytes(original))
         self.assertVerifies(recreated)
+
+
+class GzipPayload(object):
+    """
+    Checks for a gzip payload.  rpm compresses through gzdopen() in
+    zlib, which leaves the mtime in the gzip header at 0.  tarpm has
+    to write the same header or the package changes every second.
+    """
+
+    def assertGzipHeader(self, original, recreated):
+        """Assert both payloads are gzip and the headers match"""
+        header = gzip_header(recreated)
+
+        self.assertEqual(header[:3], b"\x1f\x8b\x08", "payload is not gzip")
+        self.assertEqual(header[4:8], b"\x00\x00\x00\x00", "gzip mtime is set")
+        self.assertEqual(header, gzip_header(original))
+
+
+class TestRoundTripGzipSourceRPM(GzipPayload, RoundTrip, TestUnpackSRPM):
+    """An unmodified source RPM with a gzip payload comes back the same"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.header += "%global _source_payload w9.gzdio\n"
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_srpm()
+
+        recreated = self.create(self.extract(original))
+
+        self.assertGzipHeader(original, recreated)
+        self.assertIdentical(original, recreated)
+
+
+class TestRoundTripGzipBinaryRPM(GzipPayload, RoundTrip, TestUnpackRPM):
+    """An unmodified binary RPM with a gzip payload comes back the same"""
+
+    def setUp(self):
+        super().setUp()
+
+        # a v6 format binary package goes to zstd when we write it, so
+        # this one has to be v4 format to stay gzip
+        self.rpm.header += "%global _rpmformat 4\n"
+        self.rpm.header += "%global _binary_payload w6.gzdio\n"
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        recreated = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm(
+            self.tarpm, ["-c", "-f", recreated, self.extract(original)]
+        )
+        self.assertEqual(rc, 0, "Create failed: %s" % err)
+
+        self.assertGzipHeader(original, recreated)
+        self.assertIdentical(original, recreated)
 
 
 class TestCreateWithoutLeadBinaryRPM(RoundTrip, TestUnpackRPM):

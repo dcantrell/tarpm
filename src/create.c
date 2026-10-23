@@ -1049,6 +1049,15 @@ create_payload(struct json_object *header, const char *payload_dir)
         }
     } else if (!strcmp(tag, "gzip")) {
         archive_write_add_filter_gzip(payload);
+
+        /*
+         * rpm compresses through gzdopen() in zlib, which leaves the
+         * gzip header mtime at 0.  libarchive writes the current time
+         * there unless we turn off the timestamp option.
+         */
+        if (archive_write_set_filter_option(payload, "gzip", "timestamp", NULL) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_filter_option: %s", archive_error_string(payload));
+        }
     } else if (!strcmp(tag, "bzip2")) {
         archive_write_add_filter_bzip2(payload);
     } else if (!strcmp(tag, "xz")) {
