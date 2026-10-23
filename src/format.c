@@ -416,14 +416,21 @@ set_string_tag(struct json_object *tags, const rpmTagVal tag, const char *value)
 
 /*
  * Set the payload compressor a v6 package carries.  rpm picks zstd
- * from v6 on, so a package handed to us as gzip has to change over.
- * One that is already zstd keeps the level it came with so we write
- * the same payload back out.
+ * for a binary package from v6 format on, so one handed to us as gzip
+ * has to change over.  One that is already zstd keeps the level it
+ * came with so we write the same payload back out.  getIOFlags() in
+ * build/pack.cc in the rpm source takes %_source_payload for a source
+ * package, which the v6 format leaves alone, so a source package
+ * keeps its compressor.
  */
 static void
 set_v6_compressor(struct json_object *tags)
 {
     const char *compressor = NULL;
+
+    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+        return;
+    }
 
     compressor = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
 
@@ -440,8 +447,8 @@ set_v6_compressor(struct json_object *tags)
 /*
  * Put the main header in to the shape the format calls for.  The tags
  * the other format owns come out, the ones this format needs go in
- * with placeholder values, and a v6 package picks up the compressor
- * rpm would have given it.  Returns non-zero on failure.
+ * with placeholder values, and a v6 format binary package picks up the
+ * compressor rpm would have given it.  Returns non-zero on failure.
  */
 int
 apply_rpmformat(struct json_object *header, const int format)

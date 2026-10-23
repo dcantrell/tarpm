@@ -718,6 +718,60 @@ class VerifyStrippedPayloadRoundTrip(TestUnpackRPM):
         out, err = proc.communicate()
         self.assertIn("/usr/share/doc/%s/README" % NAME, out.decode())
 
+        # and we wrote the stripped payload back out the way rpm does
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        one = f.read()
+        f.close()
+
+        f = open(pkg, "rb")
+        two = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyExtractStrippedPayloadHardLinks(TestUnpackRPM):
+    """Test hard links in a stripped payload come out as hard links"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _rpmformat 6\n"
+
+        for name in ["one.txt", "two.txt", "three.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"the same content\n"),
+            )
+
+        for name in ["two.txt", "three.txt"]:
+            self.rpm.section_install += (
+                "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+                "$RPM_BUILD_ROOT/usr/share/%s/%s\n" % (NAME, NAME, name)
+            )
+
+    def runTest(self):
+        super().runTest()
+
+        docdir = os.path.join(self.output_dir, "payload", "usr/share", NAME)
+        inodes = set()
+
+        # the payload holds the data once, in the last entry of the
+        # group, and every link has to end up with it
+        for name in ["one.txt", "two.txt", "three.txt"]:
+            path = os.path.join(docdir, name)
+
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(), b"the same content\n", msg=name)
+
+            sb = os.lstat(path)
+            self.assertEqual(sb.st_nlink, 3, msg=name)
+            inodes.add(sb.st_ino)
+
+        self.assertEqual(len(inodes), 1)
+
 
 class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
     """Test the temporary tar file goes away when the fallback reader fails"""

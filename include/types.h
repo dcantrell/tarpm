@@ -185,6 +185,9 @@ struct file_params {
 
     /* path to the first occurrence of the hardlink in our payload subdir */
     const char *hardlink;
+
+    /* position in the header file list, which a stripped cpio entry carries */
+    size_t index;
 };
 
 /*

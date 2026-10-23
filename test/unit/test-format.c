@@ -333,6 +333,29 @@ test_apply_rpmformat_v6(void)
 
     return;
 }
+
+void
+test_apply_rpmformat_v6_source_package(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    header = make_test_header("gzip", "9");
+    json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags);
+    add_number_tag(tags, RPMTAG_SOURCEPACKAGE, RPM_INT32_TYPE, 1);
+    TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V6), 0);
+
+    /* a source package is still a v6 format package */
+    TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_RPMFORMAT_VALUE)), "6");
+
+    /* but rpm leaves its compressor alone */
+    TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADCOMPRESSOR)), "gzip");
+    TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADFLAGS)), "9");
+
+    json_object_put(header);
+
+    return;
+}
 #endif
 
 void
@@ -748,6 +771,7 @@ get_suite(void)
 #ifdef _HAS_RPMFORMAT_TAGS
     /* only an rpm that can name the format 6 tags can run these */
     if (CU_add_test(pSuite, "test apply_rpmformat() v6", test_apply_rpmformat_v6) == NULL ||
+        CU_add_test(pSuite, "test apply_rpmformat() v6 format source package", test_apply_rpmformat_v6_source_package) == NULL ||
         CU_add_test(pSuite, "test update_payload_tags() v6", test_update_payload_tags_v6) == NULL) {
         return NULL;
     }

@@ -32,6 +32,9 @@
 
 static struct archive *payload = NULL;
 
+/* bytes written to a stripped payload, which we have to pad by hand */
+static size_t payload_offset = 0;
+
 static void
 free_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo)
 {
@@ -166,6 +169,139 @@ payload_path(const char *dirname, const char *basename)
 }
 
 /*
+ * Write bytes to the payload and count them, so a stripped payload
+ * knows where the next 4 byte boundary is.
+ */
+static int
+write_payload_data(const void *buf, const size_t len)
+{
+    ssize_t written = 0;
+
+    if (len == 0) {
+        return 0;
+    }
+
+    written = archive_write_data(payload, buf, len);
+
+    if (written < 0 || ((size_t) written) != len) {
+        warnx("archive_write_data: %s", archive_error_string(payload));
+        return -1;
+    }
+
+    payload_offset += len;
+    return 0;
+}
+
+/* Pad a stripped payload out to the next 4 byte boundary */
+static int
+pad_payload(void)
+{
+    static const char zeros[CPIO_ALIGNMENT] = { 0 };
+    int r = 0;
+
+    r = write_payload_data(zeros, (CPIO_ALIGNMENT - (payload_offset % CPIO_ALIGNMENT)) % CPIO_ALIGNMENT);
+    return r;
+}
+
+/* Copy the contents of a file in the payload tree to the payload */
+static int
+write_file_data(const char *file_path)
+{
+    int fd = -1;
+    int r = 0;
+    ssize_t len = 0;
+    char buf[BUFSIZ];
+
+    if (file_path == NULL) {
+        return -1;
+    }
+
+    if ((fd = open(file_path, O_RDONLY)) == -1) {
+        warn("open: %s", file_path);
+        return -1;
+    }
+
+    while ((len = read(fd, buf, sizeof(buf))) > 0) {
+        if (write_payload_data(buf, len) != 0) {
+            r = -1;
+            break;
+        }
+    }
+
+    if (len == -1) {
+        warn("read: %s", file_path);
+    }
+
+    close(fd);
+    return r;
+}
+
+/*
+ * Write one file to a stripped payload the way
+ * rpmfiArchiveWriteHeader() and iterWriteArchiveNext() in
+ * lib/rpmfi.cc in the rpm source do.  The entry is the magic and the
+ * file list index, then the file data or the symlink target.  The
+ * rest of the metadata is in the RPM header.  A hardlink holds data
+ * only in the last entry of its group, same as in a newc payload.
+ */
+static int
+add_file_to_stripped_payload(const char *payload_dir, const struct file_params *params)
+{
+    int r = 0;
+    char *relative_path = NULL;
+    char *file_path = NULL;
+    char entry[CPIO_STRIPPED_HEADER_SIZE + 1];
+
+    if (payload_dir == NULL || params == NULL) {
+        return -1;
+    }
+
+    snprintf(entry, sizeof(entry), "%s%08zx", CPIO_STRIPPED_MAGIC, params->index);
+
+    if (pad_payload() != 0 || write_payload_data(entry, CPIO_STRIPPED_HEADER_SIZE) != 0 || pad_payload() != 0) {
+        return -1;
+    }
+
+    if (S_ISLNK(params->mode)) {
+        if (params->linkto != NULL) {
+            r = write_payload_data(params->linkto, strlen(params->linkto));
+        }
+    } else if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
+        relative_path = joinpath(params->dirname, params->basename, NULL);
+        file_path = joinpath(payload_dir, relative_path, NULL);
+        r = write_file_data(file_path);
+        free(file_path);
+        free(relative_path);
+    }
+
+    return r;
+}
+
+/*
+ * End a stripped payload with the newc trailer rpmcpioTrailerWrite()
+ * in lib/cpio.cc in the rpm source writes.  Every field is zero but
+ * the link count and the name size.
+ */
+static int
+write_stripped_trailer(void)
+{
+    char trailer[CPIO_NEWC_HEADER_SIZE + 1];
+
+    snprintf(trailer, sizeof(trailer), "%s%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08zx%08x",
+             CPIO_NEWC_MAGIC, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, sizeof(CPIO_TRAILER_NAME), 0);
+
+    if (pad_payload() != 0 || write_payload_data(trailer, CPIO_NEWC_HEADER_SIZE) != 0) {
+        return -1;
+    }
+
+    if (write_payload_data(CPIO_TRAILER_NAME, sizeof(CPIO_TRAILER_NAME)) != 0 || pad_payload() != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
  * Helper function used to build the RPM payload.  We use libarchive,
  * but the payload has to follow the metadata in the header rather
  * than walking the filesystem tree.
@@ -177,9 +313,6 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     char *full_path = NULL;
     char *file_path = NULL;
     struct archive_entry *entry = NULL;
-    int fd = -1;
-    ssize_t len = 0;
-    char buf[BUFSIZ];
 
     if (payload_dir == NULL || params == NULL) {
         return -1;
@@ -260,23 +393,12 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
-        if ((fd = open(file_path, O_RDONLY)) == -1) {
-            warn("open: %s", file_path);
+        if (write_file_data(file_path) != 0) {
             archive_entry_free(entry);
             free(full_path);
             free(file_path);
             return -1;
         }
-
-        while ((len = read(fd, buf, sizeof(buf))) > 0) {
-            archive_write_data(payload, buf, len);
-        }
-
-        if (len == -1) {
-            warn("read: %s", file_path);
-        }
-
-        close(fd);
     }
 
     /* finalize the entry */
@@ -747,6 +869,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     int tmp_payloadfd = -1;
     int dirindex = 0;
     bool need_free_tags = false;
+    bool stripped = false;
     size_t i = 0;
     size_t j = 0;
     size_t n = 0;
@@ -762,6 +885,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     struct hardlink_groups hl;
     struct zstd_payload zstd;
     struct file_params params;
+    struct archive_entry *entry = NULL;
     struct json_object *tags = NULL;
     struct json_object *files = NULL;
     struct json_object *dependencies = NULL;
@@ -856,8 +980,20 @@ create_payload(struct json_object *header, const char *payload_dir)
     /* create a new payload writer */
     payload = archive_write_new();
 
-    /* set the payload format, which is always the same */
-    if (archive_write_set_format_cpio_newc(payload) != ARCHIVE_OK) {
+    /*
+     * A v6 format package carries Longfilesizes, so rpm writes a stripped
+     * cpio payload.  libarchive cannot write one, so we lay out the
+     * cpio ourselves and pass it through the raw format to get the
+     * compression.  Everything else is newc.
+     */
+    stripped = (rpmformat == RPM_FORMAT_V6);
+    payload_offset = 0;
+
+    if (stripped) {
+        if (archive_write_set_format_raw(payload) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_set_format_raw: %s", archive_error_string(payload));
+        }
+    } else if (archive_write_set_format_cpio_newc(payload) != ARCHIVE_OK) {
         errx(EXIT_FAILURE, "archive_write_set_format_cpio_newc: %s", archive_error_string(payload));
     }
 
@@ -995,6 +1131,19 @@ create_payload(struct json_object *header, const char *payload_dir)
         errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
     }
 
+    /* the raw format holds one regular file, which is our cpio stream */
+    if (stripped) {
+        entry = archive_entry_new();
+        archive_entry_set_pathname(entry, "payload");
+        archive_entry_set_filetype(entry, AE_IFREG);
+
+        if (archive_write_header(payload, entry) != ARCHIVE_OK) {
+            errx(EXIT_FAILURE, "archive_write_header: %s", archive_error_string(payload));
+        }
+
+        archive_entry_free(entry);
+    }
+
     /* we have to track hardlinks by inode number and link count */
     find_hardlink_groups(&hfl, numfiles, &hl);
 
@@ -1033,6 +1182,7 @@ create_payload(struct json_object *header, const char *payload_dir)
         params.inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
         params.nlink = 1;
         params.hardlink = NULL;
+        params.index = i;
 
         if (S_ISREG(params.mode)) {
             /* find the first occurrence of this inode */
@@ -1054,9 +1204,17 @@ create_payload(struct json_object *header, const char *payload_dir)
             }
         }
 
-        if (add_file_to_payload(payload_dir, &params) != 0) {
+        if (stripped) {
+            if (add_file_to_stripped_payload(payload_dir, &params) != 0) {
+                warnx("failed to add file: %s%s", params.dirname, params.basename);
+            }
+        } else if (add_file_to_payload(payload_dir, &params) != 0) {
             warnx("failed to add file: %s%s", params.dirname, params.basename);
         }
+    }
+
+    if (stripped && write_stripped_trailer() != 0) {
+        warnx(_("*** unable to write the payload trailer"));
     }
 
     /* close the payload so data can be flushed */

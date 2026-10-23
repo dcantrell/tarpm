@@ -236,6 +236,23 @@
 #define RPM_LEAD_MAJOR_V6              4
 
 /*
+ * The cpio payload pieces rpm writes by hand.  rpmfiArchiveWriteHeader()
+ * in lib/rpmfi.cc in the rpm source writes a stripped entry for every
+ * file when the header carries Longfilesizes, which a v6 format
+ * package always does.  A stripped entry is the magic and the position of the
+ * file in the header file list as 8 hex digits.  The header holds
+ * everything else.  rpmcpioTrailerWrite() in lib/cpio.cc ends the
+ * archive with a newc trailer either way.  Everything in the archive
+ * starts on a 4 byte boundary.
+ */
+#define CPIO_NEWC_MAGIC                "070701"
+#define CPIO_STRIPPED_MAGIC            "07070X"
+#define CPIO_NEWC_HEADER_SIZE          110
+#define CPIO_STRIPPED_HEADER_SIZE      14
+#define CPIO_TRAILER_NAME              "TRAILER!!!"
+#define CPIO_ALIGNMENT                 4
+
+/*
  * The space rpm reserves in the signature header for rpmsign to write
  * in to.  rpm always keeps 32 bytes and adds whatever
  * %__gpg_reserved_space asks for, which is 4096.

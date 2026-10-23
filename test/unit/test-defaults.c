@@ -132,6 +132,25 @@ test_apply_header_defaults_v6(void)
     return;
 }
 
+/* Test apply_header_defaults() leaves a v6 format source package on the v4 format compressor */
+void
+test_apply_header_defaults_v6_source_package(void)
+{
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_SOURCEPACKAGE, "1");
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_PAYLOADCOMPRESSOR), RPM_DEFAULT_PAYLOADCOMPRESSOR);
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_PAYLOADFLAGS), RPM_DEFAULT_PAYLOADFLAGS);
+
+    json_object_put(header);
+
+    return;
+}
+
 /* Test apply_header_defaults() never overwrites a tag the header carries */
 void
 test_apply_header_defaults_never_overwrites(void)
@@ -500,6 +519,7 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test apply_header_defaults() v4", test_apply_header_defaults_v4) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() v6", test_apply_header_defaults_v6) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() v6 format source package", test_apply_header_defaults_v6_source_package) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() never overwrites", test_apply_header_defaults_never_overwrites) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() with a tag in a file", test_apply_header_defaults_tag_in_file) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() keeps the digest algorithm", test_apply_header_defaults_keeps_digest_algo) == NULL ||

@@ -12,6 +12,7 @@ import unittest
 import rpmfluff
 from baseclass import NAME, TestUnpackSRPM, TestUnpackRPM
 from baseclass import HAVE_RPM_FORMAT_SIX, rpm_at_least
+from baseclass import RPMBUILD_FORMAT_ARGS, RPMBUILD_FORMAT_SIX
 
 try:
     from rpmfluff.utils import get_expected_arch
@@ -411,7 +412,9 @@ class VerifyCreateWithoutSignatureJson(TestUnpackRPM):
         os.unlink(self.signature)
 
         created = os.path.join(self.output_dir, "created.rpm")
-        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", created, self.output_dir])
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-f", created] + RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        )
         self.assertEqual(rc, 0, msg=err)
 
         f = open(original, "rb")
@@ -469,7 +472,9 @@ class VerifyCreateIgnoresEditedSignature(TestUnpackRPM):
 
         original = self.rpm.get_built_rpm(get_expected_arch())
         created = os.path.join(self.output_dir, "created.rpm")
-        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", created, self.output_dir])
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-f", created] + RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        )
         self.assertEqual(rc, 0, msg=err)
 
         f = open(original, "rb")
@@ -513,7 +518,12 @@ class VerifyCreateFormatFour(TestUnpackRPM):
         entries = signature_header(created)
         self.assertEqual(tag_numbers(entries), V4_SIGNATURE_TAGS)
 
-        f = open(original, "rb")
+        # the default is v4 format whatever format rpmbuild wrote
+        default = os.path.join(self.output_dir, "default.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", default, self.output_dir])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(default, "rb")
         one = f.read()
         f.close()
 
@@ -521,11 +531,19 @@ class VerifyCreateFormatFour(TestUnpackRPM):
         two = f.read()
         f.close()
 
+        self.assertEqual(one, two, "-F 4 and the default differ")
+
+        f = open(original, "rb")
+        one = f.read()
+        f.close()
+
         # Signature generation is version-dependent and may differ between RPM versions.
         # On RPM <= 42.0 (e.g., 4.14), signatures may be generated differently.
         # Verify the package is valid instead of exact byte matching.
+        # A v6 format package from rpmbuild has nothing to compare with.
         if rpm_at_least("6.0.0"):
-            self.assertEqual(one, two, "the package came out different")
+            if not RPMBUILD_FORMAT_SIX:
+                self.assertEqual(one, two, "the package came out different")
         else:
             # For older RPM, verify the signature header exists and has correct tags
             entries = signature_header(created)
@@ -558,6 +576,18 @@ class VerifyCreateFormatSix(TestUnpackRPM):
 
         entries = signature_header(created)
         self.assertEqual(tag_numbers(entries), V6_SIGNATURE_TAGS)
+
+        # rpmbuild wrote the same v6 format package
+        if RPMBUILD_FORMAT_SIX:
+            f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+            one = f.read()
+            f.close()
+
+            f = open(created, "rb")
+            two = f.read()
+            f.close()
+
+            self.assertEqual(one, two, "the package came out different")
         self.assertEqual(tag_count(entries, 999), RESERVED_SIZE)
 
         # the digests cover the main header

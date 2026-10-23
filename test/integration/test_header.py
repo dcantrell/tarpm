@@ -12,6 +12,46 @@ import rpm
 import time
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 from baseclass import PAYLOAD_DIGEST, PAYLOAD_DIGEST_ALGO, PAYLOAD_DIGEST_ALT
+from baseclass import RPMBUILD_FORMAT_SIX
+
+# The main header tags only a v6 format package carries, and the
+# length of the hex digest each digest tag holds.  writeRPM() in
+# build/pack.cc in the rpm source writes these.
+V6_DIGEST_TAGS = {
+    "Payloadsha512": 128,
+    "Payloadsha512alt": 128,
+    "Payloadsha3_256": 64,
+    "Payloadsha3_256alt": 64,
+}
+V6_TAGS = ["Rpmformat", "Payloadsize", "Payloadsizealt"] + list(V6_DIGEST_TAGS)
+
+
+def check_v6_tag(test, tag):
+    """Check one of the tags only a v6 format package carries"""
+    t = tag["tag"]
+
+    test.assertTrue(RPMBUILD_FORMAT_SIX, "%s in a v4 format package" % t)
+
+    if t == "Rpmformat":
+        test.assertTrue(tag["type"] == "int32")
+        test.assertTrue(int(tag["value"]) == 6)
+    elif t in ["Payloadsize", "Payloadsizealt"]:
+        test.assertTrue(tag["type"] == "int64")
+        test.assertTrue(int(tag["value"]) > 0)
+    else:
+        test.assertTrue(tag["type"] == "string")
+        test.assertTrue(len(tag["value"]) == V6_DIGEST_TAGS[t])
+
+    return
+
+
+def check_rpmformat(test, header):
+    """Check the package carries Rpmformat only when it is v6 format"""
+    names = [tag["tag"] for tag in header["tags"]]
+
+    test.assertEqual("Rpmformat" in names, RPMBUILD_FORMAT_SIX)
+
+    return
 
 
 def build_host():
@@ -112,6 +152,12 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertNotEqual(tag["value"], platform.uname()[4])
                     elif t == "Filesizes":
                         self.assertTrue(tag["type"] == "int32")
+                        self.assertTrue(int(tag["value"]) == 359)
+                    elif t == "Longsize":
+                        self.assertTrue(tag["type"] == "int64")
+                        self.assertTrue(int(tag["value"]) > 0)
+                    elif t == "Longfilesizes":
+                        self.assertTrue(tag["type"] == "int64")
                         self.assertTrue(int(tag["value"]) == 359)
                     elif t == "Filemodes":
                         self.assertTrue(tag["type"] == "int16")
@@ -222,9 +268,13 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         ]
                         for required in essential_content:
                             self.assertIn(required, spec_content)
+                    elif t in V6_TAGS:
+                        check_v6_tag(self, tag)
                     else:
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)
+
+        check_rpmformat(self, header)
 
         # Check changelog array if present
         if "changelog" in header.keys():
@@ -381,6 +431,13 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 0)
+                    elif t == "Longsize":
+                        self.assertTrue(tag["type"] == "int64")
+                        self.assertTrue(int(tag["value"]) == 0)
+                    elif t == "Sourcenevr":
+                        self.assertTrue(RPMBUILD_FORMAT_SIX)
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == "vaporware-0.1-1")
                     elif t == "License":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "GPL")
@@ -461,9 +518,13 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(len(tag["value"][0]) == 64)
                     elif t == "Sourcepkgid":
                         self.assertTrue(tag["type"] == "binary blob")
+                    elif t in V6_TAGS:
+                        check_v6_tag(self, tag)
                     else:
                         m = "Unknown tag found in header: %s\n%s\n" % (t, str(tag))
                         self.fail(msg=m)
+
+        check_rpmformat(self, header)
 
         # Check changelog array if present
         if "changelog" in header.keys():

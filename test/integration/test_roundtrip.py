@@ -15,6 +15,7 @@ import rpmfluff
 from baseclass import NAME
 from baseclass import REL
 from baseclass import VER
+from baseclass import RPMBUILD_FORMAT_ARGS
 from baseclass import TestUnpackRPM
 from baseclass import TestUnpackSRPM
 from baseclass import rpm_at_least
@@ -64,7 +65,7 @@ def size_list(pkg):
     return [
         (path, int(size))
         for (path, size) in [
-            line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{FILESIZES}\n]")
+            line.split() for line in query_rpm(pkg, "[%{FILENAMES} %{LONGFILESIZES}\n]")
         ]
     ]
 
@@ -234,7 +235,9 @@ class RoundTrip(object):
         pkg = os.path.join(self.output_dir, name)
 
         rc, out, err = run_tarpm(
-            self.tarpm, ["-c", "-f", pkg] + (args or []) + [extract_dir], env=env
+            self.tarpm,
+            ["-c", "-f", pkg] + RPMBUILD_FORMAT_ARGS + (args or []) + [extract_dir],
+            env=env,
         )
         self.assertEqual(rc, 0, "Create failed: %s" % err)
         self.assertTrue(os.path.isfile(pkg))
@@ -251,7 +254,9 @@ class RoundTrip(object):
         """Assert tarpm refuses to create an RPM and writes nothing"""
         pkg = os.path.join(self.output_dir, name)
 
-        rc, out, err = run_tarpm(self.tarpm, ["-c", "-f", pkg, extract_dir])
+        rc, out, err = run_tarpm(
+            self.tarpm, ["-c", "-f", pkg] + RPMBUILD_FORMAT_ARGS + [extract_dir]
+        )
         self.assertNotEqual(rc, 0, "Create unexpectedly succeeded")
         self.assertFalse(os.path.exists(pkg), "A package was written anyway")
 
@@ -2112,16 +2117,9 @@ class TestMetadataPathsRoundTrip(RoundTrip, TestUnpackRPM):
         pkg = os.path.join(self.output_dir, "recreated.rpm")
         rc, out, err = run_tarpm(
             self.tarpm,
-            [
-                "-c",
-                "-f",
-                pkg,
-                "--signature",
-                signature,
-                "--header",
-                header,
-                extract_dir,
-            ],
+            ["-c", "-f", pkg]
+            + RPMBUILD_FORMAT_ARGS
+            + ["--signature", signature, "--header", header, extract_dir],
         )
         self.assertEqual(rc, 0, "Create failed: %s" % err)
 
@@ -2164,7 +2162,9 @@ class TestMetadataPathsAreRelative(RoundTrip, TestUnpackRPM):
         pkg = os.path.join(self.output_dir, "recreated.rpm")
         rc, out, err = run_tarpm(
             self.tarpm,
-            ["-c", "-f", "recreated.rpm", "--header", "meta/", "extracted"],
+            ["-c", "-f", "recreated.rpm"]
+            + RPMBUILD_FORMAT_ARGS
+            + ["--header", "meta/", "extracted"],
             cwd=self.output_dir,
         )
         self.assertEqual(rc, 0, "Create failed: %s" % err)
@@ -2213,7 +2213,9 @@ class TestPayloadPathRoundTrip(RoundTrip, TestUnpackRPM):
         pkg = os.path.join(self.output_dir, "recreated.rpm")
         rc, out, err = run_tarpm(
             self.tarpm,
-            ["-c", "-f", pkg, "--payload", payload_dir, extract_dir],
+            ["-c", "-f", pkg]
+            + RPMBUILD_FORMAT_ARGS
+            + ["--payload", payload_dir, extract_dir],
         )
         self.assertEqual(rc, 0, "Create failed: %s" % err)
 
