@@ -45,6 +45,31 @@ LEAD_CARRIES_ARCH_OS = not rpm_at_least("6.0.0")
 CLASSIFIES_BY_EXTENSION = rpm_at_least("4.18.0")
 BUILD_FILES_OWNED_BY_ROOT = rpm_at_least("4.20.0")
 
+
+def rpmbuild_format():
+    """Returns the RPM format rpmbuild writes, from the %_rpmformat macro"""
+    if not HAVE_RPM_FORMAT_SIX:
+        return 4
+
+    try:
+        return int(rpm.expandMacro("%{?_rpmformat}"))
+    except ValueError:
+        return 4
+
+
+# The packages rpmbuild writes for us are v4 format unless %_rpmformat
+# says otherwise.  tarpm writes v4 format unless told otherwise with
+# -F, so a test comparing the two passes RPMBUILD_FORMAT_ARGS when it
+# creates a package.  We leave the option off for v4 format so the
+# default stays covered.
+RPMBUILD_FORMAT = rpmbuild_format()
+RPMBUILD_FORMAT_SIX = RPMBUILD_FORMAT >= 6
+
+if RPMBUILD_FORMAT_SIX:
+    RPMBUILD_FORMAT_ARGS = ["-F", "6"]
+else:
+    RPMBUILD_FORMAT_ARGS = []
+
 # The two spellings of the payload digest tags.  rpm renamed them in
 # 6.0.0 and tarpm writes whichever name the librpm it was built
 # against gives them.
