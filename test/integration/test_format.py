@@ -47,7 +47,7 @@ LONG_SIZE_TAGS = [5008, 5009]
 V4_LEAD_MAJOR = 3
 V6_LEAD_MAJOR = 4
 
-# The compressor rpm picks from v6 on
+# The compressor rpm gives a v6 format binary package by default
 V6_COMPRESSOR = "zstd"
 V6_COMPRESSOR_LEVEL = "19"
 
@@ -176,6 +176,25 @@ def set_compressor(path, compressor, level):
     return
 
 
+def drop_compressor(path):
+    """Take the payload compressor and its level out of a header.json"""
+    f = open(path)
+    header = json.load(f)
+    f.close()
+
+    header["tags"] = [
+        tag
+        for tag in header["tags"]
+        if tag["tag"] not in ["Payloadcompressor", "Payloadflags"]
+    ]
+
+    f = open(path, "w")
+    json.dump(header, f)
+    f.close()
+
+    return
+
+
 class VerifyCreateFormatFourHeader(TestUnpackRPM):
     """A v4 package carries the payload digest tags rpm writes for v4"""
 
@@ -271,7 +290,7 @@ class VerifyCreateFormatSixRpmformat(TestUnpackRPM):
     HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
 )
 class VerifyCreateFormatSixCompression(TestUnpackRPM):
-    """A v6 package is compressed the way rpm compresses one"""
+    """A v6 format package keeps the compressor the metadata names"""
 
     def setUp(self):
         super().setUp()
@@ -282,7 +301,6 @@ class VerifyCreateFormatSixCompression(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 
-        # start from a package compressed some other way
         set_compressor(self.header, "gzip", "9")
 
         created = os.path.join(self.output_dir, "created.rpm")
@@ -292,8 +310,8 @@ class VerifyCreateFormatSixCompression(TestUnpackRPM):
         self.assertEqual(rc, 0, msg=err)
 
         tags = header_tags(extracted_header(self, created, "again"))
-        self.assertEqual(tags["Payloadcompressor"], V6_COMPRESSOR)
-        self.assertEqual(tags["Payloadflags"], V6_COMPRESSOR_LEVEL)
+        self.assertEqual(tags["Payloadcompressor"], "gzip")
+        self.assertEqual(tags["Payloadflags"], "9")
 
 
 class VerifyCreateFormatFourCompression(TestUnpackRPM):
@@ -308,7 +326,7 @@ class VerifyCreateFormatFourCompression(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 
-        set_compressor(self.header, "gzip", "9")
+        set_compressor(self.header, "zstd", "10")
 
         created = os.path.join(self.output_dir, "created.rpm")
         rc, out, err = run_tarpm(
@@ -317,8 +335,40 @@ class VerifyCreateFormatFourCompression(TestUnpackRPM):
         self.assertEqual(rc, 0, msg=err)
 
         tags = header_tags(extracted_header(self, created, "again"))
-        self.assertEqual(tags["Payloadcompressor"], "gzip")
-        self.assertEqual(tags["Payloadflags"], "9")
+        self.assertEqual(tags["Payloadcompressor"], "zstd")
+        self.assertEqual(tags["Payloadflags"], "10")
+
+
+class VerifyCreateDefaultCompression(TestUnpackRPM):
+    """A binary package with no compressor named gets the one rpm picks"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        drop_compressor(self.header)
+
+        # rpm gives a v4 format package gzip and a v6 format one zstd
+        formats = {"4": ("gzip", "9")}
+
+        if HAVE_RPM_FORMAT_SIX:
+            formats["6"] = (V6_COMPRESSOR, V6_COMPRESSOR_LEVEL)
+
+        for fmt, (compressor, level) in formats.items():
+            created = os.path.join(self.output_dir, "created-%s.rpm" % fmt)
+            rc, out, err = run_tarpm(
+                [self.tarpm, "-c", "-F", fmt, "-f", created, self.output_dir]
+            )
+            self.assertEqual(rc, 0, msg=err)
+
+            tags = header_tags(extracted_header(self, created, "again-%s" % fmt))
+            self.assertEqual(tags["Payloadcompressor"], compressor, msg=fmt)
+            self.assertEqual(tags["Payloadflags"], level, msg=fmt)
 
 
 @unittest.skipUnless(

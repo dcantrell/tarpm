@@ -430,9 +430,6 @@ class TestRoundTripGzipBinaryRPM(GzipPayload, RoundTrip, TestUnpackRPM):
     def setUp(self):
         super().setUp()
 
-        # a v6 format binary package goes to zstd when we write it, so
-        # this one has to be v4 format to stay gzip
-        self.rpm.header += "%global _rpmformat 4\n"
         self.rpm.header += "%global _binary_payload w6.gzdio\n"
         self.rpm.add_installed_file(
             "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
@@ -442,11 +439,7 @@ class TestRoundTripGzipBinaryRPM(GzipPayload, RoundTrip, TestUnpackRPM):
         self.rpm.do_make()
         original = self.rpm.get_built_rpm(get_expected_arch())
 
-        recreated = os.path.join(self.output_dir, "recreated.rpm")
-        rc, out, err = run_tarpm(
-            self.tarpm, ["-c", "-f", recreated, self.extract(original)]
-        )
-        self.assertEqual(rc, 0, "Create failed: %s" % err)
+        recreated = self.create(self.extract(original))
 
         self.assertGzipHeader(original, recreated)
         self.assertIdentical(original, recreated)

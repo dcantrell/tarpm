@@ -395,60 +395,10 @@ set_size_tag(struct json_object *tags, const rpmTagVal tag, const uint64_t size)
     return 0;
 }
 
-/* Set a string tag, adding it if the header does not carry it yet */
-static void
-set_string_tag(struct json_object *tags, const rpmTagVal tag, const char *value)
-{
-    struct json_object *entry = NULL;
-
-    if (set_tag_value(tags, rpmTagGetName(tag), value) == 0) {
-        return;
-    }
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tag)));
-    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_TYPE)));
-    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(value));
-    json_object_array_add(tags, entry);
-
-    return;
-}
-
-/*
- * Set the payload compressor a v6 package carries.  rpm picks zstd
- * for a binary package from v6 format on, so one handed to us as gzip
- * has to change over.  One that is already zstd keeps the level it
- * came with so we write the same payload back out.  getIOFlags() in
- * build/pack.cc in the rpm source takes %_source_payload for a source
- * package, which the v6 format leaves alone, so a source package
- * keeps its compressor.
- */
-static void
-set_v6_compressor(struct json_object *tags)
-{
-    const char *compressor = NULL;
-
-    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
-        return;
-    }
-
-    compressor = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
-
-    if (compressor != NULL && !strcmp(compressor, RPMFORMAT_V6_COMPRESSOR)) {
-        return;
-    }
-
-    set_string_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, RPMFORMAT_V6_COMPRESSOR);
-    set_string_tag(tags, RPMTAG_PAYLOADFLAGS, RPMFORMAT_V6_COMPRESSOR_LEVEL);
-
-    return;
-}
-
 /*
  * Put the main header in to the shape the format calls for.  The tags
- * the other format owns come out, the ones this format needs go in
- * with placeholder values, and a v6 format binary package picks up the
- * compressor rpm would have given it.  Returns non-zero on failure.
+ * the other format owns come out and the ones this format needs go in
+ * with placeholder values.  Returns non-zero on failure.
  */
 int
 apply_rpmformat(struct json_object *header, const int format)
@@ -490,10 +440,6 @@ apply_rpmformat(struct json_object *header, const int format)
         }
 
         json_object_array_add(tags, entry);
-    }
-
-    if (format == RPM_FORMAT_V6) {
-        set_v6_compressor(tags);
     }
 
     return 0;

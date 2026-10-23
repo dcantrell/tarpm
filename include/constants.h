@@ -221,9 +221,11 @@
     RPMTAG_LONGFILESIZES
 
 /*
- * The payload compressor a v6 package carries.  The %_binary_payload
- * macro in macros.in in the rpm source expands to w19.zstdio from v6
- * on, so zstd at level 19.
+ * Default v6 format payload compression algorithm.  The
+ * %_binary_payload macro in macros.in in the rpm source expands to
+ * w19.zstdio starting with the v6 format.
+ *
+ * NOTE: A package may override this in header metadata.
  */
 #define RPMFORMAT_V6_COMPRESSOR        "zstd"
 #define RPMFORMAT_V6_COMPRESSOR_LEVEL  "19"

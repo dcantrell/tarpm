@@ -297,7 +297,7 @@ apply_header_defaults(struct json_object *header, const int format)
     /* headerCheckPayloadFormat() in lib/depends.cc takes cpio and nothing else */
     add_default_tag(tags, RPMTAG_PAYLOADFORMAT, RPM_STRING_TYPE, RPM_DEFAULT_PAYLOADFORMAT);
 
-    /* apply_rpmformat() moves a v6 format binary package to zstd */
+    /* match rpm when the metadata names no compressor */
     if (format == RPM_FORMAT_V6 && !source_package) {
         add_default_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR);
         add_default_tag(tags, RPMTAG_PAYLOADFLAGS, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR_LEVEL);
