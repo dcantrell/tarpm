@@ -782,11 +782,11 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
         readme = rpmfluff.SourceFile("README", make_random_content(128).encode("utf-8"))
         self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
 
-        # a payload directory we cannot write in makes both readers
-        # fail, which is the path that used to leave the tar behind
-        self.payload_dir = os.path.join(self.output_dir, "readonly")
-        os.makedirs(self.payload_dir)
-        os.chmod(self.payload_dir, 0o500)
+        # a payload directory nothing can be made in makes both readers
+        # fail, which is the path that used to leave the tar behind.
+        # procfs refuses new directories even for root, where a mode
+        # of 0500 does not.
+        self.payload_dir = "/proc"
 
     def runTest(self):
         self.rpm.do_make()
@@ -812,7 +812,3 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
 
         self.assertNotEqual(proc.returncode, 0, msg=out)
         self.assertFalse(os.path.exists(pkg + ".tar"), msg="temporary tar left behind")
-
-    def tearDown(self):
-        os.chmod(self.payload_dir, 0o700)
-        super().tearDown()
