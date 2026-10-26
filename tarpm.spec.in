@@ -20,9 +20,11 @@ BuildRequires:  libzstd-devel
 BuildRequires:  openssl-devel
 BuildRequires:  file-devel
 BuildRequires:  python3-rpm
+BuildRequires:  python3-pip
 BuildRequires:  rpm-build
+%if ! 0%{eln}
 BuildRequires:  python3-rpmfluff
-
+%endif
 
 %description
 tarpm is a command line utility to create or extract built RPM and SRPM files.
@@ -46,6 +48,9 @@ package is usable by rpm(8).
 
 
 %check
+%if 0%{eln}
+pip install rpmfluff
+%endif
 %meson_test
 
 
