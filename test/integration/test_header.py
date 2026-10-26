@@ -134,6 +134,10 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == build_host())
+                    elif t == "Vendor":
+                        # Copr sets %vendor, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == rpm.expandMacro("%{?vendor}"))
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) > 0)
@@ -428,6 +432,10 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == build_host())
+                    elif t == "Vendor":
+                        # Copr sets %vendor, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == rpm.expandMacro("%{?vendor}"))
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 0)
