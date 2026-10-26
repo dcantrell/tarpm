@@ -625,6 +625,26 @@ class CreateRejectsHeaderWithoutNVR(RequiresTarpm):
         self.assertFalse(os.path.isfile(pkg))
 
 
+@unittest.skipUnless(os.path.exists("/dev/full"), "/dev/full is not available")
+class CreateFailsOnWriteError(RequiresTarpm):
+    """A package that cannot be written makes tarpm exit non-zero"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+
+    def runTest(self):
+        # every write to /dev/full fails with ENOSPC
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", "/dev/full", self.tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("No space left on device", err)
+
+        # the device is not a regular file, so it is left alone
+        self.assertTrue(os.path.exists("/dev/full"))
+
+
 class CreateWithEmptiedPayload(TestUnpackRPM):
     """An extracted tree with everything taken back out drops the file list tags"""
 

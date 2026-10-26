@@ -1650,6 +1650,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
 int
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
 {
+    int rc = 0;
+    bool isreg = false;
     FILE *rpm = NULL;
     int payloadfd = -1;
     struct stat sb;
@@ -1869,23 +1871,33 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
+    /* only a regular file is removed if the write fails */
+    if (fstat(fileno(rpm), &sb) == 0 && S_ISREG(sb.st_mode)) {
+        isreg = true;
+    }
+
     /* write the lead to the RPM */
     if (fwrite(rawlead, sizeof(*rawlead), 1, rpm) != 1) {
         warn("fwrite");
+        rc = -1;
+        goto create_cleanup;
     }
 
     /* write the signature to the RPM */
     if (write_header(rpm, sig, siginfo, true, signature) == -1) {
+        rc = -1;
         goto create_cleanup;
     }
 
     /* write the header to the RPM */
     if (write_header(rpm, hdr, hdrinfo, false, header) == -1) {
+        rc = -1;
         goto create_cleanup;
     }
 
     /* write the payload to the RPM */
     if (write_payload(rpm, payloadfd) == -1) {
+        rc = -1;
         goto create_cleanup;
     }
 
@@ -1898,9 +1910,15 @@ create_cleanup:
     free(header_dir);
     free(payload_dir);
 
-    /* close the RPM */
+    /* close the RPM, the final flush can fail too */
     if (fclose(rpm) != 0) {
         warn("fclose");
+        rc = -1;
+    }
+
+    /* do not leave a truncated RPM behind */
+    if (rc != 0 && isreg && unlink(filename) == -1) {
+        warn("unlink");
     }
 
     /* back to the starting point and clean up */
@@ -1908,5 +1926,5 @@ create_cleanup:
         warn("chdir");
     }
 
-    return 0;
+    return rc;
 }
