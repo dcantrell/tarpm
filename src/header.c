@@ -270,6 +270,55 @@ entry_value_key(struct json_object *entry, const rpmTagVal tag)
 }
 
 /*
+ * Additional check to ensure when the JSON data specifies an RPM
+ * header type of "string" we are actually getting a JSON string
+ * value.
+ *
+ * Returns 0 on success, -1 if any value is not a string.
+ */
+static int
+check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bool is_signature)
+{
+    int r = 0;
+    size_t i = 0;
+    rpmTagType entry_type = RPM_NULL_TYPE;
+    rpmTagVal tag_number = 0;
+    struct json_object *entry = NULL;
+    struct json_object *key = NULL;
+
+    if (tags == NULL || tagfiles == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (is_skipped_tag(entry, is_signature) || tagfiles[i].present) {
+            continue;
+        }
+
+        entry_type = get_entry_type(entry);
+
+        if (entry_type != RPM_STRING_TYPE && entry_type != RPM_I18NSTRING_TYPE) {
+            continue;
+        }
+
+        tag_number = get_tag_number(entry, is_signature);
+
+        if (!json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key)) {
+            continue;
+        }
+
+        if (json_object_get_type(key) != json_type_string) {
+            warnx(_("*** the %s tag has a string type but its value is not a string"), rpmTagGetName(tag_number));
+            r = -1;
+        }
+    }
+
+    return r;
+}
+
+/*
  * How many bytes of padding a type needs at this point in the data
  * area.  rpm lines the numbers up on their own size.
  */
@@ -376,7 +425,13 @@ get_item_size(size_t index, struct json_object *entry, const struct tagfile *tag
              */
             item_size = tagfiles[index].len + 1;
         } else {
-            item_size = json_object_get_string_len(key) + 1;
+            value = json_object_get_string(key);
+
+            if (value == NULL) {
+                item_size = 0;
+            } else {
+                item_size = strlen(value) + 1;
+            }
         }
     }
 
@@ -1003,7 +1058,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1) {
+    if (read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);

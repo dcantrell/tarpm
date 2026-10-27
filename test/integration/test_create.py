@@ -625,6 +625,35 @@ class CreateRejectsHeaderWithoutNVR(RequiresTarpm):
         self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsNonStringValue(RequiresTarpm):
+    """A string tag holding a JSON number or boolean is turned away"""
+
+    def runTest(self):
+        cases = [
+            ("Version", "string", 1234567890123456789),
+            ("Summary", "i18n string", True),
+        ]
+
+        for i, (name, tagtype, value) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+
+            for tag in tags:
+                if tag["tag"] == name:
+                    tag["type"] = tagtype
+                    tag["value"] = value
+
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn(
+                "the %s tag has a string type but its value is not a string" % name,
+                err,
+            )
+            self.assertFalse(os.path.isfile(pkg))
+
+
 @unittest.skipUnless(os.path.exists("/dev/full"), "/dev/full is not available")
 class CreateFailsOnWriteError(RequiresTarpm):
     """A package that cannot be written makes tarpm exit non-zero"""
