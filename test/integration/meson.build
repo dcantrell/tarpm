@@ -1,7 +1,14 @@
 # Integration test suite
 if python.found()
+    # makes one fwrite() call fail, see failfwrite.c
+    failfwrite = shared_module('failfwrite',
+                               'failfwrite.c',
+                               dependencies : cc.find_library('dl', required : false),
+                               build_by_default : false)
+
     test_env = environment()
     test_env.set('TARPM', tarpm_prog.full_path())
+    test_env.set('FAILFWRITE', failfwrite.full_path())
 
     test_suites = [
         'test_options.py',
@@ -22,6 +29,7 @@ if python.found()
              python,
              args : ['-B', '-m', 'unittest', 'discover', '-v', meson.current_source_dir(), suite],
              env : test_env,
+             depends : failfwrite,
              is_parallel : false,
              timeout : 5000
             )

@@ -104,10 +104,12 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
      */
     if (has_trailer(nentries, hdrinfo->estart)) {
         n -= RPM_TRAILER_SIZE;
-        r = get_trailer_data(data, &trailer_data, &trailer_size);
 
-        if (r == 0) {
+        /* keep any write failure above */
+        if (get_trailer_data(data, &trailer_data, &trailer_size) == 0) {
             fix_trailer_offset(trailer_data, trailer_size, nentries);
+        } else {
+            r = -1;
         }
     }
 

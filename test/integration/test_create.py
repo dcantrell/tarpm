@@ -674,6 +674,36 @@ class CreateFailsOnWriteError(RequiresTarpm):
         self.assertTrue(os.path.exists("/dev/full"))
 
 
+@unittest.skipUnless(os.environ.get("FAILFWRITE"), "FAILFWRITE is not set")
+class CreateFailsOnOneHeaderWriteError(RequiresTarpm):
+    """One failed write in the signature header is not lost to the writes after it"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+
+    def runTest(self):
+        # call 1 writes the lead, 2 and 3 the signature intro and index
+        for call in ["2", "3"]:
+            pkg = os.path.join(self.output_dir, "hello-%s.rpm" % call)
+            env = dict(os.environ)
+            env["LD_PRELOAD"] = os.environ["FAILFWRITE"]
+            env["FAIL_FWRITE"] = call
+
+            proc = subprocess.Popen(
+                [self.tarpm, "-c", "-f", pkg, self.tree],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            out, err = proc.communicate()
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("fwrite", err.decode())
+            self.assertFalse(os.path.exists(pkg))
+
+
 @unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")
 class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
     """A payload file that cannot be read makes tarpm exit non-zero"""
