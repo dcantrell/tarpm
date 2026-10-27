@@ -27,6 +27,9 @@ BuildRequires:  rpm-build
 # right now (27OCT2026).
 %if 0%{?rhel} == 0 || 0%{?rhel} == 9
 BuildRequires:  python3-rpmfluff
+%else
+# pip builds rpmfluff from its sdist in %%check
+BuildRequires:  python3-setuptools
 %endif
 
 %description
@@ -54,7 +57,7 @@ package is usable by rpm(8).
 # If we lack the rpmfluff RPM, install it with pip.  This requires
 # network access in mock or Copr builds.
 %if 0%{?rhel} && 0%{?rhel} != 9
-pip install rpmfluff
+%{python3} -m pip install --user rpmfluff
 %endif
 
 %meson_test
