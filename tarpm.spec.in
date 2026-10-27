@@ -23,8 +23,9 @@ BuildRequires:  python3-rpm
 BuildRequires:  python3-pip
 BuildRequires:  rpm-build
 
-# The Fedora ELN package set lacks the RPM for the rpmfluff Python module.
-%if !0%{?eln} || 0%{?rhel} >= 10
+# Only Fedora and EPEL 9 carry the RPM for the rpmfluff Python module
+# right now (27OCT2026).
+%if 0%{?rhel} == 0 || 0%{?rhel} == 9
 BuildRequires:  python3-rpmfluff
 %endif
 
@@ -50,9 +51,9 @@ package is usable by rpm(8).
 
 
 %check
-# Fedora ELN lacks this RPM, so we install the module using pip.  This
-# is happening in mock or in Copr so whatever.
-%if 0%{?eln} || 0%{?rhel} >= 10
+# If we lack the rpmfluff RPM, install it with pip.  This requires
+# network access in mock or Copr builds.
+%if 0%{?rhel} && 0%{?rhel} != 9
 pip install rpmfluff
 %endif
 
