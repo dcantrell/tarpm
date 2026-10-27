@@ -645,6 +645,37 @@ class CreateFailsOnWriteError(RequiresTarpm):
         self.assertTrue(os.path.exists("/dev/full"))
 
 
+@unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")
+class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
+    """A payload file that cannot be read makes tarpm exit non-zero"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        bindir = os.path.join(self.tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        self.program = os.path.join(bindir, "hello")
+        f = open(self.program, "w")
+        f.write("#!/bin/sh\necho hello\n")
+        f.close()
+        os.chmod(self.program, 0o000)
+
+    def runTest(self):
+        formats = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+
+        for rpmformat in formats:
+            pkg = os.path.join(self.output_dir, "hello-%s.rpm" % rpmformat)
+            rc, out, err = run_tarpm(
+                [self.tarpm, "-c", "-F", rpmformat, "-f", pkg, self.tree]
+            )
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn("failed to add file: /usr/bin/hello", err)
+            self.assertFalse(os.path.exists(pkg))
+
+
 class CreateWithEmptiedPayload(TestUnpackRPM):
     """An extracted tree with everything taken back out drops the file list tags"""
 

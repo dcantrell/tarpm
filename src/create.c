@@ -12,6 +12,7 @@
 #include <ftw.h>
 #include <err.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <arpa/inet.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -203,13 +204,17 @@ pad_payload(void)
     return r;
 }
 
-/* Copy the contents of a file in the payload tree to the payload */
+/*
+ * Copy the contents of a file in the payload tree to the payload.  The
+ * file has to hold exactly the size the header lists for it.
+ */
 static int
-write_file_data(const char *file_path)
+write_file_data(const char *file_path, const uint64_t size)
 {
     int fd = -1;
     int r = 0;
     ssize_t len = 0;
+    uint64_t total = 0;
     char buf[BUFSIZ];
 
     if (file_path == NULL) {
@@ -226,10 +231,17 @@ write_file_data(const char *file_path)
             r = -1;
             break;
         }
+
+        total += len;
     }
 
     if (len == -1) {
         warn("read: %s", file_path);
+        r = -1;
+    } else if (r == 0 && total != size) {
+        /* the file changed size after we scanned the payload tree */
+        warnx(_("*** %s is %" PRIu64 " bytes but the header lists %" PRIu64), file_path, total, size);
+        r = -1;
     }
 
     close(fd);
@@ -269,7 +281,7 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
     } else if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         relative_path = joinpath(params->dirname, params->basename, NULL);
         file_path = joinpath(payload_dir, relative_path, NULL);
-        r = write_file_data(file_path);
+        r = write_file_data(file_path, params->size);
         free(file_path);
         free(relative_path);
     }
@@ -309,6 +321,7 @@ write_stripped_trailer(void)
 static int
 add_file_to_payload(const char *payload_dir, const struct file_params *params)
 {
+    int r = 0;
     char *relative_path = NULL;
     char *full_path = NULL;
     char *file_path = NULL;
@@ -393,7 +406,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
-        if (write_file_data(file_path) != 0) {
+        if (write_file_data(file_path, params->size) != 0) {
             archive_entry_free(entry);
             free(full_path);
             free(file_path);
@@ -404,6 +417,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     /* finalize the entry */
     if (archive_write_finish_entry(payload) != ARCHIVE_OK) {
         warnx("archive_write_finish_entry: %s", archive_error_string(payload));
+        r = -1;
     }
 
     /* clean up */
@@ -411,7 +425,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     free(full_path);
     free(file_path);
     free(relative_path);
-    return 0;
+    return r;
 }
 
 /*
@@ -507,7 +521,11 @@ compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level
                 goto cleanup;
             }
 
-            fwrite(obuf, 1, zout.pos, out);
+            if (fwrite(obuf, 1, zout.pos, out) != zout.pos) {
+                warn("fwrite");
+                rc = -1;
+                goto cleanup;
+            }
 
             if (zin.pos == zin.size) {
                 finished = true;
@@ -531,10 +549,18 @@ compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level
             goto cleanup;
         }
 
-        if (zout.pos > 0) {
-            fwrite(obuf, 1, zout.pos, out);
+        if (zout.pos > 0 && fwrite(obuf, 1, zout.pos, out) != zout.pos) {
+            warn("fwrite");
+            rc = -1;
+            goto cleanup;
         }
     } while (remaining != 0);
+
+    /* fread() returns 0 on a read error as well as at the end */
+    if (ferror(in)) {
+        warnx(_("*** unable to read the uncompressed payload"));
+        rc = -1;
+    }
 
 cleanup:
     if (cctx) {
@@ -545,8 +571,10 @@ cleanup:
         fclose(in);
     }
 
-    if (out) {
-        fclose(out);
+    /* the final flush of the compressed payload can fail too */
+    if (out && fclose(out) != 0) {
+        warn("fclose");
+        rc = -1;
     }
 
     free(ibuf);
@@ -870,6 +898,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     int dirindex = 0;
     bool need_free_tags = false;
     bool stripped = false;
+    bool failed = false;
     size_t i = 0;
     size_t j = 0;
     size_t n = 0;
@@ -1224,22 +1253,29 @@ create_payload(struct json_object *header, const char *payload_dir)
             }
         }
 
+        /* the header lists every file, so a missing one is fatal */
         if (stripped) {
             if (add_file_to_stripped_payload(payload_dir, &params) != 0) {
                 warnx("failed to add file: %s%s", params.dirname, params.basename);
+                failed = true;
+                break;
             }
         } else if (add_file_to_payload(payload_dir, &params) != 0) {
             warnx("failed to add file: %s%s", params.dirname, params.basename);
+            failed = true;
+            break;
         }
     }
 
-    if (stripped && write_stripped_trailer() != 0) {
+    if (!failed && stripped && write_stripped_trailer() != 0) {
         warnx(_("*** unable to write the payload trailer"));
+        failed = true;
     }
 
     /* close the payload so data can be flushed */
     if (archive_write_close(payload) != ARCHIVE_OK) {
         warnx("archive_write_close: %s", archive_error_string(payload));
+        failed = true;
     }
 
 #if ARCHIVE_VERSION_NUMBER < 3000000
@@ -1261,11 +1297,11 @@ create_payload(struct json_object *header, const char *payload_dir)
             warn("close");
         }
 
+        /* we cannot know how the child did without its status */
         if (waitpid(zstd.pid, &zstd.status, 0) == -1) {
             warn("waitpid");
-        }
-
-        if (!WIFEXITED(zstd.status) || WEXITSTATUS(zstd.status) != 0) {
+            failed = true;
+        } else if (!WIFEXITED(zstd.status) || WEXITSTATUS(zstd.status) != 0) {
             errx(EXIT_FAILURE, "zstd compression child failed");
         }
     }
@@ -1273,6 +1309,12 @@ create_payload(struct json_object *header, const char *payload_dir)
     /* cleanup temporary tags array if we created one */
     if (need_free_tags) {
         json_object_put(tags);
+    }
+
+    /* a payload missing anything does not match the header */
+    if (failed) {
+        close(payloadfd);
+        return -1;
     }
 
     /* back to the beginning */
