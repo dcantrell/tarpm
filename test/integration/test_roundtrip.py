@@ -160,7 +160,7 @@ def payload_start(pkg):
     offset = 96
 
     for pad in [True, False]:
-        nindex, hsize = struct.unpack(">II", data[offset + 8 : offset + 16])
+        nindex, hsize = struct.unpack(">II", data[offset + 8:offset + 16])
         offset += 16 + (16 * nindex) + hsize
 
         if pad:
