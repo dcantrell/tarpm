@@ -654,6 +654,46 @@ class CreateRejectsNonStringValue(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRoundTripsEmptyFileTag(RequiresTarpm):
+    """A file-backed tag holding "" extracts to an empty file and creates again"""
+
+    def setUp(self):
+        super().setUp()
+
+        tags = MINIMAL_TAGS + [
+            {"tag": "Description", "type": "i18n string", "value": ""},
+            {"tag": "Postin", "type": "string", "value": ""},
+        ]
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+
+    def runTest(self):
+        first = os.path.join(self.output_dir, "first.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", first, self.tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        extracted = os.path.join(self.output_dir, "extracted")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", first, "-O", extracted])
+        self.assertEqual(rc, 0, msg=err)
+
+        for name in ["description.txt", "postin.txt"]:
+            path = os.path.join(extracted, name)
+            self.assertTrue(os.path.isfile(path), msg=name)
+            self.assertEqual(os.path.getsize(path), 0, msg=name)
+
+        f = open(os.path.join(extracted, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        for tag in header["tags"]:
+            if tag["tag"] in ["Description", "Postin"]:
+                self.assertIn("file", tag, msg=tag["tag"])
+
+        second = os.path.join(self.output_dir, "second.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", second, extracted])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query_rpm(second, "%{description}|%{postin}"), "|")
+
+
 @unittest.skipUnless(os.path.exists("/dev/full"), "/dev/full is not available")
 class CreateFailsOnWriteError(RequiresTarpm):
     """A package that cannot be written makes tarpm exit non-zero"""

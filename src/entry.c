@@ -119,7 +119,8 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
 
     len = strlen((char *) data);
 
-    if (fwrite(data, len, 1, fp) == 0) {
+    /* len may be 0 which indicates an empty file */
+    if (len > 0 && fwrite(data, len, 1, fp) != 1) {
         warn("fwrite");
         fclose(fp);
         free(path);
