@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import stat
+import struct
 import subprocess
 import unittest
 import tempfile
@@ -812,3 +813,83 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
 
         self.assertNotEqual(proc.returncode, 0, msg=out)
         self.assertFalse(os.path.exists(pkg + ".tar"), msg="temporary tar left behind")
+
+
+class VerifyMalformedHeaderIsRejected(TestUnpackRPM):
+    """A header whose sizes or offsets point outside its data is turned away"""
+
+    def corrupt(self, name, change):
+        """Write a copy of the package with change applied and return its path"""
+        pkg = os.path.join(self.output_dir, name + ".rpm")
+        data = bytearray(self.original)
+        change(data)
+
+        f = open(pkg, "wb")
+        f.write(data)
+        f.close()
+
+        return pkg
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        self.original = f.read()
+        f.close()
+
+        # the lead is 96 bytes, then the signature header padded to 8
+        sig = 96
+        nentries, nbytes = struct.unpack_from(">II", self.original, sig + 8)
+        hlen = 16 * nentries + nbytes
+        hdr = sig + 16 + hlen + (8 - (hlen % 8)) % 8
+        nentries, nbytes = struct.unpack_from(">II", self.original, hdr + 8)
+        index = hdr + 16
+        datastart = index + 16 * nentries
+
+        # the first index entry of type 6, which is RPM_STRING_TYPE
+        string_entry = None
+
+        for i in range(nentries):
+            if struct.unpack_from(">I", self.original, index + 16 * i + 4)[0] == 6:
+                string_entry = index + 16 * i
+                break
+
+        self.assertIsNotNone(string_entry)
+
+        def too_many_entries(data):
+            struct.pack_into(">I", data, hdr + 8, 0x10000001)
+
+        def negative_offset(data):
+            struct.pack_into(">i", data, index + 8, -16)
+
+        def unterminated_string(data):
+            struct.pack_into(">I", data, string_entry + 8, nbytes - 1)
+            data[datastart + nbytes - 1] = ord("x")
+
+        def truncated_signature(data):
+            del data[sig + 24 :]  # noqa: E203
+
+        cases = [
+            ("toomany", too_many_entries),
+            ("negative", negative_offset),
+            ("unterminated", unterminated_string),
+            ("truncated", truncated_signature),
+        ]
+
+        for name, change in cases:
+            pkg = self.corrupt(name, change)
+            args = [
+                self.tarpm,
+                "-x",
+                "-f",
+                pkg,
+                "-O",
+                os.path.join(self.output_dir, name),
+            ]
+            proc = subprocess.Popen(
+                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            out, err = proc.communicate()
+
+            # a negative return code is a signal, which means a crash
+            self.assertGreater(proc.returncode, 0, msg="%s: %s" % (name, err.decode()))

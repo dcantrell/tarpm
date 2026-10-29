@@ -826,6 +826,13 @@ read_header(const int fd, const char *dest_dir)
     hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);
     hdrinfo->datastart = (uint8_t *) (hdrinfo->estart + rawhdr->nentries);
 
+    if (!valid_header_entries(rawhdr, hdrinfo->estart, hdrinfo->datastart)) {
+        free(buffer);
+        free(hdrinfo);
+        free(rawhdr);
+        return NULL;
+    }
+
     /* handle trailer */
     /* the trailer is not guaranteed to be aligned, copy required */
     trailer = read_header_trailer(rawhdr, hdrinfo->estart, hdrinfo->datastart);
