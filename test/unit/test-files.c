@@ -1293,6 +1293,195 @@ test_add_file_list_tags_total_size(void)
     return;
 }
 
+/*
+ * Test add_file_list_tags() keeps hard links in the payload tree apart
+ * from the "inode" numbers header.json carries.  The entry for one
+ * carries the real inode number of hard1, which must not make it a
+ * hard link of hard1 and hard2.
+ */
+void
+test_add_file_list_tags_payload_hardlinks(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    char *hard1 = NULL;
+    char *hard2 = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+    struct stat sb;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/one", 10);
+    write_payload(payload_dir, "/usr/bin/hard1", 100);
+
+    hard1 = joinpath(payload_dir, "/usr/bin/hard1", NULL);
+    hard2 = joinpath(payload_dir, "/usr/bin/hard2", NULL);
+    TARPM_ASSERT_TRUE(link(hard1, hard2) == 0);
+    TARPM_ASSERT_TRUE(stat(hard1, &sb) == 0);
+
+    files = json_object_new_array();
+
+    file = add_file(files, "/usr/bin/one");
+    json_object_object_add(file, "inode", json_object_new_int((int) sb.st_ino));
+
+    add_file(files, "/usr/bin/hard1");
+    add_file(files, "/usr/bin/hard2");
+
+    tags = json_object_new_array();
+    add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
+
+    /* hard1 and hard2 share a number and one keeps its own */
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEINODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), 2);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), 2);
+
+    /* one and the hard link group each count once */
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "110"));
+
+    /* the payload inode numbers are not written back to the entries */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(json_object_array_get_idx(files, 1), "inode", NULL));
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(json_object_array_get_idx(files, 2), "inode", NULL));
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(payload_dir, "/usr/bin/one");
+    remove_payload(payload_dir, "/usr/bin/hard1");
+    remove_payload(payload_dir, "/usr/bin/hard2");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+    free(hard1);
+    free(hard2);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Helper for test_add_file_list_tags_keyed_hardlinks() below that makes
+ * a hard link in a payload tree.
+ */
+static void
+hardlink_payload(const char *payload_dir, const char *path, const char *target)
+{
+    char *file_path = NULL;
+    char *target_path = NULL;
+
+    file_path = joinpath(payload_dir, path, NULL);
+    target_path = joinpath(payload_dir, target, NULL);
+    TARPM_ASSERT_TRUE(link(target_path, file_path) == 0);
+    free(file_path);
+    free(target_path);
+
+    return;
+}
+
+/*
+ * Test add_file_list_tags() puts a file added as a hard link of an
+ * entry with an "inode" key in that entry's group, whichever of the
+ * two comes first.  Entries with different "inode" keys stay apart
+ * even when they are linked in the payload tree.
+ */
+void
+test_add_file_list_tags_keyed_hardlinks(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    mkdir_payload(payload_dir, "/usr/bin");
+    write_payload(payload_dir, "/usr/bin/a", 10);
+    hardlink_payload(payload_dir, "/usr/bin/b", "/usr/bin/a");
+    write_payload(payload_dir, "/usr/bin/c", 100);
+    hardlink_payload(payload_dir, "/usr/bin/d", "/usr/bin/c");
+    write_payload(payload_dir, "/usr/bin/e", 1000);
+    hardlink_payload(payload_dir, "/usr/bin/f", "/usr/bin/e");
+
+    files = json_object_new_array();
+
+    /* the entry with the key comes before the added link */
+    file = add_file(files, "/usr/bin/a");
+    json_object_object_add(file, "inode", json_object_new_int(7));
+    add_file(files, "/usr/bin/b");
+
+    /* the added link comes before the entry with the key */
+    add_file(files, "/usr/bin/c");
+    file = add_file(files, "/usr/bin/d");
+    json_object_object_add(file, "inode", json_object_new_int(9));
+
+    /* header.json says these two are not hard links */
+    file = add_file(files, "/usr/bin/e");
+    json_object_object_add(file, "inode", json_object_new_int(11));
+    file = add_file(files, "/usr/bin/f");
+    json_object_object_add(file, "inode", json_object_new_int(12));
+
+    tags = json_object_new_array();
+    add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEINODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 3)), 3);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 4)), 5);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 5)), 6);
+
+    /* each of the first two groups counts once, e and f count apart */
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "2110"));
+
+    /* a second pass over the same entries gives the same numbers */
+    json_object_put(tags);
+    tags = json_object_new_array();
+
+    add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
+
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEINODES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 1)), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 3)), 3);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    remove_payload(payload_dir, "/usr/bin/a");
+    remove_payload(payload_dir, "/usr/bin/b");
+    remove_payload(payload_dir, "/usr/bin/c");
+    remove_payload(payload_dir, "/usr/bin/d");
+    remove_payload(payload_dir, "/usr/bin/e");
+    remove_payload(payload_dir, "/usr/bin/f");
+    remove_payload(payload_dir, "/usr/bin");
+    remove_payload(payload_dir, "/usr");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
 /* Return the entry with the given path from a files array */
 static struct json_object *
 find_file(struct json_object *files, const char *path)
@@ -2678,6 +2867,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with payload file sizes", test_add_file_list_tags_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with sizes and no payload", test_add_file_list_tags_sizes_no_payload) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with the installed size", test_add_file_list_tags_total_size) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with hard links in the payload", test_add_file_list_tags_payload_hardlinks) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with hard links of entries with an inode", test_add_file_list_tags_keyed_hardlinks) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with each file type", test_add_file_list_tags_types) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with types from the payload", test_add_file_list_tags_type_from_payload) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with a type mismatch", test_add_file_list_tags_type_mismatch) == NULL ||

@@ -149,6 +149,12 @@ struct file_list_tags {
     int *inodes;
     int *mapped;
     size_t ninodes;
+
+    /* hard link groups in the payload tree of entries with no "inode" */
+    dev_t *devs;
+    ino_t *inos;
+    int *devmapped;
+    size_t ndevinos;
 };
 
 /*
@@ -1545,15 +1551,6 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
         }
     }
 
-    /*
-     * Hard links of one another share an inode number, which is all
-     * the "inode" key is read for.  A file with one link does not
-     * need it.
-     */
-    if (sb->st_nlink > 1) {
-        json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
-    }
-
     /* what kind of thing the file is, the way rpmbuild works it out */
     set_file_class(file, path, file_path, sb);
     set_file_mime(file, path, file_path, sb);
@@ -1906,16 +1903,6 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
         }
     }
 
-    /*
-     * Hard links of one another share an inode number, which is all
-     * the "inode" key is read for.  A file with one link does not
-     * need it.
-     */
-    if (sb->st_nlink > 1 && !json_object_object_get_ex(file, RPM_FILE_INODE_DESC, NULL)) {
-        report_missing(path, RPM_FILE_INODE_DESC, true);
-        json_object_object_add(file, RPM_FILE_INODE_DESC, json_object_new_int((int) sb->st_ino));
-    }
-
     return;
 }
 
@@ -2030,6 +2017,9 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
     out->mimes = xcalloc(count, sizeof(char *));
     out->inodes = xcalloc(count, sizeof(int));
     out->mapped = xcalloc(count, sizeof(int));
+    out->devs = xcalloc(count, sizeof(dev_t));
+    out->inos = xcalloc(count, sizeof(ino_t));
+    out->devmapped = xcalloc(count, sizeof(int));
 
     out->dirnames = json_object_new_array();
     out->basenames = json_object_new_array();
@@ -2089,6 +2079,9 @@ finish_file_list_arrays(struct file_list_tags *out)
     free(out->mimes);
     free(out->inodes);
     free(out->mapped);
+    free(out->devs);
+    free(out->inos);
+    free(out->devmapped);
 
     return;
 }
@@ -2394,23 +2387,91 @@ file_langs_value(struct json_object *file)
 }
 
 /*
- * Work out the inode number to store for a file.  rpm numbers these
- * itself: an entry gets its place in the file list counting from one,
- * and hard links of one another all get the number the first one got.
- * We number them here instead of keeping what header.json had, so the
- * numbers stay right when entries drop out.  That leaves the "inode"
- * key as only a way to tell which entries were hard links.  Sets
- * shared when the entry joins a group we already saw.
+ * Return where the file is in the payload hard link table, -1
+ * otherwise.
  */
-static int
-file_inode_value(struct file_list_tags *out, struct json_object *file, const int next, bool *shared)
+static ssize_t
+find_payload_link(const struct file_list_tags *out, const struct stat *sb)
 {
     size_t i = 0;
+
+    if (sb == NULL || !S_ISREG(sb->st_mode) || sb->st_nlink < 2) {
+        return -1;
+    }
+
+    for (i = 0; i < out->ndevinos; i++) {
+        if (out->devs[i] == sb->st_dev && out->inos[i] == sb->st_ino) {
+            return (ssize_t) i;
+        }
+    }
+
+    return -1;
+}
+
+/*
+ * Add a hard link to the payload hard link table with the inode
+ * number of its group.
+ */
+static void
+add_payload_link(struct file_list_tags *out, const struct stat *sb, const int number)
+{
+    if (sb == NULL || !S_ISREG(sb->st_mode) || sb->st_nlink < 2) {
+        return;
+    }
+
+    if (find_payload_link(out, sb) != -1) {
+        return;
+    }
+
+    out->devs[out->ndevinos] = sb->st_dev;
+    out->inos[out->ndevinos] = sb->st_ino;
+    out->devmapped[out->ndevinos] = number;
+    out->ndevinos++;
+
+    return;
+}
+
+/*
+ * Return true if the inode number belongs to a group from header.json.
+ */
+static bool
+inode_key_number(const struct file_list_tags *out, const int number)
+{
+    size_t i = 0;
+
+    for (i = 0; i < out->ninodes; i++) {
+        if (out->mapped[i] == number) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * Return the inode number rpm should store for a file.  Each file gets
+ * its position in the file list, counting from one.  Hard links share
+ * the number of the first file in their group.  Sets shared when the
+ * file is a hard link of one we already saw.
+ */
+static int
+file_inode_value(struct file_list_tags *out, struct json_object *file, const struct stat *sb, const int next, bool *shared)
+{
+    size_t i = 0;
+    ssize_t slot = 0;
     int inode = 0;
+    int number = next;
 
     *shared = false;
+    slot = find_payload_link(out, sb);
 
     if (key_object(file, RPM_FILE_INODE_DESC) == NULL) {
+        if (slot != -1) {
+            *shared = true;
+            return out->devmapped[slot];
+        }
+
+        add_payload_link(out, sb, next);
         return next;
     }
 
@@ -2419,16 +2480,25 @@ file_inode_value(struct file_list_tags *out, struct json_object *file, const int
     for (i = 0; i < out->ninodes; i++) {
         if (out->inodes[i] == inode) {
             *shared = true;
+            add_payload_link(out, sb, out->mapped[i]);
             return out->mapped[i];
         }
     }
 
+    /* join a group only files with no "inode" key have started */
+    if (slot != -1 && !inode_key_number(out, out->devmapped[slot])) {
+        *shared = true;
+        number = out->devmapped[slot];
+    }
+
     /* the first entry of a hard link group names the group */
     out->inodes[out->ninodes] = inode;
-    out->mapped[out->ninodes] = next;
+    out->mapped[out->ninodes] = number;
     out->ninodes++;
 
-    return next;
+    add_payload_link(out, sb, number);
+
+    return number;
 }
 
 /*
@@ -2590,7 +2660,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     /* everything that is not a symlink carries an empty target */
     json_object_array_add(out->filelinktos, json_object_new_string(key_string(file, RPM_FILE_LINKTO_DESC, "")));
 
-    json_object_array_add(out->fileinodes, json_object_new_int(file_inode_value(out, file, (int) (build->nkept + 1), &shared)));
+    json_object_array_add(out->fileinodes, json_object_new_int(file_inode_value(out, file, psb, (int) (build->nkept + 1), &shared)));
 
     /*
      * Add up the installed size.  Hard links of one another share the

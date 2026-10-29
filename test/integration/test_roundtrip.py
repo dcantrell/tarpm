@@ -874,6 +874,129 @@ class TestCreateRenumbersHardLinkInodes(RoundTrip, TestUnpackRPM):
         self.assertVerifies(recreated)
 
 
+class TestCreateGroupsHardLinksAddedToPayload(RoundTrip, TestUnpackRPM):
+    """Hard links added to the payload tree become one group of their own"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/other.txt" % NAME,
+            rpmfluff.SourceFile("other.txt", b"something else\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        extract_dir = self.extract(original)
+        links = ["/usr/share/%s/%s" % (NAME, name) for name in ["new.txt", "new2.txt"]]
+        content = b"added after unpacking\n"
+
+        f = open(self.payload_path(extract_dir, links[0]), "wb")
+        f.write(content)
+        f.close()
+        os.link(
+            self.payload_path(extract_dir, links[0]),
+            self.payload_path(extract_dir, links[1]),
+        )
+
+        recreated = self.create(extract_dir)
+        inodes = dict(inode_list(recreated))
+        other = "/usr/share/%s/other.txt" % NAME
+
+        # the new links share a number that no header.json entry has
+        self.assertEqual(inodes[links[0]], inodes[links[1]])
+        self.assertNotEqual(inodes[links[0]], inodes[other])
+
+        # the group counts once in the installed size
+        self.assertEqual(
+            installed_size(recreated), installed_size(original) + len(content)
+        )
+
+        self.assertVerifies(recreated)
+
+        # both links come back holding the data
+        again = self.extract(recreated, subdir="again")
+
+        for path in links:
+            f = open(self.payload_path(again, path), "rb")
+            self.assertEqual(f.read(), content)
+            f.close()
+
+
+class TestCreateGroupsHardLinksOfPackagedFiles(RoundTrip, TestUnpackRPM):
+    """A file added as a hard link of a packaged file joins its group"""
+
+    def setUp(self):
+        super().setUp()
+
+        for name in ["one.txt", "two.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"the same content\n"),
+            )
+
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/two.txt\n" % (NAME, NAME)
+        )
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/other.txt" % NAME,
+            rpmfluff.SourceFile("other.txt", b"something else\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        extract_dir = self.extract(original)
+        added = {
+            "/usr/share/%s/three.txt" % NAME: "/usr/share/%s/one.txt" % NAME,
+            "/usr/share/%s/other2.txt" % NAME: "/usr/share/%s/other.txt" % NAME,
+        }
+
+        for path, target in added.items():
+            os.link(
+                self.payload_path(extract_dir, target),
+                self.payload_path(extract_dir, path),
+            )
+
+        recreated = self.create(extract_dir)
+        inodes = dict(inode_list(recreated))
+
+        # each added link shares the number of the file it links to
+        for path, target in added.items():
+            self.assertEqual(inodes[path], inodes[target])
+
+        self.assertEqual(
+            inodes["/usr/share/%s/two.txt" % NAME],
+            inodes["/usr/share/%s/one.txt" % NAME],
+        )
+        self.assertNotEqual(
+            inodes["/usr/share/%s/one.txt" % NAME],
+            inodes["/usr/share/%s/other.txt" % NAME],
+        )
+
+        # no new data, so the installed size stays the same
+        self.assertEqual(installed_size(recreated), installed_size(original))
+
+        self.assertVerifies(recreated)
+
+        # every link comes back holding the data of its group
+        again = self.extract(recreated, subdir="again")
+
+        for path, target in added.items():
+            f = open(self.payload_path(extract_dir, target), "rb")
+            content = f.read()
+            f.close()
+
+            f = open(self.payload_path(again, path), "rb")
+            self.assertEqual(f.read(), content)
+            f.close()
+
+
 class TestRoundTripTagsWrittenByName(RoundTrip, TestUnpackRPM):
     """Tags header.json records by name are read back as themselves"""
 
