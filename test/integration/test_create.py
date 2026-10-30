@@ -654,6 +654,49 @@ class CreateRejectsNonStringValue(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateKeepsChangelogBlankLines(RequiresTarpm):
+    """Blank lines at either end of a changelog entry survive a round trip"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.lines = ["", "- first", "", "", "- second", ""]
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+
+        path = os.path.join(self.tree, "header.json")
+        f = open(path)
+        header = json.load(f)
+        f.close()
+
+        header["changelog"] = [
+            {
+                "timestamp": "Tue Mar 15 2022",
+                "name": "Some One <nobody@example.com> - 1.0-1",
+                "text": self.lines,
+            }
+        ]
+
+        f = open(path, "w")
+        json.dump(header, f)
+        f.close()
+
+    def runTest(self):
+        first = os.path.join(self.output_dir, "first.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", first, self.tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query_rpm(first, "%{changelogtext}"), "\n".join(self.lines))
+
+        extracted = os.path.join(self.output_dir, "extracted")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", first, "-O", extracted])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(extracted, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        self.assertEqual(header["changelog"][0]["text"], self.lines)
+
+
 class CreateRoundTripsEmptyFileTag(RequiresTarpm):
     """A file-backed tag holding "" extracts to an empty file and creates again"""
 

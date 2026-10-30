@@ -186,7 +186,8 @@ changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
 }
 
 /*
- * Split text on newlines into a JSON array.
+ * Split text on newlines into a JSON array.  Blank lines are kept so
+ * join_changelog_text() gives back the same text.
  * Returns allocated json_object array. Caller must free.
  */
 static struct json_object *
@@ -197,7 +198,7 @@ split_changelog_text(const char *text)
     char *line = NULL;
     char *sp = NULL;
 
-    if (text == NULL) {
+    if (text == NULL || *text == '\0') {
         return json_object_new_array();
     }
 
@@ -208,11 +209,10 @@ split_changelog_text(const char *text)
         return lines;
     }
 
-    line = strtok_r(copy, "\n", &sp);
+    sp = copy;
 
-    while (line != NULL) {
+    while ((line = strsep(&sp, "\n")) != NULL) {
         json_object_array_add(lines, json_object_new_string(line));
-        line = strtok_r(NULL, "\n", &sp);
     }
 
     free(copy);
@@ -509,10 +509,11 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
             json_object_array_add(times, json_object_new_int(timestamp));
             json_object_array_add(names, json_object_new_string(name));
             json_object_array_add(texts, json_object_new_string(changelog_text));
-            free(changelog_text);
         } else {
             warnx(_("*** invalid changelog entry at index %lu"), i);
         }
+
+        free(changelog_text);
     }
 
     /* Create the CHANGELOGTIME tag entry */

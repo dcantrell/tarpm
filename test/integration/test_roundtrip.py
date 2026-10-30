@@ -160,7 +160,7 @@ def payload_start(pkg):
     offset = 96
 
     for pad in [True, False]:
-        nindex, hsize = struct.unpack(">II", data[offset + 8:offset + 16])
+        nindex, hsize = struct.unpack(">II", data[offset + 8 : offset + 16])
         offset += 16 + (16 * nindex) + hsize
 
         if pad:
@@ -1185,6 +1185,33 @@ class TestRoundTripChangelogTimestamps(Changelog, TestUnpackRPM):
         recreated = self.create(extract_dir)
 
         self.assertEqual(self.times(recreated), self.times(original))
+        self.assertIdentical(original, recreated)
+
+
+class TestRoundTripChangelogBlankLines(Changelog, TestUnpackRPM):
+    """Blank lines in a changelog entry come back where they were"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.section_changelog = (
+            "* Tue Mar 15 2022 Some One <nobody@example.com> - %s-%s\n"
+            "- first\n\n\n- second\n  more\n\n- third\n" % (VER, REL)
+        )
+
+    def runTest(self):
+        original = self.build()
+        lines = ["- first", "", "", "- second", "  more", "", "- third"]
+
+        # rpmbuild keeps the blank lines inside the entry
+        self.assertEqual(query_rpm(original, "%{CHANGELOGTEXT}"), lines)
+
+        extract_dir = self.extract(original)
+        self.assertEqual(read_header(extract_dir)["changelog"][0]["text"], lines)
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(query_rpm(recreated, "%{CHANGELOGTEXT}"), lines)
         self.assertIdentical(original, recreated)
 
 
