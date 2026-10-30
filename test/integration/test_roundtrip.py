@@ -1188,6 +1188,54 @@ class TestRoundTripChangelogTimestamps(Changelog, TestUnpackRPM):
         self.assertIdentical(original, recreated)
 
 
+class TestRoundTripChangelogTimeOfDay(Changelog, TestUnpackRPM):
+    """A changelog entry with a time of day keeps it through a round trip"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.section_changelog = (
+            "* Thu Oct 06 06:48:39 UTC 2016 Some One <nobody@example.com> - %s-%s\n"
+            "- with a time\n\n"
+            "* Mon Jan 04 2016 Some One <nobody@example.com> - %s-%s\n"
+            "- without one\n" % (VER, REL, VER, REL)
+        )
+
+    def runTest(self):
+        original = self.build()
+        self.assertEqual(
+            self.times(original),
+            [utc_seconds(2016, 10, 6, 6, 48, 39), utc_seconds(2016, 1, 4)],
+        )
+
+        # the time zone tarpm runs in moves neither half of the round trip
+        for tz in ["UTC", "America/New_York", "Pacific/Kiritimati"]:
+            env = dict(os.environ, TZ=tz)
+            subdir = tz.replace("/", "-")
+
+            extract_dir = self.extract(
+                original, subdir="extracted-%s" % subdir, env=env
+            )
+
+            # noon UTC keeps the short form and anything else gets the time
+            self.assertEqual(
+                self.stamps(extract_dir),
+                ["Thu Oct 06 06:48:39 UTC 2016", "Mon Jan 04 2016"],
+                "TZ=%s changed what tarpm extracted" % tz,
+            )
+
+            recreated = self.create(
+                extract_dir, name="recreated-%s.rpm" % subdir, env=env
+            )
+
+            self.assertEqual(
+                self.times(recreated),
+                self.times(original),
+                "TZ=%s changed what tarpm created" % tz,
+            )
+            self.assertIdentical(original, recreated)
+
+
 class TestRoundTripChangelogBlankLines(Changelog, TestUnpackRPM):
     """Blank lines in a changelog entry come back where they were"""
 

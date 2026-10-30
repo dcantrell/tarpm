@@ -41,7 +41,14 @@ timestamp_to_changelog_date(uint32_t timestamp)
     }
 
     result = xalloc(64);
-    strftime_l(result, 64, "%a %b %d %Y", tm_info, cee);
+
+    /* the short form reads back as noon UTC, so anything else needs the time */
+    if (tm_info->tm_hour == 12 && tm_info->tm_min == 0 && tm_info->tm_sec == 0) {
+        strftime_l(result, 64, "%a %b %d %Y", tm_info, cee);
+    } else {
+        strftime_l(result, 64, "%a %b %d %H:%M:%S UTC %Y", tm_info, cee);
+    }
+
     freelocale(cee);
 
     return result;
