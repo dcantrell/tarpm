@@ -3,9 +3,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import gzip
 import json
 import os
+import resource
 import shutil
+import signal
 import stat
 import struct
 import subprocess
@@ -14,6 +17,7 @@ import tempfile
 import rpmfluff
 from baseclass import NAME, VER, REL
 from baseclass import HAVE_RPM_FORMAT_SIX
+from baseclass import RequiresTarpm
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 
 try:
@@ -893,3 +897,135 @@ class VerifyMalformedHeaderIsRejected(TestUnpackRPM):
 
             # a negative return code is a signal, which means a crash
             self.assertGreater(proc.returncode, 0, msg="%s: %s" % (name, err.decode()))
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class LibrpmPayload(RequiresTarpm):
+    """
+    Class for tests of the librpm payload reader.  tarpm falls back to
+    it when libarchive cannot read a payload, which is always the case
+    for the stripped cpio archive in a v6 format package.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        # gzip so we can take the payload apart without other tools
+        tags = [
+            {"tag": "Name", "type": "string", "value": "hello"},
+            {"tag": "Version", "type": "string", "value": "1.0"},
+            {"tag": "Release", "type": "string", "value": "1"},
+            {"tag": "Summary", "type": "i18n string", "value": "A greeting"},
+            {"tag": "License", "type": "string", "value": "MIT"},
+            {"tag": "Payloadcompressor", "type": "string", "value": "gzip"},
+        ]
+
+        self.tree = os.path.join(self.output_dir, "tree")
+        sharedir = os.path.join(self.tree, "payload", "usr", "share", "hello")
+        os.makedirs(sharedir)
+
+        f = open(os.path.join(self.tree, "header.json"), "w")
+        json.dump({"tags": tags}, f)
+        f.close()
+
+        for i in range(4):
+            f = open(os.path.join(sharedir, "file%d" % i), "w")
+            f.write(make_random_content(1024 * (i + 1)))
+            f.close()
+
+        f = open(os.path.join(sharedir, "big"), "w")
+        f.write(make_random_content(256 * 1024))
+        f.close()
+
+    def build(self):
+        """Create the v6 format package and return its path"""
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        args = [self.tarpm, "-c", "-F", "6", "-f", pkg, self.tree]
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode())
+
+        return pkg
+
+    def assertNoTarLeft(self):
+        """Assert the tar file the librpm reader writes was removed"""
+        for dirpath, dirnames, filenames in os.walk(self.output_dir):
+            self.assertEqual([f for f in filenames if f.endswith(".tar")], [])
+
+    def extract(self, pkg, name, preexec_fn=None):
+        """Extract a package and return (returncode, stderr)"""
+        args = [self.tarpm, "-x", "-f", pkg, "-O", os.path.join(self.output_dir, name)]
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=preexec_fn,
+        )
+        out, err = proc.communicate()
+
+        return (proc.returncode, err.decode())
+
+
+class VerifyCorruptPayloadFails(LibrpmPayload):
+    """A payload only librpm can read fails when one of its entries is bad"""
+
+    def runTest(self):
+        pkg = self.build()
+
+        # the package is fine before we break it
+        rc, err = self.extract(pkg, "good")
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(pkg, "rb")
+        data = f.read()
+        f.close()
+
+        # the lead, the signature header padded to 8, then the main header
+        offset = 96
+
+        for pad in [True, False]:
+            nindex, hsize = struct.unpack_from(">II", data, offset + 8)
+            offset += 16 + (16 * nindex) + hsize
+
+            if pad:
+                offset += (8 - (offset % 8)) % 8
+
+        # a v6 format payload is a stripped cpio archive with this magic
+        cpio = bytearray(gzip.decompress(data[offset:]))
+        first = cpio.find(b"07070X")
+        second = cpio.find(b"07070X", first + 1)
+        self.assertNotEqual(second, -1)
+        cpio[second : second + 6] = b"BADMAG"  # noqa: E203
+
+        bad = os.path.join(self.output_dir, "bad.rpm")
+        f = open(bad, "wb")
+        f.write(data[:offset] + gzip.compress(bytes(cpio)))
+        f.close()
+
+        rc, err = self.extract(bad, "bad")
+        self.assertGreater(rc, 0, msg=err)
+        self.assertIn("error reading RPM payload", err)
+
+        self.assertNoTarLeft()
+
+
+def limit_file_size():
+    """Cap the size of files tarpm writes so a write fails partway"""
+    signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (64 * 1024, 64 * 1024))
+
+
+class VerifyPayloadWriteErrorFails(LibrpmPayload):
+    """A failed write of the tar file the librpm reader makes is an error"""
+
+    def runTest(self):
+        pkg = self.build()
+
+        # the 256 KiB file goes past the limit in the tar file
+        rc, err = self.extract(pkg, "limited", preexec_fn=limit_file_size)
+        self.assertGreater(rc, 0, msg=err)
+        self.assertIn("archive_write_data", err)
+
+        self.assertNoTarLeft()

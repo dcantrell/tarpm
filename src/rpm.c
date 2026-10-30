@@ -46,6 +46,7 @@ convert_payload(const char *rpm)
     char *filename = NULL;
     char *hardlink = NULL;
     char *ctype = NULL;
+    char *errstr = NULL;
     rpm_loff_t left;
     size_t len = 0;
     size_t rd = 0;
@@ -179,6 +180,15 @@ convert_payload(const char *rpm)
             break;
         }
 
+        /* a bad or truncated payload is an error, not the end */
+        if (rc < 0) {
+            errstr = rpmfileStrerror(rc);
+            warnx(_("*** error reading RPM payload: %s"), errstr);
+            free(errstr);
+            failed = true;
+            goto cleanup;
+        }
+
         mode = rpmfiFMode(fi);
         nlink = rpmfiFNlink(fi);
 
@@ -232,7 +242,11 @@ convert_payload(const char *rpm)
                 rd = rpmfiArchiveRead(fi, buf, len);
 
                 if (rd == len) {
-                    archive_write_data(archive, buf, len);
+                    if (archive_write_data(archive, buf, len) != (ssize_t) len) {
+                        warnx(_("archive_write_data: %s"), archive_error_string(archive));
+                        failed = true;
+                        goto cleanup;
+                    }
                 } else {
                     warnx(_("*** error reading file from RPM payload"));
                     failed = true;
@@ -259,7 +273,12 @@ cleanup:
     }
 
     if (archive) {
-        archive_write_close(archive);
+        /* the tar file is not done until the close flushes it */
+        if (archive_write_close(archive) != ARCHIVE_OK && payload != NULL && !failed) {
+            warnx(_("archive_write_close: %s"), archive_error_string(archive));
+            failed = true;
+        }
+
         archive_write_free(archive);
     }
 

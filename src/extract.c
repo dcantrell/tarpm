@@ -260,6 +260,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     char *payload_dir = NULL;
     struct json_paths nopaths;
     Header h;
+    int r = -1;
 
     if (cwd == NULL) {
         warnx(_("missing cwd in %s call"), __func__);
@@ -290,7 +291,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
 
     if (dest_dir == NULL) {
         warnx(_("*** unable to set dest_dir"));
-        return -1;
+        goto cleanup;
     }
 
     /*
@@ -305,12 +306,12 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
 
     if (header_dir == NULL) {
         warnx(_("*** unable to set header_dir"));
-        return -1;
+        goto cleanup;
     }
 
     /* read the RPM headers and write them out as JSON */
     if (extract_metadata(filename, dest_dir, header_dir, paths) != 0) {
-        return -1;
+        goto cleanup;
     }
 
     /*
@@ -322,19 +323,21 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         payload_dir = make_payload_dir(dest_dir, paths->payload, OUTPUT_DIR_MODE);
 
         if (payload_dir == NULL) {
-            return -1;
+            goto cleanup;
         }
 
         if (extract_payload(filename, cwd, dest_dir, payload_dir, verbose) != 0) {
-            return -1;
+            goto cleanup;
         }
     }
 
-    /* clean up */
+    r = 0;
+
+cleanup:
     free(payload_dir);
     free(dest_dir);
     free(header_dir);
     headerFree(h);
 
-    return 0;
+    return r;
 }
