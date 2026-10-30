@@ -542,8 +542,8 @@ flag_value(struct json_object *names)
  * The names come from the rpmVerifyAttrs_e constants with the
  * RPMVERIFY_ prefix cut off and lowercased.  We keep only the named
  * bits and drop the rest, so header.json lists what rpm really
- * checks.  Returns NULL when no named bit is set and the caller
- * leaves the key off.
+ * checks.  Returns an empty array when no named bit is set, since a
+ * missing key means every check when we create a package.
  */
 static struct json_object *
 verifyflag_names(uint32_t verifyflags)
@@ -551,12 +551,10 @@ verifyflag_names(uint32_t verifyflags)
     const struct file_flag_name *ffn = NULL;
     struct json_object *names = NULL;
 
+    names = json_object_new_array();
+
     for (ffn = file_verify_names; ffn->name != NULL; ffn++) {
         if (verifyflags & ffn->bit) {
-            if (names == NULL) {
-                names = json_object_new_array();
-            }
-
             json_object_array_add(names, json_object_new_string(ffn->name));
         }
     }
@@ -1154,16 +1152,12 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
     /*
      * Add verifyflags for entries that carry one.  RPM records the
      * %verify() settings of a file as a bitfield, so turn that in to
-     * an array of names here.  Entries that verify nothing carry a
-     * zero, which verifyflag_names() reports as NULL so the key is
-     * left off.
+     * an array of names here.  Entries that verify nothing get an
+     * empty array.
      */
     if (fc->fileverifyflag != NULL) {
         verifyflags_array = verifyflag_names(fc->fileverifyflag->value);
-
-        if (verifyflags_array != NULL) {
-            json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags_array);
-        }
+        json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags_array);
     }
 
     /*
@@ -1557,10 +1551,7 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
 
     /* rpmbuild starts every file out verifying all of its attributes */
     verifyflags = verifyflag_names(RPMVERIFY_ALL);
-
-    if (verifyflags != NULL) {
-        json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags);
-    }
+    json_object_object_add(file, RPM_FILE_VERIFYFLAGS_DESC, verifyflags);
 
     return file;
 }

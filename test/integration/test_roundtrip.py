@@ -1450,6 +1450,61 @@ class TestChangelogTimestampsIgnoreTimeZone(Changelog, TestUnpackRPM):
             self.assertIdentical(original, recreated)
 
 
+class TestRoundTripVerifiesNothing(RoundTrip, TestUnpackRPM):
+    """A file that verifies nothing keeps verifying nothing"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.none = "/usr/share/%s/none.txt" % NAME
+        self.all = "/usr/share/%s/all.txt" % NAME
+
+        self.rpm.add_installed_file(
+            self.none, rpmfluff.SourceFile("none.txt", b"checked for nothing\n")
+        )
+        self.rpm.add_installed_file(
+            self.all, rpmfluff.SourceFile("all.txt", b"checked for everything\n")
+        )
+
+        # rpmfluff writes the path with a second leading slash
+        sub = self.rpm.get_subpackage(None)
+        sub.section_files = sub.section_files.replace(
+            '"/%s"' % self.none,
+            '%%verify(not md5 size link user group mtime mode rdev caps) "%s"'
+            % self.none,
+        )
+
+    def verifyflags(self, pkg):
+        """Return the Fileverifyflags of each file an RPM carries"""
+        return dict(
+            (path, int(flags))
+            for (path, flags) in [
+                line.split()
+                for line in query_rpm(pkg, "[%{FILENAMES} %{FILEVERIFYFLAGS}\n]")
+            ]
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        # rpmbuild cleared every named bit for the one file
+        flags = self.verifyflags(original)
+        self.assertEqual(flags[self.none] & 0x1FF, 0)
+        self.assertEqual(flags[self.all] & 0x1FF, 0x1FF)
+
+        extract_dir = self.extract(original)
+        files = dict(
+            (entry["path"], entry) for entry in read_header(extract_dir)["files"]
+        )
+        self.assertEqual(files[self.none]["verifyflags"], [])
+
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(self.verifyflags(recreated), flags)
+        self.assertIdentical(original, recreated)
+
+
 class TestCreateAddsNewPayloadFiles(RoundTrip, TestUnpackRPM):
     """Files added to the payload tree land in the new package"""
 

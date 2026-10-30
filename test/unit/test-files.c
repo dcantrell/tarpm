@@ -315,8 +315,9 @@ test_generate_files_valid(void)
     /* the second file has no flags, so no flags key */
     TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "flags", &flags));
 
-    /* the second file verifies nothing, so no verifyflags key */
-    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "verifyflags", &verifyflags));
+    /* the second file verifies nothing, so an empty verifyflags array */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "verifyflags", &verifyflags));
+    TARPM_ASSERT_EQUAL(json_object_array_length(verifyflags), 0);
 
     json_object_put(files);
 
