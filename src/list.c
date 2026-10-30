@@ -112,8 +112,10 @@ max_column_strlen(const char *rpm, const int standard, const int column)
 
 /*
  * Given a path to an RPM package, open and list the payload contents.
+ * Returns 0 on success, -1 if the package or its payload cannot be
+ * read.
  */
-void
+int
 list_rpm(const char *rpm)
 {
     const char *dn = NULL;
@@ -125,7 +127,9 @@ list_rpm(const char *rpm)
     time_t mtime;
     struct tm filetm;
     char *ownership = NULL;
+    char *errstr = NULL;
     int rc = 0;
+    int r = 0;
     rpmts ts;
     Header hdr;
     const char *compr = NULL;
@@ -136,7 +140,7 @@ list_rpm(const char *rpm)
     rpmfi fi = NULL;
 
     if (rpm == NULL) {
-        return;
+        return -1;
     }
 
     /* get the max string lengths for the username+groupname and file size */
@@ -144,14 +148,14 @@ list_rpm(const char *rpm)
 
     if (ownerlen == -1) {
         warnx("max_column_strlen: ownership");
-        return;
+        return -1;
     }
 
     sizelen = max_column_strlen(rpm, 4, COLUMN_SIZE);
 
     if (sizelen == -1) {
         warnx("max_column_strlen: size");
-        return;
+        return -1;
     }
 
     /* create librpm widgets */
@@ -166,7 +170,7 @@ list_rpm(const char *rpm)
         warn("*** rpmReadPackageFile");
         Fclose(fdi);
         rpmtsFree(ts);
-        return;
+        return -1;
     }
 
     /* determine how to read the payload */
@@ -182,7 +186,7 @@ list_rpm(const char *rpm)
         Fclose(fdi);
         headerFree(hdr);
         rpmtsFree(ts);
-        return;
+        return -1;
     }
 
     /* get an iterator over the payload */
@@ -190,15 +194,16 @@ list_rpm(const char *rpm)
     fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
 
     if (fi == NULL) {
+        warnx("*** rpmfiNewArchiveReader returned NULL");
         Fclose(gzdi);
         rpmfilesFree(files);
         headerFree(hdr);
         rpmtsFree(ts);
-        return;
+        return -1;
     }
 
     /* iterate over every entry in the payload */
-    while (rpmfiNext(fi) >= 0) {
+    while ((rc = rpmfiNext(fi)) >= 0) {
         dn = rpmfiDN(fi);
 
         if (!strcmp(dn, "")) {
@@ -232,6 +237,14 @@ list_rpm(const char *rpm)
         free(ownership);
     }
 
+    /* a bad or truncated payload is an error, not the end */
+    if (rc != RPMERR_ITER_END) {
+        errstr = rpmfileStrerror(rc);
+        warnx(_("*** error reading RPM payload: %s"), errstr);
+        free(errstr);
+        r = -1;
+    }
+
     /* clean up */
     Fclose(gzdi);
     rpmfilesFree(files);
@@ -239,5 +252,5 @@ list_rpm(const char *rpm)
     headerFree(hdr);
     rpmtsFree(ts);
 
-    return;
+    return r;
 }

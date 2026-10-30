@@ -452,7 +452,9 @@ main(int argc, char **argv)
 
     /* Main operations begin here */
     if (t_flag) {
-        list_rpm(filename);
+        if (list_rpm(filename)) {
+            r = EXIT_FAILURE;
+        }
     } else if (x_flag) {
         if (extract_rpm(filename, cwd, output_dir, &paths, v_flag, n_flag)) {
             r = EXIT_FAILURE;
@@ -460,6 +462,7 @@ main(int argc, char **argv)
     } else if (c_flag) {
         if (input_dir == NULL) {
             warnx(_("*** missing input directory, unable to create RPM"));
+            r = EXIT_FAILURE;
         } else {
             if (create_rpm(filename, cwd, input_dir, &paths)) {
                 r = EXIT_FAILURE;

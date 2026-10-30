@@ -178,7 +178,7 @@ int extract_rpm(const char *filename, const char *cwd, const char *output_dir, c
 int create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths);
 
 /* list.c */
-void list_rpm(const char *rpm);
+int list_rpm(const char *rpm);
 
 /* digest.c */
 unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);

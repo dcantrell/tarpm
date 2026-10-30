@@ -606,6 +606,42 @@ class CreateWithNoFiles(RequiresTarpm):
             self.assertEqual(rc, 0, msg=err)
 
 
+class CreateFailsWithoutInputDir(RequiresTarpm):
+    """A missing input directory makes tarpm exit non-zero"""
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        tree = os.path.join(self.output_dir, "missing")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("missing input directory", err)
+        self.assertFalse(os.path.isfile(pkg))
+
+
+@unittest.skipIf(os.geteuid() == 0, "root can read a directory with mode 000")
+class CreateFailsOnUnreadableInputDir(RequiresTarpm):
+    """An input directory tarpm cannot read makes it exit non-zero"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        os.chmod(self.tree, 0o000)
+
+    def tearDown(self):
+        os.chmod(self.tree, 0o755)
+        super().tearDown()
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("missing input directory", err)
+        self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateRejectsHeaderWithoutNVR(RequiresTarpm):
     """A header naming none of Name, Version and Release is turned away"""
 

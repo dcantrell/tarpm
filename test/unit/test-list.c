@@ -23,11 +23,8 @@ clean_test_list(void)
 void
 test_list_rpm_null_input(void)
 {
-    /* test that NULL input is handled gracefully */
-    list_rpm(NULL);
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that NULL input fails */
+    TARPM_ASSERT_EQUAL(list_rpm(NULL), -1);
 
     return;
 }
@@ -35,11 +32,8 @@ test_list_rpm_null_input(void)
 void
 test_list_rpm_empty_string(void)
 {
-    /* test that empty string is handled gracefully */
-    list_rpm("");
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that empty string fails */
+    TARPM_ASSERT_EQUAL(list_rpm(""), -1);
 
     return;
 }
@@ -47,11 +41,8 @@ test_list_rpm_empty_string(void)
 void
 test_list_rpm_nonexistent_file(void)
 {
-    /* test that a nonexistent file is handled gracefully */
-    list_rpm("/nonexistent/path/to/package.rpm");
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that a nonexistent file fails */
+    TARPM_ASSERT_EQUAL(list_rpm("/nonexistent/path/to/package.rpm"), -1);
 
     return;
 }
@@ -59,11 +50,8 @@ test_list_rpm_nonexistent_file(void)
 void
 test_list_rpm_invalid_file(void)
 {
-    /* test that an invalid (non-RPM) file is handled gracefully */
-    list_rpm("/dev/null");
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that an invalid (non-RPM) file fails */
+    TARPM_ASSERT_EQUAL(list_rpm("/dev/null"), -1);
 
     return;
 }
@@ -71,11 +59,8 @@ test_list_rpm_invalid_file(void)
 void
 test_list_rpm_directory(void)
 {
-    /* test that a directory path is handled gracefully */
-    list_rpm("/tmp");
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that a directory path fails */
+    TARPM_ASSERT_EQUAL(list_rpm("/tmp"), -1);
 
     return;
 }
@@ -83,13 +68,10 @@ test_list_rpm_directory(void)
 void
 test_list_rpm_special_characters(void)
 {
-    /* test that paths with special characters are handled */
-    list_rpm("/path/with spaces/package.rpm");
-    list_rpm("/path/with\ttabs/package.rpm");
-    list_rpm("/path/with\nnewlines/package.rpm");
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    /* test that paths with special characters fail */
+    TARPM_ASSERT_EQUAL(list_rpm("/path/with spaces/package.rpm"), -1);
+    TARPM_ASSERT_EQUAL(list_rpm("/path/with\ttabs/package.rpm"), -1);
+    TARPM_ASSERT_EQUAL(list_rpm("/path/with\nnewlines/package.rpm"), -1);
 
     return;
 }
@@ -110,10 +92,7 @@ test_list_rpm_very_long_path(void)
     }
 
     /* test that very long paths are handled gracefully */
-    list_rpm(long_path);
-
-    /* if we get here without crashing, the test passed */
-    TARPM_ASSERT_TRUE(1);
+    TARPM_ASSERT_EQUAL(list_rpm(long_path), -1);
 
     return;
 }

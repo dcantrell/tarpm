@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import gzip
 import os
 import re
+import struct
 import subprocess
 import rpmfluff
 from baseclass import NAME
@@ -277,5 +279,62 @@ class VerifyListNotAnRPM(RequiresTarpm):
         out, err = proc.communicate()
 
         # nothing is listed and tarpm says why
+        self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(out.decode("utf-8"), "")
         self.assertNotEqual(err.decode("utf-8").find("rpmReadPackageFile"), -1)
+
+
+class VerifyListCorruptPayload(TestUnpackRPM):
+    """Listing a package with a bad entry in its payload fails"""
+
+    def setUp(self):
+        super().setUp()
+
+        # gzip so we can take the payload apart without other tools
+        self.rpm.header += "%define _binary_payload w9.gzdio\n"
+
+        for i in range(4):
+            self.rpm.add_installed_file(
+                "/usr/share/%s/file%d" % (NAME, i),
+                rpmfluff.SourceFile("file%d" % i, b"content %d\n" % i),
+            )
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = f.read()
+        f.close()
+
+        # the lead, the signature header padded to 8, then the main header
+        offset = 96
+
+        for pad in [True, False]:
+            nindex, hsize = struct.unpack_from(">II", data, offset + 8)
+            offset += 16 + (16 * nindex) + hsize
+
+            if pad:
+                offset += (8 - (offset % 8)) % 8
+
+        # newc or the stripped cpio of a v6 format package
+        cpio = bytearray(gzip.decompress(data[offset:]))
+        magic = cpio[0:6]
+        self.assertIn(magic, [b"070701", b"07070X"])
+        second = cpio.find(magic, 1)
+        self.assertNotEqual(second, -1)
+        cpio[second : second + 6] = b"BADMAG"  # noqa: E203
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        f = open(pkg, "wb")
+        f.write(data[:offset] + gzip.compress(bytes(cpio)))
+        f.close()
+
+        proc = subprocess.Popen(
+            [self.tarpm, "-t", "-f", pkg],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+
+        self.assertGreater(proc.returncode, 0)
+        self.assertIn("error reading RPM payload", err.decode("utf-8"))
