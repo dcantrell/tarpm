@@ -194,10 +194,9 @@ fits_uint32(struct json_object *tags, const rpmTagVal tag)
 
 /*
  * Settle a size tag on the spelling the format we are writing uses.
- * add_file_list_tags() rebuilds the 32-bit tag from the payload tree,
- * so it is the newer of the two when a header carries both and the
- * 64-bit one goes.  A v4 format package uses the 64-bit tag when a
- * number will not fit in the 32-bit one.
+ * When a header carries both, the 32-bit one is the newer of the two
+ * and the 64-bit one goes.  A v4 format package uses the 64-bit tag
+ * when a number will not fit in the 32-bit one.
  */
 static void
 normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTagVal large, const int format)

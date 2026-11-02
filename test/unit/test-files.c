@@ -190,6 +190,34 @@ get_tag_values(struct json_object *tags, const char *name)
     return NULL;
 }
 
+/* Return the type of the named tag in a tags array */
+static const char *
+get_tag_type(struct json_object *tags, const char *name)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *tag = NULL;
+    struct json_object *type = NULL;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
+            continue;
+        }
+
+        if (strcmp(json_object_get_string(tag), name)) {
+            continue;
+        }
+
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TYPE_DESC, &type)) {
+            return json_object_get_string(type);
+        }
+    }
+
+    return NULL;
+}
+
 /* Test generate_files() with NULL inputs */
 void
 test_generate_files_null(void)
@@ -771,6 +799,100 @@ test_add_file_list_tags_sizes_no_payload(void)
 
     json_object_put(tags);
     json_object_put(files);
+
+    return;
+}
+
+/*
+ * Build the file list tags for one file of the given size, with stale
+ * copies of both size tags already in the tags array.
+ */
+static struct json_object *
+size_tags(const int64_t size, const int format)
+{
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *stale = NULL;
+
+    tags = json_object_new_array();
+    files = json_object_new_array();
+
+    stale = json_object_new_object();
+    json_object_object_add(stale, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILESIZES)));
+    json_object_object_add(stale, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(stale, RPM_ENTRY_VALUE_DESC, json_object_new_int64(7));
+    json_object_array_add(tags, stale);
+
+    stale = json_object_new_object();
+    json_object_object_add(stale, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_LONGFILESIZES)));
+    json_object_object_add(stale, RPM_ENTRY_TYPE_DESC, json_object_new_string("int64"));
+    json_object_object_add(stale, RPM_ENTRY_VALUE_DESC, json_object_new_int64(7));
+    json_object_array_add(tags, stale);
+
+    file = add_file(files, "/usr/bin/ls");
+    json_object_object_add(file, "size", json_object_new_int64(size));
+
+    add_file_list_tags(tags, files, NULL, NULL, format);
+    json_object_put(files);
+
+    return tags;
+}
+
+/* Test add_file_list_tags() picks Filesizes or Longfilesizes for the format */
+void
+test_add_file_list_tags_size_tag(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *values = NULL;
+
+    /* a v4 format package uses Filesizes */
+    tags = size_tags(1024, RPM_FORMAT_V4);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_LONGFILESIZES)));
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1024);
+    TARPM_ASSERT_STRING_EQUAL(get_tag_type(tags, rpmTagGetName(RPMTAG_FILESIZES)), "int32");
+    json_object_put(tags);
+
+    /* the largest size that still fits in Filesizes */
+    tags = size_tags(4294967294LL, RPM_FORMAT_V4);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_LONGFILESIZES)));
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES)));
+    json_object_put(tags);
+
+    /* a v4 format package with a file too big for Filesizes */
+    tags = size_tags(4294967295LL, RPM_FORMAT_V4);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES)));
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 4294967295LL);
+    TARPM_ASSERT_STRING_EQUAL(get_tag_type(tags, rpmTagGetName(RPMTAG_LONGFILESIZES)), "int64");
+    json_object_put(tags);
+
+    /* a v6 format package always uses Longfilesizes */
+    tags = size_tags(1024, RPM_FORMAT_V6);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, rpmTagGetName(RPMTAG_FILESIZES)));
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 1);
+    TARPM_ASSERT_EQUAL(json_object_get_int64(json_object_array_get_idx(values, 0)), 1024);
+    TARPM_ASSERT_STRING_EQUAL(get_tag_type(tags, rpmTagGetName(RPMTAG_LONGFILESIZES)), "int64");
+    json_object_put(tags);
+
+    return;
+}
+
+/* Test is_file_list_tag() knows both size tags */
+void
+test_is_file_list_tag_sizes(void)
+{
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_FILESIZES));
+    TARPM_ASSERT_TRUE(is_file_list_tag(RPMTAG_LONGFILESIZES));
+    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_SIZE));
+    TARPM_ASSERT_FALSE(is_file_list_tag(RPMTAG_LONGSIZE));
 
     return;
 }
@@ -3240,6 +3362,8 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with a file list", test_add_file_list_tags_file_list) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with payload file sizes", test_add_file_list_tags_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with sizes and no payload", test_add_file_list_tags_sizes_no_payload) == NULL ||
+        CU_add_test(pSuite, "test add_file_list_tags() with the file size tag for each format", test_add_file_list_tags_size_tag) == NULL ||
+        CU_add_test(pSuite, "test is_file_list_tag() with the file size tags", test_is_file_list_tag_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with the installed size", test_add_file_list_tags_total_size) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with hard links in the payload", test_add_file_list_tags_payload_hardlinks) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with hard links of entries with an inode", test_add_file_list_tags_keyed_hardlinks) == NULL ||

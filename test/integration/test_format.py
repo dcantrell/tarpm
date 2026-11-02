@@ -1070,6 +1070,54 @@ class VerifyCreateFormatSizesMatch(TestUnpackRPM):
 @unittest.skipUnless(
     HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
 )
+class VerifyFormatSixFileSizes(TestUnpackRPM):
+    """A v6 package puts its Longfilesizes in the size keys of the files"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _rpmformat 6\n"
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.readme = "/usr/share/doc/%s/README" % NAME
+        self.rpm.add_installed_file(self.readme, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        header = json.load(f)
+        f.close()
+
+        # the sizes are in the files array and not in the tags
+        tags = header_tags(header)
+        self.assertFalse("Filesizes" in tags)
+        self.assertFalse("Longfilesizes" in tags)
+
+        sizes = dict((f["path"], f.get("size")) for f in header["files"])
+        self.assertEqual(sizes[self.readme], 10)
+
+        # each format writes them to its own tag
+        for fmt, tag, width, other in [("4", 1028, 4, 5008), ("6", 5008, 8, 1028)]:
+            created = os.path.join(self.output_dir, "created-%s.rpm" % fmt)
+            rc, out, err = run_tarpm(
+                [self.tarpm, "-c", "-F", fmt, "-f", created, self.output_dir]
+            )
+            self.assertEqual(rc, 0, msg=err)
+
+            entries, data = main_header(created)
+            self.assertFalse(other in tag_numbers(entries))
+
+            lines = query(created, "[%{FILENAMES} %{LONGFILESIZES}\n]").splitlines()
+            self.assertTrue("%s 10" % self.readme in lines, msg=lines)
+            self.assertEqual(
+                sorted(size_values(created, tag, width)),
+                sorted(v if v is not None else 0 for v in sizes.values()),
+            )
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
 class VerifyCreateFormatSixSourceNevr(TestUnpackRPM):
     """A v6 format package gets the source NEVR derived from Sourcerpm"""
 

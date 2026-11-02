@@ -2788,6 +2788,33 @@ drop_tag(struct json_object *tags, const rpmTagVal tag)
 }
 
 /*
+ * Determine if we should use RPMTAG_FILESIZES or RPMTAG_LONGFILESIZES
+ * based on both the RPM format version and, if necessary, the size of
+ * individual files.  For reference, rpm uses RPMTAG_LONGFILESIZES in
+ * a v6 format package.  It uses RPMTAG_FILESIZES in the v4 format,
+ * but will go to RPMTAG_LONGFILESIZES if any file in the payload is
+ * UINT32_MAX bytes or larger (see genCpioListAndHeader() in
+ * build/files.cc in the rpm source).
+ */
+static rpmTagVal
+file_sizes_tag(struct json_object *sizes, const int format)
+{
+    size_t i = 0;
+
+    if (format == RPM_FORMAT_V6) {
+        return RPMTAG_LONGFILESIZES;
+    }
+
+    for (i = 0; i < json_object_array_length(sizes); i++) {
+        if (json_object_get_int64(json_object_array_get_idx(sizes, i)) >= (int64_t) UINT32_MAX) {
+            return RPMTAG_LONGFILESIZES;
+        }
+    }
+
+    return RPMTAG_FILESIZES;
+}
+
+/*
  * Rebuild the file list tags from the "files" array and add them to
  * the tags array.  The format is the RPM format we are writing, which
  * determines whether a file missing a class or a MIME type gets one
@@ -2798,6 +2825,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
 {
     char sizebuf[32];
     bool source_package = false;
+    rpmTagVal sizestag = RPMTAG_FILESIZES;
     struct file_list_tags out;
     struct file_list_build build;
 
@@ -2841,6 +2869,10 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     drop_tag(tags, RPMTAG_FILEMIMEINDEX_VALUE);
     drop_tag(tags, RPMTAG_MIMEDICT_VALUE);
 
+    /* the same goes for the file sizes, which come from the "size" keys */
+    drop_tag(tags, RPMTAG_FILESIZES);
+    drop_tag(tags, RPMTAG_LONGFILESIZES);
+
     /*
      * Update the installed size.  The payload tree may have gained,
      * lost or changed files since we unpacked it, so the size in
@@ -2865,7 +2897,8 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     add_tag_array(tags, RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE, out.basenames);
     add_tag_array(tags, RPMTAG_DIRINDEXES, RPM_INT32_TYPE, out.dirindexes);
     add_tag_array(tags, RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, out.dirnames);
-    add_tag_array(tags, RPMTAG_FILESIZES, RPM_INT32_TYPE, out.filesizes);
+    sizestag = file_sizes_tag(out.filesizes, format);
+    add_tag_array(tags, sizestag, (sizestag == RPMTAG_LONGFILESIZES) ? RPM_INT64_TYPE : RPM_INT32_TYPE, out.filesizes);
     add_tag_array(tags, RPMTAG_FILEMODES, RPM_INT16_TYPE, out.filemodes);
     add_tag_array(tags, RPMTAG_FILEMTIMES, RPM_INT32_TYPE, out.filemtimes);
     add_tag_array(tags, RPMTAG_FILEUSERNAME, RPM_STRING_ARRAY_TYPE, out.fileusernames);
@@ -3198,6 +3231,7 @@ is_file_list_tag(rpmTagVal tag)
         case RPMTAG_BASENAMES:
         case RPMTAG_DIRINDEXES:
         case RPMTAG_FILESIZES:
+        case RPMTAG_LONGFILESIZES:
         case RPMTAG_FILEMODES:
         case RPMTAG_FILEMTIMES:
         case RPMTAG_FILEUSERNAME:
