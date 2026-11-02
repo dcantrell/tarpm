@@ -601,7 +601,11 @@ is_ghost_file(const struct hdr_file_lists *hfl, const size_t i)
 
     flags = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileflags, i));
 
-    return (flags & RPMFILE_GHOST) ? true : false;
+    if (flags & RPMFILE_GHOST) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 /*

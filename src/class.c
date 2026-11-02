@@ -226,7 +226,11 @@ file_class(const char *path, const char *file_path, const struct stat *sb)
             break;
         default:
             ext = skipped_extension(path);
-            name = (ext == NULL) ? NULL : ext->name;
+            if (ext == NULL) {
+                name = NULL;
+            } else {
+                name = ext->name;
+            }
 
             /*
              * Files under /dev/ stand in for the real device nodes the
@@ -303,7 +307,11 @@ file_mime(const char *path, const char *file_path, const struct stat *sb)
             break;
         default:
             ext = skipped_extension(path);
-            name = (ext == NULL) ? NULL : ext->mime;
+            if (ext == NULL) {
+                name = NULL;
+            } else {
+                name = ext->mime;
+            }
             break;
     }
 

@@ -151,7 +151,11 @@ convert_payload(const char *rpm)
     }
 
     ctype = setlocale(LC_CTYPE, NULL);
-    ctype = (ctype == NULL) ? NULL : strdup(ctype);
+
+    if (ctype != NULL) {
+        ctype = strdup(ctype);
+    }
+
     setlocale(LC_CTYPE, "C");
     (void) archive_write_set_options(archive, "hdrcharset=UTF-8");
 
@@ -238,7 +242,12 @@ convert_payload(const char *rpm)
             left = rpmfiFSize(fi);
 
             while (left) {
-                len = (left > BUFSIZ ? BUFSIZ : left);
+                if (left > BUFSIZ) {
+                    len = BUFSIZ;
+                } else {
+                    len = left;
+                }
+
                 rd = rpmfiArchiveRead(fi, buf, len);
 
                 if (rd == len) {

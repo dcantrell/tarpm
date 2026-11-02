@@ -496,7 +496,11 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
         s = json_object_get_string(obj);
 
         if (changelog_date_to_timestamp(s, &timestamp) == -1) {
-            warnx(_("*** unable to read the changelog date \"%s\""), (s == NULL) ? "" : s);
+            if (s == NULL) {
+                s = "";
+            }
+
+            warnx(_("*** unable to read the changelog date \"%s\""), s);
             free_changelog_arrays(times, names, texts);
             return -1;
         }

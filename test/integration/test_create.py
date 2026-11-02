@@ -590,7 +590,10 @@ class CreateWithNoFiles(RequiresTarpm):
         self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
 
     def runTest(self):
-        formats = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+        if HAVE_RPM_FORMAT_SIX:
+            formats = ["4", "6"]
+        else:
+            formats = ["4"]
 
         for rpmformat in formats:
             pkg = os.path.join(self.output_dir, "hello-%s.rpm" % rpmformat)
@@ -877,7 +880,10 @@ class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
         os.chmod(self.program, 0o000)
 
     def runTest(self):
-        formats = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+        if HAVE_RPM_FORMAT_SIX:
+            formats = ["4", "6"]
+        else:
+            formats = ["4"]
 
         for rpmformat in formats:
             pkg = os.path.join(self.output_dir, "hello-%s.rpm" % rpmformat)

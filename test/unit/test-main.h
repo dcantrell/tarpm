@@ -63,13 +63,25 @@ CU_BOOL TARPM_assert_impl(CU_BOOL, unsigned int, const char *, const char *, ...
 #define _TARPM_ASSERT_STR(X, OP, Y) {\
     const char *_x = (X);\
     const char *_y = (Y);\
+    const char *_xs = _x;\
+    const char *_ys = _y;\
     int _r = 0;\
     if (_x == NULL || _y == NULL) {\
-        _r = (_x == _y) ? 0 : 1;\
+        if (_x == _y) {\
+            _r = 0;\
+        } else {\
+            _r = 1;\
+        }\
     } else {\
         _r = strcmp(_x, _y);\
     }\
-    TARPM_assert_impl(_r OP 0, __LINE__, __FILE__, "Assertion '%s' failed: %s == \"%s\", %s == \"%s\"", #X" "#OP" "#Y, #X, (_x == NULL) ? "(null)" : _x, #Y, (_y == NULL) ? "(null)" : _y);\
+    if (_xs == NULL) {\
+        _xs = "(null)";\
+    }\
+    if (_ys == NULL) {\
+        _ys = "(null)";\
+    }\
+    TARPM_assert_impl(_r OP 0, __LINE__, __FILE__, "Assertion '%s' failed: %s == \"%s\", %s == \"%s\"", #X" "#OP" "#Y, #X, _xs, #Y, _ys);\
 }
 
 #define TARPM_ASSERT_EQUAL(actual, expected)               _TARPM_ASSERT_INT(expected, ==, actual)

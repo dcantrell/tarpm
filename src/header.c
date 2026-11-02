@@ -368,11 +368,17 @@ check_region_tags(struct json_object *tags, bool is_signature)
     size_t i = 0;
     size_t nregions = 0;
     rpmTagVal tag_number = 0;
-    rpmTagVal region = is_signature ? HEADER_SIGNATURES : HEADER_IMMUTABLE;
+    rpmTagVal region = HEADER_IMMUTABLE;
     struct json_object *entry = NULL;
 
     if (tags == NULL) {
         return -1;
+    }
+
+    if (is_signature) {
+        region = HEADER_SIGNATURES;
+    } else {
+        region = HEADER_IMMUTABLE;
     }
 
     for (i = 0; i < json_object_array_length(tags); i++) {

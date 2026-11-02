@@ -2110,7 +2110,11 @@ class PayloadOverride(RoundTrip):
         said nothing when header.json and the payload already match.
         """
         message = "%s %s in header.json does not match the payload" % (path, key)
-        self.assertEqual(err.count(message), 1 if changed else 0, err)
+
+        if changed:
+            self.assertEqual(err.count(message), 1, err)
+        else:
+            self.assertEqual(err.count(message), 0, err)
 
 
 class TestCreateKeepsHeaderMetadataByDefault(PayloadOverride, TestUnpackRPM):

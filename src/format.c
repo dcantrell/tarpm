@@ -204,6 +204,7 @@ normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTa
     int idx = -1;
     rpmTagVal have = 0;
     rpmTagVal want = 0;
+    rpmTagType type = RPM_INT32_TYPE;
 
     if (find_tag(tags, small) >= 0) {
         idx = find_tag(tags, large);
@@ -219,13 +220,23 @@ normalize_size_pair(struct json_object *tags, const rpmTagVal small, const rpmTa
         return;
     }
 
-    want = (format == RPM_FORMAT_V6 || !fits_uint32(tags, have)) ? large : small;
+    if (format == RPM_FORMAT_V6 || !fits_uint32(tags, have)) {
+        want = large;
+    } else {
+        want = small;
+    }
 
     if (have == want) {
         return;
     }
 
-    retag(tags, have, want, (want == large) ? RPM_INT64_TYPE : RPM_INT32_TYPE);
+    if (want == large) {
+        type = RPM_INT64_TYPE;
+    } else {
+        type = RPM_INT32_TYPE;
+    }
+
+    retag(tags, have, want, type);
 
     return;
 }

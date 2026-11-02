@@ -1348,6 +1348,7 @@ static bool
 missing_from_payload(struct json_object *file, const char *path, const char *payload_dir)
 {
     char *file_path = NULL;
+    const char *relpath = NULL;
     bool missing = false;
     struct json_object *flags = NULL;
     struct stat sb;
@@ -1360,7 +1361,13 @@ missing_from_payload(struct json_object *file, const char *path, const char *pay
         return false;
     }
 
-    file_path = joinpath(payload_dir, (path[0] == '/') ? path + 1 : path, NULL);
+    if (path[0] == '/') {
+        relpath = path + 1;
+    } else {
+        relpath = path;
+    }
+
+    file_path = joinpath(payload_dir, relpath, NULL);
     missing = (lstat(file_path, &sb) != 0);
     free(file_path);
 
@@ -1935,7 +1942,11 @@ key_string(struct json_object *obj, const char *key, const char *dflt)
 
     str = json_object_get_string(value);
 
-    return (str == NULL) ? dflt : str;
+    if (str == NULL) {
+        return dflt;
+    } else {
+        return str;
+    }
 }
 
 /*
@@ -2374,7 +2385,11 @@ file_langs_value(struct json_object *file)
     joined = list_to_string(langs, RPM_FILE_LANG_SEPARATOR);
     list_free(langs, free);
 
-    return (joined == NULL) ? strdup("") : joined;
+    if (joined == NULL) {
+        return strdup("");
+    } else {
+        return joined;
+    }
 }
 
 /*
@@ -2577,7 +2592,9 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     size_t ndepends = 0;
     size_t dependsstart = 0;
     int64_t size = 0;
+    uint32_t verify = 0;
     char *file_path = NULL;
+    const char *relpath = NULL;
     char *olddigest = NULL;
     char *str = NULL;
     struct stat sb;
@@ -2603,7 +2620,13 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      */
     if (build->payload_dir != NULL) {
         /* the payload tree holds the paths without a leading slash */
-        file_path = joinpath(build->payload_dir, (path[0] == '/') ? path + 1 : path, NULL);
+        if (path[0] == '/') {
+            relpath = path + 1;
+        } else {
+            relpath = path;
+        }
+
+        file_path = joinpath(build->payload_dir, relpath, NULL);
 
         if (lstat(file_path, &sb) == 0) {
             psb = &sb;
@@ -2699,7 +2722,14 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     json_object_array_add(out->fileflags, json_object_new_int64(flag_value(key_object(file, RPM_FILE_FLAGS_DESC))));
 
     verifyflags = key_object(file, RPM_FILE_VERIFYFLAGS_DESC);
-    json_object_array_add(out->fileverifyflags, json_object_new_int64((verifyflags == NULL) ? RPMVERIFY_ALL : verifyflag_value(verifyflags)));
+
+    if (verifyflags == NULL) {
+        verify = RPMVERIFY_ALL;
+    } else {
+        verify = verifyflag_value(verifyflags);
+    }
+
+    json_object_array_add(out->fileverifyflags, json_object_new_int64(verify));
 
     /*
      * rpm keeps the dependencies a file generated as a slice of the
@@ -2826,6 +2856,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     char sizebuf[32];
     bool source_package = false;
     rpmTagVal sizestag = RPMTAG_FILESIZES;
+    rpmTagType sizestype = RPM_INT32_TYPE;
     struct file_list_tags out;
     struct file_list_build build;
 
@@ -2898,7 +2929,14 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     add_tag_array(tags, RPMTAG_DIRINDEXES, RPM_INT32_TYPE, out.dirindexes);
     add_tag_array(tags, RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, out.dirnames);
     sizestag = file_sizes_tag(out.filesizes, format);
-    add_tag_array(tags, sizestag, (sizestag == RPMTAG_LONGFILESIZES) ? RPM_INT64_TYPE : RPM_INT32_TYPE, out.filesizes);
+
+    if (sizestag == RPMTAG_LONGFILESIZES) {
+        sizestype = RPM_INT64_TYPE;
+    } else {
+        sizestype = RPM_INT32_TYPE;
+    }
+
+    add_tag_array(tags, sizestag, sizestype, out.filesizes);
     add_tag_array(tags, RPMTAG_FILEMODES, RPM_INT16_TYPE, out.filemodes);
     add_tag_array(tags, RPMTAG_FILEMTIMES, RPM_INT32_TYPE, out.filemtimes);
     add_tag_array(tags, RPMTAG_FILEUSERNAME, RPM_STRING_ARRAY_TYPE, out.fileusernames);

@@ -116,7 +116,11 @@ def size_values(pkg, tag, width):
 
     for tagnum, tagtype, offset, count in entries:
         if tagnum == tag:
-            fmt = ">%d%s" % (count, "I" if width == 4 else "Q")
+            if width == 4:
+                fmt = ">%dI" % count
+            else:
+                fmt = ">%dQ" % count
+
             return list(struct.unpack_from(fmt, data, offset))
 
     return []
@@ -180,7 +184,10 @@ RESERVED_TAGS = {"4": 1008, "6": 999}
 HAVE_VERITY = rpm_at_least("4.17.0")
 
 # The formats this rpm can create packages in
-FORMATS = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+if HAVE_RPM_FORMAT_SIX:
+    FORMATS = ["4", "6"]
+else:
+    FORMATS = ["4"]
 
 
 def signature_header(pkg):
@@ -657,7 +664,10 @@ class FileSignatures(object):
     def create(self, name, fmt, tree=None):
         """Create a package of the given format and return its path"""
         pkg = os.path.join(self.output_dir, name)
-        tree = self.output_dir if tree is None else tree
+
+        if tree is None:
+            tree = self.output_dir
+
         rc, out, err = run_tarpm([self.tarpm, "-c", "-F", fmt, "-f", pkg, tree])
         self.assertEqual(rc, 0, msg=err)
 
@@ -934,10 +944,14 @@ class VerifyExtractMainHeaderFileSignatures(FileSignatures, TestUnpackRPM):
         header = json.load(f)
         f.close()
 
-        signatures = [
-            FILE_SIGNATURE if entry["path"] == self.readme else ""
-            for entry in header["files"]
-        ]
+        signatures = []
+
+        for entry in header["files"]:
+            if entry["path"] == self.readme:
+                signatures.append(FILE_SIGNATURE)
+            else:
+                signatures.append("")
+
         add_string_array_tag(self.header, "Filesignatures", signatures)
 
         # a v4 package with the file signatures in its main header
@@ -1109,10 +1123,16 @@ class VerifyFormatSixFileSizes(TestUnpackRPM):
 
             lines = query(created, "[%{FILENAMES} %{LONGFILESIZES}\n]").splitlines()
             self.assertTrue("%s 10" % self.readme in lines, msg=lines)
-            self.assertEqual(
-                sorted(size_values(created, tag, width)),
-                sorted(v if v is not None else 0 for v in sizes.values()),
-            )
+
+            expected = []
+
+            for size in sizes.values():
+                if size is None:
+                    expected.append(0)
+                else:
+                    expected.append(size)
+
+            self.assertEqual(sorted(size_values(created, tag, width)), sorted(expected))
 
 
 @unittest.skipUnless(

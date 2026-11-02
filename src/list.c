@@ -54,7 +54,12 @@ max_column_strlen(const char *rpm, const int standard, const int column)
 
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
-    xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
+
+    if (compr == NULL) {
+        compr = "gzip";
+    }
+
+    xasprintf(&rpmio_flags, "r.%s", compr);
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
@@ -175,7 +180,12 @@ list_rpm(const char *rpm)
 
     /* determine how to read the payload */
     compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
-    xasprintf(&rpmio_flags, "r.%s", compr ? compr : "gzip");
+
+    if (compr == NULL) {
+        compr = "gzip";
+    }
+
+    xasprintf(&rpmio_flags, "r.%s", compr);
 
     /* open the payload */
     gzdi = Fdopen(fdi, rpmio_flags);
