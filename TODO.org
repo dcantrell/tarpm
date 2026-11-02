@@ -79,8 +79,8 @@ Core functionality that still needs to happen:
         [*] Filelangs
         [*] Filecolors
         [*] Fileclass (strings from Classdict)
-        [ ] Filesignatures from signature.json (if present)
-        [ ] Verity stuff from signature.json (if present)
+        [*] Filesignatures from signature.json (if present)
+        [*] Verity stuff from signature.json (if present)
 
     [*] The other dependency arrays
         [*] Dependsdict

@@ -1429,14 +1429,34 @@ signature_size(struct json_object *signature)
 }
 
 /*
+ * Return the name of the reserved space tag in the signature header
+ * given an RPM format version.  Do not free the returned string.
+ */
+static const char *
+reserved_space_tag(const int format)
+{
+    if (format == RPM_FORMAT_V6) {
+        return sig_tag_name(RPMSIGTAG_RESERVED_VALUE);
+    }
+
+    return sig_tag_name(RPMSIGTAG_RESERVEDSPACE);
+}
+
+/*
  * Remove bytes from the reserved space in the signature.  rpm does
  * this in rpmGenerateSignature() after moving to the 64-bit size
- * tags.  Returns non-zero on failure.
+ * tags, and rpmsign(1) does it after adding signatures.  A header
+ * cannot hold an empty tag, so the reserved space has to keep at
+ * least one byte.
+ *
+ * Returns 0 on success, 1 if the bytes do not fit, and -1 on failure.
  */
 static int
-shrink_reserved_space(struct json_object *tags, const size_t bytes)
+shrink_reserved_space(struct json_object *tags, const char *tag, const size_t bytes)
 {
     int r = 0;
+    size_t size = 0;
+    const char *old = NULL;
     char *value = NULL;
     void *blob = NULL;
 
@@ -1444,12 +1464,21 @@ shrink_reserved_space(struct json_object *tags, const size_t bytes)
         return 0;
     }
 
-    if (bytes >= RPM_SIGNATURE_RESERVED_SIZE) {
+    old = get_tag_value(tags, tag);
+
+    if (old == NULL || rpmBase64Decode(old, &blob, &size) != 0) {
+        warnx(_("*** unable to read %s in signature"), tag);
         return -1;
     }
 
-    blob = xcalloc(RPM_SIGNATURE_RESERVED_SIZE - bytes, sizeof(char));
-    value = rpmBase64Encode(blob, RPM_SIGNATURE_RESERVED_SIZE - bytes, -1);
+    free(blob);
+
+    if (bytes >= size) {
+        return 1;
+    }
+
+    blob = xcalloc(size - bytes, sizeof(char));
+    value = rpmBase64Encode(blob, size - bytes, -1);
     free(blob);
 
     if (value == NULL) {
@@ -1457,9 +1486,46 @@ shrink_reserved_space(struct json_object *tags, const size_t bytes)
         return -1;
     }
 
-    r = set_tag_value(tags, sig_tag_name(RPMSIGTAG_RESERVEDSPACE), value);
+    r = set_tag_value(tags, tag, value);
     free(value);
     return r;
+}
+
+/*
+ * Take the per-file signatures out of the "files" array in the
+ * header.json structure and add them to the signature.json structure.
+ * tarpm puts these in header.json to make working with the metadata
+ * more intuitive, but rpm(8) expects them in the signature header.
+ *
+ * rpmsign(1) adds these to a package that already exists and uses the
+ * reserved space to write the data.  In most cases this does not grow
+ * the signature, but if it overflows them rpmsign(1) grows the
+ * signature header.  tarpm takes the same approach.
+ *
+ * Return 0 on success, non-zero on failure.
+ */
+static int
+add_signature_files(struct json_object *signature, struct json_object *header, const char *payload_dir, const int format)
+{
+    size_t oldsize = 0;
+    size_t newsize = 0;
+    struct json_object *tags = NULL;
+
+    if (json_object_object_get_ex(signature, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
+        warnx(_("*** missing tags in signature data"));
+        return -1;
+    }
+
+    oldsize = signature_size(signature);
+    add_file_signature_tags(signature, header, payload_dir, format);
+    newsize = signature_size(signature);
+
+    if (oldsize == 0 || newsize < oldsize || shrink_reserved_space(tags, reserved_space_tag(format), newsize - oldsize) == -1) {
+        warnx(_("*** failed to resize the reserved space in signature"));
+        return -1;
+    }
+
+    return 0;
 }
 
 /*
@@ -1552,7 +1618,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
             /* the 64-bit tags come out of the reserved space */
             newsize = signature_size(signature);
 
-            if (oldsize == 0 || newsize < oldsize || shrink_reserved_space(tags, newsize - oldsize) != 0) {
+            if (oldsize == 0 || newsize < oldsize || shrink_reserved_space(tags, reserved_space_tag(format), newsize - oldsize) != 0) {
                 warnx(_("*** failed to resize the reserved space in signature"));
                 return -1;
             }
@@ -1889,6 +1955,18 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat) != 0) {
         close(payloadfd);
         warnx("update_signature");
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
+
+    /*
+     * The file and verity signatures go in last, the way rpmsign(1)
+     * adds them to a package rpmbuild(1) wrote.  The header passes
+     * above dropped them from the files that changed.
+     */
+    if (add_signature_files(signature, header, payload_dir, rpmformat) != 0) {
+        close(payloadfd);
         free(header_dir);
         free(payload_dir);
         return -1;

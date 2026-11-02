@@ -189,6 +189,24 @@ test_is_rpmsign_tag(void)
 }
 
 void
+test_is_file_signature_tag(void)
+{
+    /* the tags the "files" array in header.json carries */
+    TARPM_ASSERT_TRUE(is_file_signature_tag(RPMSIGTAG_FILESIGNATURES_VALUE));
+    TARPM_ASSERT_TRUE(is_file_signature_tag(RPMSIGTAG_FILESIGNATURELENGTH_VALUE));
+    TARPM_ASSERT_TRUE(is_file_signature_tag(RPMSIGTAG_VERITYSIGNATURES_VALUE));
+    TARPM_ASSERT_TRUE(is_file_signature_tag(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE));
+
+    /* the rest of what rpmsign writes signs the package */
+    TARPM_ASSERT_FALSE(is_file_signature_tag(RPMSIGTAG_RSA));
+    TARPM_ASSERT_FALSE(is_file_signature_tag(RPMSIGTAG_OPENPGP_VALUE));
+    TARPM_ASSERT_FALSE(is_file_signature_tag(RPMSIGTAG_SHA256));
+    TARPM_ASSERT_FALSE(is_file_signature_tag(0));
+
+    return;
+}
+
+void
 test_tag_type(void)
 {
     struct json_object *tag = NULL;
@@ -632,6 +650,7 @@ get_suite(void)
     if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
         CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL ||
         CU_add_test(pSuite, "test is_rpmsign_tag()", test_is_rpmsign_tag) == NULL ||
+        CU_add_test(pSuite, "test is_file_signature_tag()", test_is_file_signature_tag) == NULL ||
         CU_add_test(pSuite, "test tag_type()", test_tag_type) == NULL ||
         CU_add_test(pSuite, "test get_tag_number()", test_get_tag_number) == NULL ||
         CU_add_test(pSuite, "test get_tag_value()", test_get_tag_value) == NULL ||

@@ -12,7 +12,7 @@ import unittest
 import rpmfluff
 import rpm
 from baseclass import NAME, TestUnpackRPM
-from baseclass import HAVE_RPM_FORMAT_SIX
+from baseclass import HAVE_RPM_FORMAT_SIX, rpm_at_least
 
 # The main header tags rpm writes for the payload, one set per RPM
 # format.  writeRPM() in build/pack.cc in the rpm source puts these in.
@@ -149,6 +149,83 @@ def add_string_array_tag(path, name, values):
     f.close()
 
     header["tags"].append({"tag": name, "type": "string array", "value": values})
+
+    f = open(path, "w")
+    json.dump(header, f)
+    f.close()
+
+    return
+
+
+# The per-file signature tags and their companions in the signature
+# header.  A main header may carry none of the verity ones.
+FILE_SIGNATURE_TAGS = [274, 275, 276, 277]
+MAIN_FILE_SIGNATURE_TAGS = [5090, 5091, 276, 277]
+
+# Made up file and verity signatures.  rpm only checks that they
+# decode, it needs the signing keys to check more.
+FILE_SIGNATURE = "0302041234abcd"
+VERITY_SIGNATURE = "dmVyaXR5IHNpZ25hdHVyZQ=="
+VERITY_ALGO = 2
+
+# A file signature too large for the reserved space rpm keeps in the
+# signature header, which is 4128 bytes.
+RESERVED_SIZE = 4128
+LARGE_FILE_SIGNATURE = "03" + "ab" * RESERVED_SIZE
+
+# The reserved space tag each format carries in its signature header
+RESERVED_TAGS = {"4": 1008, "6": 999}
+
+# rpm reads the verity signatures starting with 4.17.0
+HAVE_VERITY = rpm_at_least("4.17.0")
+
+# The formats this rpm can create packages in
+FORMATS = ["4", "6"] if HAVE_RPM_FORMAT_SIX else ["4"]
+
+
+def signature_header(pkg):
+    """Return the index entries of the signature header of an RPM"""
+    f = open(pkg, "rb")
+    f.seek(96)
+    entries, data = read_header(f)
+    f.close()
+
+    return entries
+
+
+def signature_size(pkg):
+    """Return the size of the signature header of an RPM, padding left out"""
+    f = open(pkg, "rb")
+    f.seek(96)
+    entries, data = read_header(f)
+    f.close()
+
+    return 16 + 16 * len(entries) + len(data)
+
+
+def entry_count(entries, tag):
+    """Return the count field of one header index entry"""
+    for entry in entries:
+        if entry[0] == tag:
+            return entry[3]
+
+    return None
+
+
+def sign_files(path, filename, signature=FILE_SIGNATURE):
+    """Give one file in a header.json a file and a verity signature"""
+    f = open(path)
+    header = json.load(f)
+    f.close()
+
+    for entry in header["files"]:
+        if entry["path"] == filename:
+            entry["signature"] = signature
+            entry["verity"] = VERITY_SIGNATURE
+
+    header["tags"].append(
+        {"tag": "Veritysignaturealgo", "type": "int32", "value": VERITY_ALGO}
+    )
 
     f = open(path, "w")
     json.dump(header, f)
@@ -557,6 +634,346 @@ class VerifyCreateFormatFileSignatures(TestUnpackRPM):
                 ["rpm", "--define", "_pkgverify_level digest", "-K", pkg]
             )
             self.assertEqual(rc, 0, msg=out + err)
+
+
+class FileSignatures(object):
+    """
+    Mixin for the file signature tests.  The extracted tree gets a file
+    and a verity signature on its one file.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.readme = "/usr/share/doc/%s/README" % NAME
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file(self.readme, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        sign_files(self.header, self.readme)
+
+    def create(self, name, fmt, tree=None):
+        """Create a package of the given format and return its path"""
+        pkg = os.path.join(self.output_dir, name)
+        tree = self.output_dir if tree is None else tree
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", fmt, "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # rpm(8) turns away a package that gets this wrong
+        rc, out, err = run_tarpm(
+            ["rpm", "--define", "_pkgverify_level digest", "-K", pkg]
+        )
+        self.assertEqual(rc, 0, msg=out + err)
+
+        return pkg
+
+    def extract(self, pkg, where):
+        """Extract a package and return its header.json and signature.json"""
+        out_dir = os.path.join(self.output_dir, where)
+        os.makedirs(out_dir)
+
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", out_dir])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(out_dir, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        f = open(os.path.join(out_dir, "signature.json"))
+        signature = json.load(f)
+        f.close()
+
+        return (out_dir, header, signature)
+
+    def assertNoFileSignatures(self, pkg):
+        """Check that no header of a package carries file signatures"""
+        tags = tag_numbers(signature_header(pkg))
+
+        for tag in FILE_SIGNATURE_TAGS:
+            self.assertFalse(tag in tags, msg="signature header carries %d" % tag)
+
+        entries, data = main_header(pkg)
+        tags = tag_numbers(entries)
+
+        for tag in MAIN_FILE_SIGNATURE_TAGS:
+            self.assertFalse(tag in tags, msg="main header carries %d" % tag)
+
+        return
+
+    def assertFileSignatures(self, pkg, signature=FILE_SIGNATURE):
+        """Check that a package carries the file signatures we gave it"""
+        tags = tag_numbers(signature_header(pkg))
+
+        for tag in FILE_SIGNATURE_TAGS:
+            self.assertTrue(tag in tags, msg="signature header is missing %d" % tag)
+
+        entries, data = main_header(pkg)
+        tags = tag_numbers(entries)
+
+        for tag in MAIN_FILE_SIGNATURE_TAGS:
+            self.assertFalse(tag in tags, msg="main header carries %d" % tag)
+
+        # rpm(8) reads them back for the file they sign
+        qf = "[%{FILENAMES}|%{FILESIGNATURES}|%{VERITYSIGNATURES}\n]"
+        lines = query(pkg, qf).splitlines()
+        line = "%s|%s|%s" % (self.readme, signature, VERITY_SIGNATURE)
+        self.assertTrue(line in lines, msg=lines)
+
+        qf = "%{FILESIGNATURELENGTH}|%{VERITYSIGNATUREALGO}"
+        self.assertEqual(query(pkg, qf), "%d|%d" % (len(signature) // 2, VERITY_ALGO))
+
+        return
+
+    def assertExtractedSignatures(self, pkg, where):
+        """Check that extracting a package puts the signatures with the file"""
+        out_dir, header, signature = self.extract(pkg, where)
+
+        for entry in header["files"]:
+            if entry["path"] == self.readme:
+                self.assertEqual(entry.get("signature"), FILE_SIGNATURE)
+                self.assertEqual(entry.get("verity"), VERITY_SIGNATURE)
+            else:
+                # an empty one gets no key
+                self.assertFalse("signature" in entry, msg=entry["path"])
+                self.assertFalse("verity" in entry, msg=entry["path"])
+
+        self.assertEqual(header_tags(header).get("Veritysignaturealgo"), VERITY_ALGO)
+
+        names = [tag["tag"] for tag in signature["tags"]]
+
+        for name in [
+            "Filesignatures",
+            "Filesignaturelength",
+            "Veritysignatures",
+            "Veritysignaturealgo",
+        ]:
+            self.assertFalse(name in names, msg="signature.json carries %s" % name)
+
+        return out_dir
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyCreateFormatSixFileSignatures(FileSignatures, TestUnpackRPM):
+    """A v6 package keeps the file signatures in the signature header"""
+
+    def runTest(self):
+        super().runTest()
+
+        six = self.create("six.rpm", "6")
+        self.assertFileSignatures(six)
+        self.assertExtractedSignatures(six, "again")
+
+
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0 and has no verity tags")
+class VerifyCreateFormatFourFileSignatures(FileSignatures, TestUnpackRPM):
+    """A v4 package keeps the file signatures in the signature header"""
+
+    def runTest(self):
+        super().runTest()
+
+        four = self.create("four.rpm", "4")
+        self.assertFileSignatures(four)
+        self.assertExtractedSignatures(four, "again")
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyFormatRoundTripFileSignatures(FileSignatures, TestUnpackRPM):
+    """The file signatures survive switching formats both ways"""
+
+    def runTest(self):
+        super().runTest()
+
+        six = self.create("six.rpm", "6")
+        six_dir = self.assertExtractedSignatures(six, "six")
+
+        four = self.create("four.rpm", "4", six_dir)
+        self.assertFileSignatures(four)
+        four_dir = self.assertExtractedSignatures(four, "four")
+
+        back = self.create("back.rpm", "6", four_dir)
+        self.assertFileSignatures(back)
+
+
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0 and has no verity tags")
+class VerifyCreateDropsChangedFileSignatures(FileSignatures, TestUnpackRPM):
+    """A file whose contents changed loses its signatures"""
+
+    def runTest(self):
+        super().runTest()
+
+        readme = os.path.join(self.output_dir, "payload", self.readme[1:])
+        f = open(readme, "w")
+        f.write("something else\n")
+        f.close()
+
+        for fmt in FORMATS:
+            pkg = os.path.join(self.output_dir, "pkg%s.rpm" % fmt)
+            rc, out, err = run_tarpm(
+                [self.tarpm, "-c", "-F", fmt, "-f", pkg, self.output_dir]
+            )
+            self.assertEqual(rc, 0, msg=err)
+            self.assertTrue("%s changed" % self.readme in err, msg=err)
+
+            self.assertNoFileSignatures(pkg)
+
+
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0 and has no verity tags")
+class VerifyCreateFileSignaturesKeepSignatureSize(FileSignatures, TestUnpackRPM):
+    """
+    The file signatures come out of the reserved space, so the
+    signature header is the same size with them as without them.
+    rpmsign(1) does the same.
+    """
+
+    def runTest(self):
+        # the tree as extracted, before we sign anything
+        TestUnpackRPM.runTest(self)
+
+        for fmt in FORMATS:
+            plain = self.create("plain%s.rpm" % fmt, fmt)
+
+        sign_files(self.header, self.readme)
+
+        for fmt in FORMATS:
+            plain = os.path.join(self.output_dir, "plain%s.rpm" % fmt)
+            signed = self.create("signed%s.rpm" % fmt, fmt)
+            self.assertFileSignatures(signed)
+
+            self.assertEqual(signature_size(signed), signature_size(plain))
+
+            tag = RESERVED_TAGS[fmt]
+            before = entry_count(signature_header(plain), tag)
+            after = entry_count(signature_header(signed), tag)
+            self.assertEqual(before, RESERVED_SIZE)
+            self.assertTrue(after < before, msg="%d is not below %d" % (after, before))
+
+
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0 and has no verity tags")
+class VerifyCreateFileSignaturesTooLarge(FileSignatures, TestUnpackRPM):
+    """
+    File signatures too large for the reserved space leave it alone and
+    the signature header grows.  rpmsign(1) does the same.
+    """
+
+    def runTest(self):
+        TestUnpackRPM.runTest(self)
+
+        for fmt in FORMATS:
+            plain = self.create("plain%s.rpm" % fmt, fmt)
+
+        sign_files(self.header, self.readme, LARGE_FILE_SIGNATURE)
+
+        for fmt in FORMATS:
+            plain = os.path.join(self.output_dir, "plain%s.rpm" % fmt)
+            signed = self.create("signed%s.rpm" % fmt, fmt)
+            self.assertFileSignatures(signed, LARGE_FILE_SIGNATURE)
+
+            self.assertTrue(signature_size(signed) > signature_size(plain))
+
+            tag = RESERVED_TAGS[fmt]
+            self.assertEqual(entry_count(signature_header(signed), tag), RESERVED_SIZE)
+
+
+class VerifyCreateFormatFourMainHeaderFileSignatures(FileSignatures, TestUnpackRPM):
+    """
+    An older rpmsign(1) left the file signatures in the main header of
+    a v4 package.  rpm(8) turns away a package with them in both
+    headers, so the main header ones win.
+    """
+
+    def runTest(self):
+        super().runTest()
+
+        # one signature per file in the file list
+        f = open(self.header)
+        header = json.load(f)
+        f.close()
+
+        add_string_array_tag(
+            self.header, "Filesignatures", ["0302"] * len(header["files"])
+        )
+
+        four = os.path.join(self.output_dir, "four.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-F", "4", "-f", four, self.output_dir]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertTrue("main header carries Filesignatures" in err, msg=err)
+
+        entries, data = main_header(four)
+        self.assertTrue(5090 in tag_numbers(entries))
+
+        tags = tag_numbers(signature_header(four))
+        self.assertFalse(274 in tags, msg="signature header carries 274")
+        self.assertFalse(275 in tags, msg="signature header carries 275")
+
+        rc, out, err = run_tarpm(
+            ["rpm", "--define", "_pkgverify_level digest", "-K", four]
+        )
+        self.assertEqual(rc, 0, msg=out + err)
+
+
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0")
+class VerifyExtractMainHeaderFileSignatures(FileSignatures, TestUnpackRPM):
+    """
+    The file signatures an older rpmsign(1) left in the main header of
+    a v4 package go to the files array, so either format gets them.
+    """
+
+    def runTest(self):
+        # the tree as extracted, before we sign anything
+        TestUnpackRPM.runTest(self)
+
+        f = open(self.header)
+        header = json.load(f)
+        f.close()
+
+        signatures = [
+            FILE_SIGNATURE if entry["path"] == self.readme else ""
+            for entry in header["files"]
+        ]
+        add_string_array_tag(self.header, "Filesignatures", signatures)
+
+        # a v4 package with the file signatures in its main header
+        old = self.create("old.rpm", "4")
+        entries, data = main_header(old)
+        self.assertTrue(5090 in tag_numbers(entries))
+        self.assertFalse(274 in tag_numbers(signature_header(old)))
+
+        out_dir, header, signature = self.extract(old, "old")
+
+        for entry in header["files"]:
+            if entry["path"] == self.readme:
+                self.assertEqual(entry.get("signature"), FILE_SIGNATURE)
+            else:
+                self.assertFalse("signature" in entry, msg=entry["path"])
+
+        tags = header_tags(header)
+        self.assertFalse("Filesignatures" in tags)
+        self.assertFalse("Filesignaturelength" in tags)
+
+        # both formats put them in the signature header now
+        for fmt in FORMATS:
+            pkg = self.create("new%s.rpm" % fmt, fmt, out_dir)
+
+            entries, data = main_header(pkg)
+            self.assertFalse(5090 in tag_numbers(entries))
+            self.assertFalse(5091 in tag_numbers(entries))
+
+            tags = tag_numbers(signature_header(pkg))
+            self.assertTrue(274 in tags, msg="signature header is missing 274")
+            self.assertTrue(275 in tags, msg="signature header is missing 275")
+
+            qf = "[%{FILENAMES}|%{FILESIGNATURES}\n]"
+            lines = query(pkg, qf).splitlines()
+            line = "%s|%s" % (self.readme, FILE_SIGNATURE)
+            self.assertTrue(line in lines, msg=lines)
 
 
 class VerifyCreateFormatFourSizeTags(TestUnpackRPM):

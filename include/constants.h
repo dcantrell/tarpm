@@ -338,6 +338,14 @@
 #define RPM_FILE_FLAGS_DESC            "flags"
 #define RPM_FILE_VERIFYFLAGS_DESC      "verifyflags"
 #define RPM_FILE_PROVIDES_DESC         "provides"
+#define RPM_FILE_SIGNATURE_DESC        "signature"
+#define RPM_FILE_VERITY_DESC           "verity"
+
+/*
+ * The fs-verity hash algorithm rpmsign(1) uses when %_verity_algorithm
+ * names none.  FS_VERITY_HASH_ALG_SHA256 in linux/fsverity.h.
+ */
+#define RPM_VERITY_ALGO_DEFAULT        1
 
 /* file metadata we can take from the payload tree */
 /*

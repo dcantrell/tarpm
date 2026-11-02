@@ -103,11 +103,45 @@ is_read_only_tag(struct json_object *entry)
 static bool
 is_skipped_tag(struct json_object *entry, bool is_signature)
 {
+    rpmTagVal tag = 0;
+
     if (is_signature) {
-        return is_rpmsign_tag(get_tag_number(entry, true));
+        tag = get_tag_number(entry, true);
+
+        /* the file and verity signatures come from header.json */
+        if (is_file_signature_tag(tag)) {
+            return false;
+        }
+
+        return is_rpmsign_tag(tag);
     }
 
     return is_read_only_tag(entry);
+}
+
+/*
+ * The verity algorithm lives in header.json with the verity
+ * signatures the "files" array holds, but rpm(8) rejects a main
+ * header that carries either one.  Both belong in the signature
+ * header.
+ */
+static void
+drop_verity_tags(struct json_object *tags)
+{
+    size_t i = 0;
+    rpmTagVal tag = 0;
+
+    while (i < json_object_array_length(tags)) {
+        tag = get_tag_number(json_object_array_get_idx(tags, i), false);
+
+        if (tag == RPMSIGTAG_VERITYSIGNATURES_VALUE || tag == RPMSIGTAG_VERITYSIGNATUREALGO_VALUE) {
+            json_object_array_del_idx(tags, i, 1);
+        } else {
+            i++;
+        }
+    }
+
+    return;
 }
 
 /* Free the file contents collected by read_tag_files(). */
@@ -1105,6 +1139,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
      */
     if (!is_signature) {
         filter_format_tags(tags_copy, rpmformat);
+        drop_verity_tags(tags_copy);
     }
 
     /* lay the header out the way rpm would have written it */

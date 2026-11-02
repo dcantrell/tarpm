@@ -130,6 +130,9 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
         return -1;
     }
 
+    /* move the file and verify signatures to the "files" array */
+    move_file_signatures(signature, header);
+
     /* close the RPM after reading headers */
     if (close(rpmfd) == -1) {
         warn("close");

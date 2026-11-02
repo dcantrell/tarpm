@@ -387,6 +387,26 @@ is_rpmsign_tag(uint32_t tag)
     return false;
 }
 
+/*
+ * Returns true if the tag is one of the file or verity signature tags.
+ * rpmsign(1) makes these too, but they sign the files rather than the
+ * package, so they still hold once we rebuild it.  The "files" array
+ * in header.json carries them.
+ */
+bool
+is_file_signature_tag(uint32_t tag)
+{
+    switch (tag) {
+        case RPMSIGTAG_FILESIGNATURES_VALUE:
+        case RPMSIGTAG_FILESIGNATURELENGTH_VALUE:
+        case RPMSIGTAG_VERITYSIGNATURES_VALUE:
+        case RPMSIGTAG_VERITYSIGNATUREALGO_VALUE:
+            return true;
+    }
+
+    return false;
+}
+
 static uint32_t
 sig_tag_number(const char *tag)
 {

@@ -2796,6 +2796,379 @@ test_add_file_list_tags_override_entries(void)
     return;
 }
 
+/* Build a signature header entry the way read_signature() does */
+static struct json_object *
+signature_entry(const char *name, const char *type, struct json_object *value)
+{
+    struct json_object *entry = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(name));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(type));
+    json_object_object_add(entry, RPM_METADATA_READ_ONLY, json_object_new_string("true"));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, value);
+
+    return entry;
+}
+
+/* Build a JSON array of two strings */
+static struct json_object *
+string_pair(const char *first, const char *second)
+{
+    struct json_object *array = NULL;
+
+    array = json_object_new_array();
+    json_object_array_add(array, json_object_new_string(first));
+    json_object_array_add(array, json_object_new_string(second));
+
+    return array;
+}
+
+/* Test move_file_signatures() moving both lists to the files */
+void
+test_move_file_signatures(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *dir = NULL;
+    struct json_object *file = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_array_add(sigtags, signature_entry("Sha256", "string", json_object_new_string("abc")));
+    json_object_array_add(sigtags, signature_entry("Filesignatures", "string array", string_pair("", "0302aabb")));
+    json_object_array_add(sigtags, signature_entry("Filesignaturelength", "int32", json_object_new_int(4)));
+    json_object_array_add(sigtags, signature_entry("Veritysignatures", "string array", string_pair("", "dmVyaXR5")));
+    json_object_array_add(sigtags, signature_entry("Veritysignaturealgo", "int32", json_object_new_int(2)));
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    header = json_object_new_object();
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    dir = add_file(files, "/usr/bin");
+    file = add_file(files, "/usr/bin/hi");
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, tags);
+    json_object_object_add(header, RPM_FILES_DESC, files);
+
+    move_file_signatures(signature, header);
+
+    /* the signatures sit with the file they sign */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, RPM_FILE_SIGNATURE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "0302aabb");
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, RPM_FILE_VERITY_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "dmVyaXR5");
+
+    /* an empty value gets no key */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(dir, RPM_FILE_SIGNATURE_DESC, NULL));
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(dir, RPM_FILE_VERITY_DESC, NULL));
+
+    /* nothing but the digest is left in the signature */
+    TARPM_ASSERT_EQUAL(json_object_array_length(sigtags), 1);
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(sigtags, "Sha256"));
+
+    /* the verity algorithm moved to the header tags and can be edited there */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 1);
+    entry = json_object_array_get_idx(tags, 0);
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(entry, RPM_METADATA_READ_ONLY, NULL));
+    TARPM_ASSERT_EQUAL(json_object_get_int(get_tag_values(tags, "Veritysignaturealgo")), 2);
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Test move_file_signatures() with a list that does not match the files */
+void
+test_move_file_signatures_mismatch(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    value = json_object_new_array();
+    json_object_array_add(value, json_object_new_string("0302aabb"));
+    json_object_array_add(sigtags, signature_entry("Filesignatures", "string array", value));
+    json_object_array_add(sigtags, signature_entry("Filesignaturelength", "int32", json_object_new_int(4)));
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    header = json_object_new_object();
+    files = json_object_new_array();
+    add_file(files, "/usr/bin");
+    file = add_file(files, "/usr/bin/hi");
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_new_array());
+    json_object_object_add(header, RPM_FILES_DESC, files);
+
+    move_file_signatures(signature, header);
+
+    /* the list stays in the signature with its length */
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, RPM_FILE_SIGNATURE_DESC, NULL));
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(sigtags, "Filesignatures"));
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(sigtags, "Filesignaturelength"));
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Test move_file_signatures() with the file signatures in the main header */
+void
+test_move_file_signatures_main_header(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *dir = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    /* the way an older rpmsign left a v4 format package */
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    header = json_object_new_object();
+    tags = json_object_new_array();
+    json_object_array_add(tags, signature_entry("Name", "string", json_object_new_string("hi")));
+    json_object_array_add(tags, signature_entry("Filesignatures", "string array", string_pair("", "0302aabb")));
+    json_object_array_add(tags, signature_entry("Filesignaturelength", "int32", json_object_new_int(4)));
+    files = json_object_new_array();
+    dir = add_file(files, "/usr/bin");
+    file = add_file(files, "/usr/bin/hi");
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, tags);
+    json_object_object_add(header, RPM_FILES_DESC, files);
+
+    move_file_signatures(signature, header);
+
+    /* the signatures sit with the file they sign */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, RPM_FILE_SIGNATURE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "0302aabb");
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(dir, RPM_FILE_SIGNATURE_DESC, NULL));
+
+    /* and the main header tags are gone */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 1);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, "Filesignatures"));
+    TARPM_ASSERT_PTR_NULL(get_tag_values(tags, "Filesignaturelength"));
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Test move_file_signatures() with the file signatures in both headers */
+void
+test_move_file_signatures_both_headers(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_array_add(sigtags, signature_entry("Filesignatures", "string array", string_pair("", "0302aabb")));
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    header = json_object_new_object();
+    tags = json_object_new_array();
+    json_object_array_add(tags, signature_entry("Filesignatures", "string array", string_pair("", "0302ccdd")));
+    files = json_object_new_array();
+    add_file(files, "/usr/bin");
+    file = add_file(files, "/usr/bin/hi");
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, tags);
+    json_object_object_add(header, RPM_FILES_DESC, files);
+
+    move_file_signatures(signature, header);
+
+    /* the signature header ones win and the main header ones stay put */
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, RPM_FILE_SIGNATURE_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "0302aabb");
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(tags, "Filesignatures"));
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Build header data holding the given files array and no tags */
+static struct json_object *
+signed_header(struct json_object *files)
+{
+    struct json_object *header = NULL;
+
+    header = json_object_new_object();
+    json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_new_array());
+    json_object_object_add(header, RPM_FILES_DESC, files);
+
+    return header;
+}
+
+/* Test add_file_signature_tags() building the lists from the files */
+void
+test_add_file_signature_tags(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    files = json_object_new_array();
+    file = add_file(files, "/usr/bin/a");
+    json_object_object_add(file, RPM_FILE_SIGNATURE_DESC, json_object_new_string("0302aabb"));
+    add_file(files, "/usr/bin/b");
+    file = add_file(files, "/usr/bin/c");
+    json_object_object_add(file, RPM_FILE_SIGNATURE_DESC, json_object_new_string("0302aabbccdd"));
+    json_object_object_add(file, RPM_FILE_VERITY_DESC, json_object_new_string("dmVyaXR5"));
+    header = signed_header(files);
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    add_file_signature_tags(signature, header, NULL, RPM_FORMAT_V6);
+
+    /* one value per file and an empty one for a file with none */
+    value = get_tag_values(sigtags, "Filesignatures");
+    TARPM_ASSERT_PTR_NOT_NULL(value);
+    TARPM_ASSERT_EQUAL(json_object_array_length(value), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 0)), "0302aabb");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 1)), "");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 2)), "0302aabbccdd");
+
+    /* the length is the longest signature in bytes */
+    TARPM_ASSERT_EQUAL(json_object_get_int(get_tag_values(sigtags, "Filesignaturelength")), 6);
+
+    value = get_tag_values(sigtags, "Veritysignatures");
+    TARPM_ASSERT_PTR_NOT_NULL(value);
+    TARPM_ASSERT_EQUAL(json_object_array_length(value), 3);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 0)), "");
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(value, 2)), "dmVyaXR5");
+
+    /* the header names no verity algorithm, so we use the rpmsign default */
+    TARPM_ASSERT_EQUAL(json_object_get_int(get_tag_values(sigtags, "Veritysignaturealgo")), RPM_VERITY_ALGO_DEFAULT);
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Test add_file_signature_tags() with nothing signed */
+void
+test_add_file_signature_tags_none(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *entry = NULL;
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    /* no file carries a signature */
+    files = json_object_new_array();
+    add_file(files, "/usr/bin/a");
+    header = signed_header(files);
+
+    add_file_signature_tags(signature, header, NULL, RPM_FORMAT_V6);
+    TARPM_ASSERT_EQUAL(json_object_array_length(sigtags), 0);
+    json_object_put(header);
+
+    /* a source package carries none even with a signed file */
+    files = json_object_new_array();
+    file = add_file(files, "a.tar.gz");
+    json_object_object_add(file, RPM_FILE_SIGNATURE_DESC, json_object_new_string("0302aabb"));
+    header = signed_header(files);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string("Sourcepackage"));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_int(1));
+    json_object_array_add(json_object_object_get(header, RPM_ENTRY_TAGS_DESC), entry);
+
+    add_file_signature_tags(signature, header, NULL, RPM_FORMAT_V6);
+    TARPM_ASSERT_EQUAL(json_object_array_length(sigtags), 0);
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
+/* Test add_file_signature_tags() with file signatures in a v4 main header */
+void
+test_add_file_signature_tags_main_header(void)
+{
+    struct json_object *signature = NULL;
+    struct json_object *sigtags = NULL;
+    struct json_object *header = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *entry = NULL;
+
+    files = json_object_new_array();
+    file = add_file(files, "/usr/bin/a");
+    json_object_object_add(file, RPM_FILE_SIGNATURE_DESC, json_object_new_string("0302aabb"));
+    json_object_object_add(file, RPM_FILE_VERITY_DESC, json_object_new_string("dmVyaXR5"));
+    header = signed_header(files);
+
+    /* the way an older rpmsign left a v4 format package */
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string("Filesignatures"));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, string_pair("0302aabb", ""));
+    json_object_array_add(json_object_object_get(header, RPM_ENTRY_TAGS_DESC), entry);
+
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    /* a v4 format package keeps the main header ones and no others */
+    add_file_signature_tags(signature, header, NULL, RPM_FORMAT_V4);
+    TARPM_ASSERT_PTR_NULL(get_tag_values(sigtags, "Filesignatures"));
+    TARPM_ASSERT_PTR_NULL(get_tag_values(sigtags, "Filesignaturelength"));
+
+    /* the verity signatures never go in a main header, so they stay */
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(sigtags, "Veritysignatures"));
+    json_object_put(signature);
+
+    /* a v6 format package drops the main header ones instead */
+    signature = json_object_new_object();
+    sigtags = json_object_new_array();
+    json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, sigtags);
+
+    add_file_signature_tags(signature, header, NULL, RPM_FORMAT_V6);
+    TARPM_ASSERT_PTR_NOT_NULL(get_tag_values(sigtags, "Filesignatures"));
+
+    json_object_put(signature);
+    json_object_put(header);
+
+    return;
+}
+
 /* Test is_file_list_tag() with file list tags */
 void
 test_is_file_list_tag_file_list_tags(void)
@@ -2896,6 +3269,13 @@ get_suite(void)
         CU_add_test(pSuite, "test add_file_list_tags() with the linkto override", test_add_file_list_tags_override_linkto) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with every payload override", test_add_file_list_tags_override_all) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() writes the payload overrides back", test_add_file_list_tags_override_entries) == NULL ||
+        CU_add_test(pSuite, "test move_file_signatures()", test_move_file_signatures) == NULL ||
+        CU_add_test(pSuite, "test move_file_signatures() with a mismatched list", test_move_file_signatures_mismatch) == NULL ||
+        CU_add_test(pSuite, "test move_file_signatures() with a signed v4 main header", test_move_file_signatures_main_header) == NULL ||
+        CU_add_test(pSuite, "test move_file_signatures() with both headers signed", test_move_file_signatures_both_headers) == NULL ||
+        CU_add_test(pSuite, "test add_file_signature_tags()", test_add_file_signature_tags) == NULL ||
+        CU_add_test(pSuite, "test add_file_signature_tags() with nothing signed", test_add_file_signature_tags_none) == NULL ||
+        CU_add_test(pSuite, "test add_file_signature_tags() with a v4 main header signed", test_add_file_signature_tags_main_header) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with file list tags", test_is_file_list_tag_file_list_tags) == NULL ||
         CU_add_test(pSuite, "test is_file_list_tag() with other tags", test_is_file_list_tag_other_tags) == NULL) {
         return NULL;

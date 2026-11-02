@@ -119,6 +119,8 @@ extern uint32_t payload_overrides;
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);
+void move_file_signatures(struct json_object *signature, struct json_object *header);
+void add_file_signature_tags(struct json_object *signature, struct json_object *header, const char *payload_dir, const int format);
 bool is_file_list_tag(rpmTagVal tag);
 
 /* class.c */
@@ -147,6 +149,7 @@ uint32_t buildtime_value(const char *timestamp);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
 bool is_rpmsign_tag(uint32_t tag);
+bool is_file_signature_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
 rpmTagVal renamed_tag_number(const char *tag);
 bool has_tag(const struct json_object *tags, const char *name);

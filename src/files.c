@@ -2548,6 +2548,24 @@ add_file_provides(struct file_list_build *build, struct json_object *file, const
 }
 
 /*
+ * The file and verity signatures sign what is in a file, so a file
+ * whose contents changed loses them.
+ */
+static void
+drop_file_signatures(struct json_object *file, const char *path)
+{
+    if (!json_object_object_get_ex(file, RPM_FILE_SIGNATURE_DESC, NULL) && !json_object_object_get_ex(file, RPM_FILE_VERITY_DESC, NULL)) {
+        return;
+    }
+
+    warnx(_("*** %s changed, dropping its file signatures"), path);
+    json_object_object_del(file, RPM_FILE_SIGNATURE_DESC);
+    json_object_object_del(file, RPM_FILE_VERITY_DESC);
+
+    return;
+}
+
+/*
  * Add one file entry to the lists.  Every list gets a value so they
  * all stay parallel to the file list.  Entries that are gone from the
  * payload tree are left out.
@@ -2630,6 +2648,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     if (olddigest != NULL && strcmp(olddigest, str)) {
         set_file_class(file, path, file_path, psb);
         set_file_mime(file, path, file_path, psb);
+        drop_file_signatures(file, path);
     }
 
     /*
@@ -2913,6 +2932,256 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         json_object_put(out.dependsdict);
         json_object_put(out.filedependsx);
         json_object_put(out.filedependsn);
+    }
+
+    return;
+}
+
+/* Return where a tag sits in the tags array, -1 if not found */
+static int
+find_tag_index(struct json_object *tags, const rpmTagVal tag, const bool signature)
+{
+    size_t i = 0;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        if (get_tag_number(json_object_array_get_idx(tags, i), signature) == tag) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/*
+ * Move one per-file signature list out of the tags of the signature
+ * header or the main header and in to the "files" array under key.
+ * An empty value gets no key.  A list that does not match the file
+ * list stays where it is.  Returns true if the list moved.
+ */
+static bool
+move_signature_list(struct json_object *sigtags, struct json_object *files, const rpmTagVal tag, const char *key, const bool signature)
+{
+    size_t i = 0;
+    int idx = -1;
+    const char *str = NULL;
+    struct json_object *value = NULL;
+
+    idx = find_tag_index(sigtags, tag, signature);
+
+    if (idx < 0) {
+        return false;
+    }
+
+    if (!json_object_object_get_ex(json_object_array_get_idx(sigtags, idx), RPM_ENTRY_VALUE_DESC, &value)
+        || json_object_get_type(value) != json_type_array
+        || json_object_array_length(value) != json_object_array_length(files)) {
+        if (signature) {
+            warnx(_("*** %s does not match the file list, leaving it in %s"), sig_tag_name(tag), OUTPUT_SIGNATURE);
+        } else {
+            warnx(_("*** %s does not match the file list, leaving it in %s"), rpmTagGetName(tag), OUTPUT_HEADER);
+        }
+
+        return false;
+    }
+
+    for (i = 0; i < json_object_array_length(files); i++) {
+        str = json_object_get_string(json_object_array_get_idx(value, i));
+
+        if (str != NULL && str[0] != '\0') {
+            json_object_object_add(json_object_array_get_idx(files, i), key, json_object_new_string(str));
+        }
+    }
+
+    json_object_array_del_idx(sigtags, idx, 1);
+
+    return true;
+}
+
+/*
+ * Move the file signatures and the verity signatures from the
+ * signature header structure to the "files" array so they are visible
+ * with the files they sign.  We work the signature length out again
+ * when we create a package, so it goes away.  The verity algorithm
+ * cannot be determined, so it moves to the header tags.
+ *
+ * An older rpmsign(1) put the file signatures in the main header of a
+ * v4 format package instead.  Those go to the "files" array too.
+ * rpm(8) rejects a package with them in both headers, so we leave the
+ * main header ones alone if the signature header had any.
+ */
+void
+move_file_signatures(struct json_object *signature, struct json_object *header)
+{
+    int idx = -1;
+    struct json_object *sigtags = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *entry = NULL;
+
+    if (signature == NULL || header == NULL) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(signature, RPM_ENTRY_TAGS_DESC, &sigtags) || json_object_get_type(sigtags) != json_type_array) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files) || json_object_get_type(files) != json_type_array) {
+        return;
+    }
+
+    if (move_signature_list(sigtags, files, RPMSIGTAG_FILESIGNATURES_VALUE, RPM_FILE_SIGNATURE_DESC, true)) {
+        idx = find_tag_index(sigtags, RPMSIGTAG_FILESIGNATURELENGTH_VALUE, true);
+
+        if (idx >= 0) {
+            json_object_array_del_idx(sigtags, idx, 1);
+        }
+    } else if (move_signature_list(tags, files, RPMTAG_FILESIGNATURES, RPM_FILE_SIGNATURE_DESC, false)) {
+        idx = find_tag_index(tags, RPMTAG_FILESIGNATURELENGTH, false);
+
+        if (idx >= 0) {
+            json_object_array_del_idx(tags, idx, 1);
+        }
+    }
+
+    if (move_signature_list(sigtags, files, RPMSIGTAG_VERITYSIGNATURES_VALUE, RPM_FILE_VERITY_DESC, true)) {
+        idx = find_tag_index(sigtags, RPMSIGTAG_VERITYSIGNATUREALGO_VALUE, true);
+
+        if (idx >= 0) {
+            /* it is ours to edit in header.json */
+            entry = json_object_get(json_object_array_get_idx(sigtags, idx));
+            json_object_array_del_idx(sigtags, idx, 1);
+            json_object_object_del(entry, RPM_METADATA_READ_ONLY);
+            json_object_array_add(tags, entry);
+        }
+    }
+
+    return;
+}
+
+/*
+ * Given a value and type, create a signature header tag and return it
+ * as JSON object.
+ */
+static struct json_object *
+new_signature_entry(const rpmTagVal tag, const rpmTagType type, struct json_object *value)
+{
+    struct json_object *entry = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(sig_tag_name(tag)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, value);
+
+    return entry;
+}
+
+/*
+ * Add the file signatures and the verity signatures in the "files"
+ * array to the signature header strucutre.  Each list holds one value
+ * per file in the file list, an empty string for a file with none, so
+ * we keep the same files add_file_list_tags() does.  A list with
+ * nothing in it stays out.
+ */
+void
+add_file_signature_tags(struct json_object *signature, struct json_object *header, const char *payload_dir, const int format)
+{
+    size_t i = 0;
+    size_t len = 0;
+    size_t siglen = 0;
+    bool have_signatures = false;
+    bool have_verity = false;
+    const char *path = NULL;
+    const char *str = NULL;
+    uint32_t algo = RPM_VERITY_ALGO_DEFAULT;
+    struct json_object *sigtags = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *signatures = NULL;
+    struct json_object *verity = NULL;
+
+    if (signature == NULL || header == NULL) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(signature, RPM_ENTRY_TAGS_DESC, &sigtags) || json_object_get_type(sigtags) != json_type_array) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
+        return;
+    }
+
+    if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files) || json_object_get_type(files) != json_type_array) {
+        return;
+    }
+
+    /* rpmsign(1) does not sign the files of a source package */
+    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+        return;
+    }
+
+    signatures = json_object_new_array();
+    verity = json_object_new_array();
+
+    for (i = 0; i < json_object_array_length(files); i++) {
+        file = json_object_array_get_idx(files, i);
+        path = key_string(file, RPM_FILE_PATH_DESC, NULL);
+
+        if (path == NULL || missing_from_payload(file, path, payload_dir)) {
+            continue;
+        }
+
+        str = key_string(file, RPM_FILE_SIGNATURE_DESC, "");
+        json_object_array_add(signatures, json_object_new_string(str));
+        have_signatures |= (str[0] != '\0');
+
+        /* the length rpm wants is in bytes and the signature is hex */
+        len = strlen(str) / 2;
+
+        if (len > siglen) {
+            siglen = len;
+        }
+
+        str = key_string(file, RPM_FILE_VERITY_DESC, "");
+        json_object_array_add(verity, json_object_new_string(str));
+        have_verity |= (str[0] != '\0');
+    }
+
+    /*
+     * An older rpmsign(1) put the file signatures in the main header of
+     * a v4 format package.  rpm(8) turns away a package with them in
+     * both headers, so the main header ones win.  filter_format_tags()
+     * takes them out of a v6 format package.
+     */
+    if (have_signatures && format == RPM_FORMAT_V4 && has_tag(tags, rpmTagGetName(RPMTAG_FILESIGNATURES))) {
+        warnx(_("*** the main header carries %s, leaving the file signatures out of the signature header"), rpmTagGetName(RPMTAG_FILESIGNATURES));
+        have_signatures = false;
+    }
+
+    if (have_signatures) {
+        json_object_array_add(sigtags, new_signature_entry(RPMSIGTAG_FILESIGNATURES_VALUE, RPM_STRING_ARRAY_TYPE, signatures));
+        json_object_array_add(sigtags, new_signature_entry(RPMSIGTAG_FILESIGNATURELENGTH_VALUE, RPM_INT32_TYPE, json_object_new_int64(siglen)));
+    } else {
+        json_object_put(signatures);
+    }
+
+    if (have_verity) {
+        str = get_tag_value(tags, sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE));
+
+        if (str != NULL) {
+            algo = strtoul(str, NULL, 10);
+        }
+
+        json_object_array_add(sigtags, new_signature_entry(RPMSIGTAG_VERITYSIGNATURES_VALUE, RPM_STRING_ARRAY_TYPE, verity));
+        json_object_array_add(sigtags, new_signature_entry(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE, RPM_INT32_TYPE, json_object_new_int64(algo)));
+    } else {
+        json_object_put(verity);
     }
 
     return;
