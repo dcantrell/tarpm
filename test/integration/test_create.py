@@ -701,7 +701,11 @@ class CreateRejectsBadRegionTags(RequiresTarpm):
             (
                 [
                     {"tag": "Headerimmutable", "type": "binary blob", "value": region},
-                    {"tag": "Headerimmutable", "type": "binary blob", "value": "A" * 400},
+                    {
+                        "tag": "Headerimmutable",
+                        "type": "binary blob",
+                        "value": "A" * 400,
+                    },
                 ],
                 "carries 2 region tags, only one is allowed",
             ),
