@@ -690,6 +690,38 @@ class CreateRejectsNonStringValue(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsBadRegionTags(RequiresTarpm):
+    """A second region tag, or the signature region tag in the main header, is turned away"""
+
+    def runTest(self):
+        # a region trailer the way rpm writes it, as base64
+        region = "AAAAPwAAAAcAAAAAAAAAEA=="
+
+        cases = [
+            (
+                [
+                    {"tag": "Headerimmutable", "type": "binary blob", "value": region},
+                    {"tag": "Headerimmutable", "type": "binary blob", "value": "A" * 400},
+                ],
+                "carries 2 region tags, only one is allowed",
+            ),
+            (
+                [{"tag": "Headersignatures", "type": "binary blob", "value": region}],
+                "the Headersignatures tag does not belong in this header",
+            ),
+        ]
+
+        for i, (extra, message) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS] + extra
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn(message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateKeepsChangelogBlankLines(RequiresTarpm):
     """Blank lines at either end of a changelog entry survive a round trip"""
 

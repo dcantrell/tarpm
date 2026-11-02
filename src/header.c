@@ -319,6 +319,59 @@ check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bo
 }
 
 /*
+ * The region tag carries the trailer and the header sizing only makes
+ * room for one.  A header carries at most one region tag and it has
+ * to be the one for this kind of header, which is
+ * Headersignatures for the signature header and Headerimmutable for
+ * the main header.
+ *
+ * Returns 0 on success, -1 if the region tags are wrong.
+ */
+static int
+check_region_tags(struct json_object *tags, bool is_signature)
+{
+    int r = 0;
+    size_t i = 0;
+    size_t nregions = 0;
+    rpmTagVal tag_number = 0;
+    rpmTagVal region = is_signature ? HEADER_SIGNATURES : HEADER_IMMUTABLE;
+    struct json_object *entry = NULL;
+
+    if (tags == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (is_skipped_tag(entry, is_signature)) {
+            continue;
+        }
+
+        tag_number = get_tag_number(entry, is_signature);
+
+        if (tag_number != HEADER_SIGNATURES && tag_number != HEADER_IMMUTABLE) {
+            continue;
+        }
+
+        if (tag_number != region) {
+            /* librpm has no name for Headersignatures, so use ours */
+            warnx(_("*** the %s tag does not belong in this header, use %s"), sig_tag_name(tag_number), sig_tag_name(region));
+            r = -1;
+        }
+
+        nregions++;
+    }
+
+    if (nregions > 1) {
+        warnx(_("*** header data carries %zu region tags, only one is allowed"), nregions);
+        r = -1;
+    }
+
+    return r;
+}
+
+/*
  * How many bytes of padding a type needs at this point in the data
  * area.  rpm lines the numbers up on their own size.
  */
@@ -1065,7 +1118,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
+    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);
