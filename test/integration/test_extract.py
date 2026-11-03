@@ -664,6 +664,62 @@ class VerifyUnwritableOutputDirFails(TestUnpackRPM):
         self.assertIn("unable to mkdir", err.decode("utf-8"))
 
 
+class VerifyNevraCannotLeaveWorkingDir(TestUnpackRPM):
+    """Test a Name with "../" does not move the extraction out of cwd"""
+
+    def runTest(self):
+        super().runTest()
+
+        # rpmbuild refuses this name, so put it in with tarpm
+        with open(self.header) as f:
+            header = json.load(f)
+
+        for tag in header["tags"]:
+            if tag["tag"] == "Name":
+                tag["value"] = "../../escaped"
+
+        with open(self.header, "w") as f:
+            json.dump(header, f)
+
+        evil = os.path.join(self.output_dir, "evil.rpm")
+        proc = subprocess.Popen(
+            [self.tarpm, "-c", "-f", evil, self.output_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode("utf-8"))
+        self.assertIn("holds a slash", err.decode("utf-8"))
+
+        # extracting with no -O in work/a/b must not write in work
+        work = os.path.join(self.output_dir, "work")
+        inner = os.path.join(work, "a", "b")
+        os.makedirs(inner)
+
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", evil],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=inner,
+        )
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("cannot be used as a directory name", err.decode("utf-8"))
+        self.assertEqual(sorted(os.listdir(work)), ["a"])
+        self.assertEqual(os.listdir(inner), [])
+
+        # naming the output directory still works
+        named = os.path.join(inner, "named")
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", evil, "-O", named],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode("utf-8"))
+        self.assertTrue(os.path.isfile(os.path.join(named, "header.json")))
+
+
 @unittest.skipUnless(
     HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
 )

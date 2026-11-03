@@ -1924,6 +1924,34 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     return 0;
 }
 
+/*
+ * Warn about a Name, Version or Release holding a slash.  rpmbuild
+ * refuses those, and tarpm -x will not extract the package without
+ * -O since the NEVRA names the output directory.
+ */
+static void
+warn_nevr_slash(struct json_object *header)
+{
+    size_t i = 0;
+    const char *value = NULL;
+    struct json_object *tags = NULL;
+    const rpmTagVal nevr[] = { RPMTAG_NAME, RPMTAG_VERSION, RPMTAG_RELEASE, 0 };
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
+        return;
+    }
+
+    for (i = 0; nevr[i] != 0; i++) {
+        value = get_tag_value(tags, rpmTagGetName(nevr[i]));
+
+        if (value != NULL && strchr(value, '/') != NULL) {
+            warnx(_("*** %s \"%s\" holds a slash, rpmbuild would refuse it"), rpmTagGetName(nevr[i]), value);
+        }
+    }
+
+    return;
+}
+
 /* Handler for -c mode (create) */
 int
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
@@ -2041,6 +2069,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         free(payload_dir);
         return -1;
     }
+
+    warn_nevr_slash(header);
 
     /* pick up the files added to the payload tree */
     if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {

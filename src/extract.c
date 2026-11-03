@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 #include <err.h>
 #include <fcntl.h>
 #include <rpm/header.h>
@@ -44,6 +45,58 @@ write_metadata(struct json_object *data, const char *dest_dir, const char *path,
 }
 
 /*
+ * Returns true if the NEVRA can name a directory in the current
+ * working directory.  It comes from the package header, so a crafted
+ * package could use it to point the extraction somewhere else.  It
+ * has to be one path component that is not "." or "..", and it may
+ * not hold a control character.
+ */
+static bool
+valid_nevra_dir(const char *nevra)
+{
+    size_t i = 0;
+
+    if (nevra == NULL || nevra[0] == '\0' || !strcmp(nevra, ".") || !strcmp(nevra, "..")) {
+        return false;
+    }
+
+    for (i = 0; nevra[i] != '\0'; i++) {
+        if (nevra[i] == '/' || iscntrl((unsigned char) nevra[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * Returns true if path is a directory below dir.  Both have to be
+ * absolute paths with nothing left to resolve.
+ */
+static bool
+below_dir(const char *path, const char *dir)
+{
+    size_t len = 0;
+
+    if (path == NULL || dir == NULL) {
+        return false;
+    }
+
+    len = strlen(dir);
+
+    /* the root directory already ends in a slash */
+    if (len > 0 && dir[len - 1] == '/') {
+        len--;
+    }
+
+    if (strncmp(path, dir, len) || path[len] != '/' || path[len + 1] == '\0') {
+        return false;
+    }
+
+    return true;
+}
+
+/*
  * Work out where the extracted RPM goes.  We use the directory the
  * caller gave us or we make a name from the NEVRA.  The caller has to
  * free it.
@@ -66,6 +119,12 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
         return NULL;
     }
 
+    if (!valid_nevra_dir(nevra)) {
+        warnx(_("*** the NEVRA in the RPM header cannot be used as a directory name, use -O to name one"));
+        free(nevra);
+        return NULL;
+    }
+
     path = joinpath(cwd, nevra, NULL);
     free(nevra);
 
@@ -76,6 +135,18 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
 
     dir = abspath(path);
     free(path);
+
+    if (dir == NULL) {
+        warn("abspath");
+        return NULL;
+    }
+
+    /* we checked the NEVRA above, this is a second line of defense */
+    if (!below_dir(dir, cwd)) {
+        warnx(_("*** %s is outside of %s, use -O to name an output directory"), dir, cwd);
+        free(dir);
+        return NULL;
+    }
 
     return dir;
 }
