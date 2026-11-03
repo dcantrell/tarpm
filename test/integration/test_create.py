@@ -13,6 +13,7 @@ import subprocess
 import unittest
 import rpmfluff
 from baseclass import NAME
+from baseclass import PAYLOAD_DIGEST
 from baseclass import HAVE_RPM_FORMAT_SIX
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackRPM
@@ -1251,7 +1252,7 @@ class CreateKeepsPayloadDigest(KeepAllDigestsBase):
     def runTest(self):
         tree = self.extract_tree()
         header = self.read_header(tree)
-        self.set_tag_value(header, "Payloadsha256", BAD_DIGEST)
+        self.set_tag_value(header, PAYLOAD_DIGEST, BAD_DIGEST)
         self.write_header(tree, header)
 
         pkg = os.path.join(self.output_dir, "bad.rpm")
@@ -1259,7 +1260,7 @@ class CreateKeepsPayloadDigest(KeepAllDigestsBase):
         self.assertEqual(rc, 0, msg=err)
 
         header = self.read_header(self.repacked(pkg))
-        self.assertEqual(self.tag_value(header, "Payloadsha256"), BAD_DIGEST)
+        self.assertEqual(self.tag_value(header, PAYLOAD_DIGEST), BAD_DIGEST)
 
 
 class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
@@ -1268,7 +1269,7 @@ class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
     def runTest(self):
         tree = self.extract_tree()
         header = self.read_header(tree)
-        self.set_tag_value(header, "Payloadsha256", BAD_DIGEST)
+        self.set_tag_value(header, PAYLOAD_DIGEST, BAD_DIGEST)
         self.write_header(tree, header)
 
         pkg = os.path.join(self.output_dir, "good.rpm")
@@ -1276,7 +1277,7 @@ class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
         self.assertEqual(rc, 0, msg=err)
 
         header = self.read_header(self.repacked(pkg))
-        self.assertNotEqual(self.tag_value(header, "Payloadsha256"), BAD_DIGEST)
+        self.assertEqual(self.tag_value(header, PAYLOAD_DIGEST), payload_sha256(pkg))
 
         rc, err = verify_rpm(pkg)
         self.assertEqual(rc, 0, msg=err)
@@ -1288,7 +1289,7 @@ class CreateKeepDigestsComputesMissingPayloadDigest(KeepAllDigestsBase):
     def runTest(self):
         tree = self.extract_tree()
         header = self.read_header(tree)
-        header["tags"] = [t for t in header["tags"] if t.get("tag") != "Payloadsha256"]
+        header["tags"] = [t for t in header["tags"] if t.get("tag") != PAYLOAD_DIGEST]
         self.write_header(tree, header)
 
         pkg = os.path.join(self.output_dir, "filled.rpm")
@@ -1297,4 +1298,4 @@ class CreateKeepDigestsComputesMissingPayloadDigest(KeepAllDigestsBase):
 
         # the missing digest was computed from the payload we wrote
         header = self.read_header(self.repacked(pkg))
-        self.assertEqual(self.tag_value(header, "Payloadsha256"), payload_sha256(pkg))
+        self.assertEqual(self.tag_value(header, PAYLOAD_DIGEST), payload_sha256(pkg))
