@@ -1,0 +1,21 @@
+# The same checks as 'make black', 'make flake8', and 'make shellcheck'
+repos:
+    - repo: https://github.com/psf/black-pre-commit-mirror
+      rev: 26.5.1
+      hooks:
+          - id: black
+            files: ^test/
+
+    - repo: https://github.com/pycqa/flake8
+      rev: 7.5.0
+      hooks:
+          - id: flake8
+            args: ["--ignore=E203,E501,W503"]
+            files: ^test/
+
+    - repo: https://github.com/shellcheck-py/shellcheck-py
+      rev: v0.11.0.1
+      hooks:
+          - id: shellcheck
+            files: ^(utils/[^/]+\.sh|utils/git-hooks/.*|osdeps/[^/]+/[^/]+\.sh)$
+            types: [file]
