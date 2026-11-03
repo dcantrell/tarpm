@@ -137,6 +137,35 @@ class TarpmKeepDigestsHelp(RequiresTarpm):
         self.assertNotEqual(out.decode("utf-8").find("--keep-digests"), -1)
 
 
+# Verify the keep signatures option is rejected when extracting or listing
+class TarpmKeepSignaturesWrongMode(RequiresTarpm):
+    def runTest(self):
+        for mode in ["-x", "-t"]:
+            p = subprocess.Popen(
+                [self.tarpm, mode, "-k", "-f", self.tarpm],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = p.communicate()
+            self.assertEqual(p.returncode, 1)
+            s = "-k may only be used when creating an RPM"
+            self.assertNotEqual(err.decode("utf-8").find(s), -1)
+
+
+# Verify the keep signatures option shows up in the help output
+class TarpmKeepSignaturesHelp(RequiresTarpm):
+    def runTest(self):
+        p = subprocess.Popen(
+            [self.tarpm, "--help"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 0)
+
+        self.assertNotEqual(out.decode("utf-8").find("--keep-signatures"), -1)
+
+
 # Verify the no payload option is rejected when listing or creating
 class TarpmNoPayloadWrongMode(RequiresTarpm):
     def runTest(self):

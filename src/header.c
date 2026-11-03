@@ -113,6 +113,11 @@ is_skipped_tag(struct json_object *entry, bool is_signature)
             return false;
         }
 
+        /* with -k the package signatures from signature.json stay */
+        if (keep_signatures) {
+            return false;
+        }
+
         return is_rpmsign_tag(tag);
     }
 

@@ -676,3 +676,205 @@ class VerifySignaturePathIgnoredOnCreate(TestUnpackRPM):
 
         entries = signature_header(created)
         self.assertEqual(tag_numbers(entries), V4_SIGNATURE_TAGS)
+
+
+# The package signatures -k keeps.  These are the rpmsign tags that
+# sign the package rather than its files.
+PACKAGE_SIGNATURE_TAGS = {
+    "Dsa": "binary blob",
+    "Rsa": "binary blob",
+    "Openpgp": "string array",
+    "Pgp": "binary blob",
+    "Gpg": "binary blob",
+    "Pgp5": "binary blob",
+}
+
+# a value that looks like base64 but is no real signature
+FAKE_SIGNATURE = "bm90IGEgc2lnbmF0dXJl"
+
+
+class KeepSignaturesBase(TestUnpackRPM):
+    """Shared setup that extracts a package and adds package signatures"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def fake_signature(self, path):
+        """Put one of every package signature in a signature.json"""
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        for tag, tagtype in PACKAGE_SIGNATURE_TAGS.items():
+            if tagtype == "string array":
+                value = [FAKE_SIGNATURE]
+            else:
+                value = FAKE_SIGNATURE
+
+            signature["tags"].append({"tag": tag, "type": tagtype, "value": value})
+
+        f = open(path, "w")
+        json.dump(signature, f)
+        f.close()
+
+        return
+
+    def create(self, created, extra):
+        """Create a package from the extracted tree, return (rc, err)"""
+        args = [self.tarpm, "-c", "-f", created] + extra
+        args += RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        rc, out, err = run_tarpm(args)
+
+        return (rc, err)
+
+    def created_signature(self, created):
+        """Extract a created package and return its signature.json tags"""
+        again = os.path.join(self.output_dir, "again")
+        os.makedirs(again)
+
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", created, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(again, "signature.json"))
+        signature = json.load(f)
+        f.close()
+
+        return dict([(t["tag"], t.get("value")) for t in signature["tags"]])
+
+
+class VerifyCreateKeepsSignatures(KeepSignaturesBase):
+    """With -k the package signatures in signature.json reach the package"""
+
+    def runTest(self):
+        super().runTest()
+
+        self.fake_signature(self.signature)
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        tags = self.created_signature(created)
+
+        for tag, tagtype in PACKAGE_SIGNATURE_TAGS.items():
+            self.assertTrue(tag in tags, msg="%s is missing" % tag)
+            value = tags[tag]
+
+            if isinstance(value, list):
+                value = value[0]
+
+            self.assertEqual(value.strip(), FAKE_SIGNATURE)
+
+        # the header digest still matches the header we wrote
+        digest = hashlib.sha256(main_header_bytes(created)).hexdigest()
+        self.assertEqual(tags["Sha256"], digest)
+
+
+class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase):
+    """With -k the signatures come out of the reserved space"""
+
+    def runTest(self):
+        super().runTest()
+
+        plain = os.path.join(self.output_dir, "plain.rpm")
+        rc, err = self.create(plain, [])
+        self.assertEqual(rc, 0, msg=err)
+
+        self.fake_signature(self.signature)
+
+        kept = os.path.join(self.output_dir, "kept.rpm")
+        rc, err = self.create(kept, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(os.path.getsize(plain), os.path.getsize(kept))
+
+
+class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
+    """With -k a package signature with no value is left out"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        signature["tags"].append({"tag": "Rsa", "type": "binary blob", "value": ""})
+
+        f = open(self.signature, "w")
+        json.dump(signature, f)
+        f.close()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertFalse("Rsa" in self.created_signature(created))
+
+
+class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase):
+    """With -k and no signature.json the package comes out unsigned"""
+
+    def runTest(self):
+        super().runTest()
+
+        os.unlink(self.signature)
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        tags = self.created_signature(created)
+
+        for tag in PACKAGE_SIGNATURE_TAGS:
+            self.assertFalse(tag in tags, msg="%s is in the new signature" % tag)
+
+
+class VerifyCreateKeepSignaturesFromPath(KeepSignaturesBase):
+    """With -k and -S the package signatures come from the named file"""
+
+    def runTest(self):
+        super().runTest()
+
+        sigpath = os.path.join(self.output_dir, "elsewhere.json")
+        self.fake_signature(sigpath)
+        os.unlink(self.signature)
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k", "-S", sigpath])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertFalse("-S is ignored" in err, msg=err)
+
+        tags = self.created_signature(created)
+
+        for tag in PACKAGE_SIGNATURE_TAGS:
+            self.assertTrue(tag in tags, msg="%s is missing" % tag)
+
+
+class VerifyCreateKeepSignaturesLeavesDigests(KeepSignaturesBase):
+    """-k without -D does not keep the digests in signature.json"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        for tag in signature["tags"]:
+            if tag["tag"] == "Sha256":
+                tag["value"] = "dead" + ("0" * 60)
+
+        f = open(self.signature, "w")
+        json.dump(signature, f)
+        f.close()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        digest = hashlib.sha256(main_header_bytes(created)).hexdigest()
+        self.assertEqual(self.created_signature(created)["Sha256"], digest)

@@ -1533,8 +1533,8 @@ add_signature_files(struct json_object *signature, struct json_object *header, c
 }
 
 /*
- * Read signature.json for -D, from the -S path when given and from the
- * input directory otherwise.  A missing signature.json in the input
+ * Read signature.json for -D and -k, from the -S path when given and
+ * from the input directory otherwise.  A missing signature.json in the input
  * directory is not an error, we compute every digest then.  Sets kept
  * to the allocated JSON or NULL and returns non-zero on failure.
  */
@@ -1545,7 +1545,7 @@ read_kept_signature(const struct json_paths *paths, struct json_object **kept)
 
     *kept = NULL;
 
-    if (!keep_digests) {
+    if (!keep_digests && !keep_signatures) {
         return 0;
     }
 
@@ -1580,7 +1580,8 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
     struct json_object *kepttags = NULL;
     const uint32_t digests[] = { RPMSIGTAG_MD5, RPMSIGTAG_SHA1, RPMSIGTAG_SHA256, RPMSIGTAG_SHA3_256_VALUE, 0 };
 
-    if (kept == NULL) {
+    /* -k reads signature.json too, so kept alone does not mean -D */
+    if (!keep_digests || kept == NULL) {
         return 0;
     }
 
@@ -1606,6 +1607,84 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
             warnx(_("*** failed to update %s in signature"), name);
             return -1;
         }
+    }
+
+    return 0;
+}
+
+/*
+ * Copy the package signatures signature.json carries in to the
+ * signature header for -k.  These are the rpmsign(1) tags other than
+ * the file and verity signatures, which come from header.json.  An
+ * entry with no value is left out.  The room they take comes out of
+ * the reserved space, the way rpmsign(1) adds them.  Returns non-zero
+ * on failure.
+ */
+static int
+keep_package_signatures(struct json_object *signature, struct json_object *kept, const int format)
+{
+    size_t i = 0;
+    size_t oldsize = 0;
+    size_t newsize = 0;
+    uint32_t tag = 0;
+    struct json_object *tags = NULL;
+    struct json_object *kepttags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+    struct json_object *copy = NULL;
+
+    if (!keep_signatures || kept == NULL) {
+        return 0;
+    }
+
+    if (json_object_object_get_ex(signature, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
+        warnx(_("*** missing tags in signature data"));
+        return -1;
+    }
+
+    if (json_object_object_get_ex(kept, RPM_ENTRY_TAGS_DESC, &kepttags) == 0) {
+        warnx(_("*** missing tags in signature.json"));
+        return -1;
+    }
+
+    oldsize = signature_size(signature);
+
+    for (i = 0; i < json_object_array_length(kepttags); i++) {
+        entry = json_object_array_get_idx(kepttags, i);
+        tag = get_tag_number(entry, true);
+
+        if (!is_rpmsign_tag(tag) || is_file_signature_tag(tag)) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+            continue;
+        }
+
+        /* Openpgp is a string array, the others are base64 strings */
+        if (json_object_get_type(value) == json_type_array) {
+            if (json_object_array_length(value) == 0) {
+                continue;
+            }
+        } else if (json_object_get_string_len(value) == 0) {
+            continue;
+        }
+
+        copy = NULL;
+
+        if (json_object_deep_copy(entry, &copy, NULL) != 0) {
+            warnx(_("*** unable to copy %s from signature.json"), sig_tag_name(tag));
+            return -1;
+        }
+
+        json_object_array_add(tags, copy);
+    }
+
+    newsize = signature_size(signature);
+
+    if (oldsize == 0 || newsize < oldsize || shrink_reserved_space(tags, reserved_space_tag(format), newsize - oldsize) == -1) {
+        warnx(_("*** failed to resize the reserved space in signature"));
+        return -1;
     }
 
     return 0;
@@ -2045,7 +2124,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    /* with -D the digests signature.json carries go in as-is */
+    /* with -D and -k what signature.json carries goes in as-is */
     if (read_kept_signature(paths, &keptsig) != 0) {
         close(payloadfd);
         free(header_dir);
@@ -2063,8 +2142,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    json_object_put(keptsig);
-
     /*
      * The file and verity signatures go in last, the way rpmsign(1)
      * adds them to a package rpmbuild(1) wrote.  The header passes
@@ -2072,10 +2149,22 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      */
     if (add_signature_files(signature, header, payload_dir, rpmformat) != 0) {
         close(payloadfd);
+        json_object_put(keptsig);
         free(header_dir);
         free(payload_dir);
         return -1;
     }
+
+    /* with -k the package signatures from signature.json go in too */
+    if (keep_package_signatures(signature, keptsig, rpmformat) != 0) {
+        close(payloadfd);
+        json_object_put(keptsig);
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
+
+    json_object_put(keptsig);
 
     /* free the old signature structures before regenerating */
     free_header(sig, siginfo);

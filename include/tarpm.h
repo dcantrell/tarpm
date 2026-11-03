@@ -128,6 +128,16 @@ extern uint32_t payload_overrides;
  */
 extern bool keep_digests;
 
+/*
+ * NOTE:  THIS IS DANGEROUS AND REALLY FOR TESTING AND DEBUGGING ONLY
+ *
+ * Carry the package signatures signature.json holds in to the RPM we
+ * create.  These are the Dsa, Rsa, Openpgp, Pgp, Gpg, and Pgp5 tags.
+ * We set this from the command line before we create an RPM.  The
+ * signatures are copied as-is and not checked.
+ */
+extern bool keep_signatures;
+
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);

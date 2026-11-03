@@ -96,8 +96,9 @@
  * the rpm source discard before rpmsign writes new ones, which makes
  * them the tags only rpmsign can produce.  Making any of them takes
  * the private signing key, so tarpm reads them out of a package it
- * extracts but leaves them out of a package it creates.  Run
- * rpmsign(1) on the new package to put them back.
+ * extracts but leaves them out of a package it creates unless -k asks
+ * for the package signatures.  Run rpmsign(1) on the new package to
+ * put them back.
  */
 #define RPMSIGN_SIGNATURE_TAGS               \
     RPMSIGTAG_DSA,                           \

@@ -186,6 +186,12 @@ uint32_t payload_overrides = PAYLOAD_OVERRIDE_NONE;
 bool keep_digests = false;
 
 /*
+ * Carry the package signatures in signature.json in to the RPM we
+ * create.  Off by default, so we leave them out like rpmbuild does.
+ */
+bool keep_signatures = false;
+
+/*
  * Maps a single RPMFILE_* bit to the name it carries in the "files"
  * array.  The names are the enum constant names from rpmfileAttrs_e
  * with the RPMFILE_ prefix trimmed and lowercased.
