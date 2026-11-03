@@ -703,7 +703,7 @@ test_update_payload_tags_v4(void)
 
     header = make_test_header("gzip", "9");
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
-    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0), 0);
 
     /* the digest of the payload as it lands in the package */
     digest = payload_digest(TARPM_DIGEST_SHA256, fd, NULL);
@@ -739,7 +739,7 @@ test_update_payload_tags_v6(void)
 
     header = make_test_header("zstd", "19");
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V6), 0);
-    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V6), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V6, 0), 0);
 
     /* every digest in the v6 group describes the payload we have */
     digest = payload_digest(TARPM_DIGEST_SHA512, fd, &payloadsize);
@@ -767,6 +767,79 @@ test_update_payload_tags_v6(void)
 #endif
 
 void
+test_kept_payload_digests(void)
+{
+    static const char *bad[] = { "dead" };
+    static const char *empty[] = { "" };
+    struct json_object *header = NULL;
+
+    /* skip if this RPM version doesn't have PAYLOADSHA256ALT */
+    if (strcmp(rpmTagGetName(RPMTAG_PAYLOADSHA256ALT_VALUE), "(unknown)") == 0) {
+        return;
+    }
+
+    header = make_test_header("gzip", "9");
+    add_string_array_tag(header_tags(header), RPMTAG_PAYLOADSHA256_VALUE, bad, 1);
+    add_string_array_tag(header_tags(header), RPMTAG_PAYLOADSHA256ALT_VALUE, empty, 1);
+
+    /* without -D nothing is kept */
+    keep_digests = false;
+    TARPM_ASSERT_EQUAL(kept_payload_digests(header), 0);
+
+    /* with -D only the digest with a value is kept */
+    keep_digests = true;
+    TARPM_ASSERT_EQUAL(kept_payload_digests(header), 1);
+    TARPM_ASSERT_EQUAL(kept_payload_digests(NULL), 0);
+    keep_digests = false;
+
+    json_object_put(header);
+
+    return;
+}
+
+void
+test_update_payload_tags_kept(void)
+{
+    int fd = -1;
+    uint32_t kept = 0;
+    char *digest = NULL;
+    static const char *bad[] = { "dead" };
+    struct json_object *header = NULL;
+
+    /* skip if this RPM version doesn't have PAYLOADSHA256ALT */
+    if (strcmp(rpmTagGetName(RPMTAG_PAYLOADSHA256ALT_VALUE), "(unknown)") == 0) {
+        return;
+    }
+
+    fd = make_test_payload("kept payload data");
+    TARPM_ASSERT_TRUE(fd != -1);
+
+    header = make_test_header("gzip", "9");
+    add_string_array_tag(header_tags(header), RPMTAG_PAYLOADSHA256_VALUE, bad, 1);
+
+    keep_digests = true;
+    kept = kept_payload_digests(header);
+    keep_digests = false;
+
+    TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, kept), 0);
+
+    /* the digest header.json carried stays */
+    TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256_VALUE)), "dead");
+
+    /* the one it did not carry is computed */
+    digest = archive_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    TARPM_ASSERT_PTR_NOT_NULL(digest);
+    TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256ALT_VALUE)), digest);
+    free(digest);
+
+    json_object_put(header);
+    close(fd);
+
+    return;
+}
+
+void
 test_update_payload_tags_bad_input(void)
 {
     int fd = -1;
@@ -775,14 +848,14 @@ test_update_payload_tags_bad_input(void)
     fd = make_test_payload("payload data");
     TARPM_ASSERT_TRUE(fd != -1);
 
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(NULL, fd, RPM_FORMAT_V4), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(NULL, fd, RPM_FORMAT_V4, 0), 0);
 
     header = make_test_header("gzip", "9");
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, -1, RPM_FORMAT_V4), 0);
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, 5), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, -1, RPM_FORMAT_V4, 0), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, 5, 0), 0);
 
     /* the format tags have to be there before we can fill them in */
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0), 0);
 
     json_object_put(header);
     close(fd);
@@ -817,7 +890,9 @@ get_suite(void)
         CU_add_test(pSuite, "test filter_format_tags() run twice", test_filter_format_tags_twice) == NULL ||
         CU_add_test(pSuite, "test filter_format_tags() bad input", test_filter_format_tags_bad_input) == NULL ||
         CU_add_test(pSuite, "test update_payload_tags() v4", test_update_payload_tags_v4) == NULL ||
-        CU_add_test(pSuite, "test update_payload_tags() bad input", test_update_payload_tags_bad_input) == NULL) {
+        CU_add_test(pSuite, "test update_payload_tags() bad input", test_update_payload_tags_bad_input) == NULL ||
+        CU_add_test(pSuite, "test kept_payload_digests()", test_kept_payload_digests) == NULL ||
+        CU_add_test(pSuite, "test update_payload_tags() keeps digests", test_update_payload_tags_kept) == NULL) {
         return NULL;
     }
 

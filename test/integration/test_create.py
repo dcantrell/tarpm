@@ -3,10 +3,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import hashlib
 import json
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import unittest
 import rpmfluff
@@ -932,3 +934,367 @@ class CreateWithEmptiedPayload(TestUnpackRPM):
 
         rc, err = verify_rpm(pkg)
         self.assertEqual(rc, 0, msg=err)
+
+
+# a digest that is the right length for sha256 but wrong for any file
+BAD_DIGEST = "dead" + ("0" * 60)
+
+
+class KeepDigestsBase(TestUnpackRPM):
+    """Shared setup that builds a package with one regular file in it"""
+
+    def setUp(self):
+        super().setUp()
+
+        content = rpmfluff.SourceFile(
+            "README", make_random_content(256).encode("utf-8")
+        )
+        self.filename = "/usr/share/doc/%s/README" % NAME
+        self.rpm.add_installed_file(self.filename, content)
+
+    def drop_signature(self, tree):
+        """Remove signature.json so -D computes the header digests rpm -qp checks"""
+        os.unlink(os.path.join(tree, "signature.json"))
+
+        return
+
+    def extract_tree(self):
+        """Build the package and extract it, returning the tree directory"""
+        self.rpm.do_make()
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
+
+        tree = os.path.join(self.output_dir, "extracted")
+        os.makedirs(tree)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", original_rpm, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        return tree
+
+    def read_header(self, tree):
+        """Read the header.json out of an extracted tree"""
+        f = open(os.path.join(tree, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        return header
+
+    def write_header(self, tree, header):
+        """Write a header.json back in to an extracted tree"""
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump(header, f)
+        f.close()
+
+        return
+
+    def file_digest(self, pkg):
+        """Return the digest the package records for our file"""
+        pairs = query_rpm(pkg, "[%{filenames} %{filedigests}\n]").splitlines()
+
+        for pair in pairs:
+            name, _, digest = pair.partition(" ")
+
+            if name == self.filename:
+                return digest
+
+        return None
+
+
+class CreateKeepsHeaderDigest(KeepDigestsBase):
+    """With -D a hand edited digest reaches the package unchecked"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+
+        # replace the digest of our file with a known bad value
+        for entry in header["files"]:
+            if entry.get("path") == self.filename:
+                entry["digest"] = BAD_DIGEST
+
+        self.write_header(tree, header)
+        self.drop_signature(tree)
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # the bad digest is in the package as we wrote it
+        self.assertEqual(self.file_digest(pkg), BAD_DIGEST)
+
+
+class CreateRecomputesDigestWithoutFlag(KeepDigestsBase):
+    """Without -D a hand edited digest is recomputed from the payload"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+
+        good = None
+
+        for entry in header["files"]:
+            if entry.get("path") == self.filename:
+                good = entry["digest"]
+                entry["digest"] = BAD_DIGEST
+
+        self.write_header(tree, header)
+
+        pkg = os.path.join(self.output_dir, "good.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # the payload digest replaced the bad one we wrote
+        self.assertEqual(self.file_digest(pkg), good)
+        self.assertNotEqual(self.file_digest(pkg), BAD_DIGEST)
+
+
+class CreateKeepDigestsStillComputesMissing(KeepDigestsBase):
+    """With -D a file missing its digest still gets one computed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+
+        good = None
+
+        for entry in header["files"]:
+            if entry.get("path") == self.filename:
+                good = entry["digest"]
+                del entry["digest"]
+
+        self.write_header(tree, header)
+        self.drop_signature(tree)
+
+        pkg = os.path.join(self.output_dir, "filled.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # the missing digest was computed, matching the payload
+        self.assertEqual(self.file_digest(pkg), good)
+
+
+def package_parts(pkg):
+    """Return the main header and the payload of an RPM as bytes"""
+    f = open(pkg, "rb")
+    f.seek(96)
+
+    # skip the signature header and the padding after it
+    magic, reserved, nentries, nbytes = struct.unpack(">IIII", f.read(16))
+    f.seek((16 * nentries) + nbytes, 1)
+    f.seek((8 - (f.tell() % 8)) % 8, 1)
+
+    magic, reserved, nentries, nbytes = struct.unpack(">IIII", f.read(16))
+    f.seek(-16, 1)
+    header = f.read(16 + (16 * nentries) + nbytes)
+    payload = f.read()
+    f.close()
+
+    return (header, payload)
+
+
+def header_sha256(pkg):
+    """Return the SHA-256 digest of the main header of an RPM"""
+    header, payload = package_parts(pkg)
+
+    return hashlib.sha256(header).hexdigest()
+
+
+def payload_sha256(pkg):
+    """Return the SHA-256 digest of the payload of an RPM"""
+    header, payload = package_parts(pkg)
+
+    return hashlib.sha256(payload).hexdigest()
+
+
+class KeepAllDigestsBase(KeepDigestsBase):
+    """Shared helpers for the signature.json and payload digest tests"""
+
+    def read_signature(self, tree):
+        """Read the signature.json out of an extracted tree"""
+        f = open(os.path.join(tree, "signature.json"))
+        signature = json.load(f)
+        f.close()
+
+        return signature
+
+    def write_signature(self, path, signature):
+        """Write a signature.json to path"""
+        f = open(path, "w")
+        json.dump(signature, f)
+        f.close()
+
+        return
+
+    def tag_value(self, data, name):
+        """Return the value of a tag in header or signature JSON"""
+        for entry in data["tags"]:
+            if entry.get("tag") == name:
+                value = entry.get("value")
+
+                if isinstance(value, list):
+                    return value[0]
+
+                return value
+
+        return None
+
+    def set_tag_value(self, data, name, value):
+        """Set the value of a tag in header or signature JSON"""
+        for entry in data["tags"]:
+            if entry.get("tag") == name:
+                if isinstance(entry.get("value"), list):
+                    entry["value"] = [value]
+                else:
+                    entry["value"] = value
+
+        return
+
+    def repacked(self, pkg):
+        """Extract a package we created and return the tree directory"""
+        tree = os.path.join(self.output_dir, "repacked")
+        os.makedirs(tree)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        return tree
+
+
+class CreateKeepsSignatureDigest(KeepAllDigestsBase):
+    """With -D a hand edited signature digest reaches the package"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        signature = self.read_signature(tree)
+        self.set_tag_value(signature, "Sha256", BAD_DIGEST)
+        self.write_signature(os.path.join(tree, "signature.json"), signature)
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        signature = self.read_signature(self.repacked(pkg))
+        self.assertEqual(self.tag_value(signature, "Sha256"), BAD_DIGEST)
+
+
+class CreateRecomputesSignatureDigestWithoutFlag(KeepAllDigestsBase):
+    """Without -D signature.json is not read and the digest is computed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        signature = self.read_signature(tree)
+        self.set_tag_value(signature, "Sha256", BAD_DIGEST)
+        self.write_signature(os.path.join(tree, "signature.json"), signature)
+
+        pkg = os.path.join(self.output_dir, "good.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        signature = self.read_signature(self.repacked(pkg))
+        self.assertEqual(self.tag_value(signature, "Sha256"), header_sha256(pkg))
+
+
+class CreateKeepsSignatureDigestFromPath(KeepAllDigestsBase):
+    """With -D and -S the signature digests come from the named file"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        signature = self.read_signature(tree)
+        os.unlink(os.path.join(tree, "signature.json"))
+
+        self.set_tag_value(signature, "Sha256", BAD_DIGEST)
+        sigpath = os.path.join(self.output_dir, "elsewhere.json")
+        self.write_signature(sigpath, signature)
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-D", "-S", sigpath, "-c", "-f", pkg, tree]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(err.find("-S is ignored"), -1)
+
+        signature = self.read_signature(self.repacked(pkg))
+        self.assertEqual(self.tag_value(signature, "Sha256"), BAD_DIGEST)
+
+
+class CreateKeepDigestsMissingSignatureFile(KeepAllDigestsBase):
+    """With -D and -S naming a missing file tarpm fails"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        sigpath = os.path.join(self.output_dir, "missing.json")
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-D", "-S", sigpath, "-c", "-f", pkg, tree]
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertFalse(os.path.exists(pkg))
+
+
+class CreateKeepDigestsComputesSignature(KeepAllDigestsBase):
+    """With -D and no signature.json the signature digests are computed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        os.unlink(os.path.join(tree, "signature.json"))
+
+        pkg = os.path.join(self.output_dir, "computed.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        signature = self.read_signature(self.repacked(pkg))
+        self.assertEqual(self.tag_value(signature, "Sha256"), header_sha256(pkg))
+
+
+class CreateKeepsPayloadDigest(KeepAllDigestsBase):
+    """With -D a hand edited payload digest in header.json reaches the package"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+        self.set_tag_value(header, "Payloadsha256", BAD_DIGEST)
+        self.write_header(tree, header)
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        header = self.read_header(self.repacked(pkg))
+        self.assertEqual(self.tag_value(header, "Payloadsha256"), BAD_DIGEST)
+
+
+class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
+    """Without -D a hand edited payload digest is recomputed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+        self.set_tag_value(header, "Payloadsha256", BAD_DIGEST)
+        self.write_header(tree, header)
+
+        pkg = os.path.join(self.output_dir, "good.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        header = self.read_header(self.repacked(pkg))
+        self.assertNotEqual(self.tag_value(header, "Payloadsha256"), BAD_DIGEST)
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)
+
+
+class CreateKeepDigestsComputesMissingPayloadDigest(KeepAllDigestsBase):
+    """With -D a payload digest missing from header.json is computed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        header = self.read_header(tree)
+        header["tags"] = [t for t in header["tags"] if t.get("tag") != "Payloadsha256"]
+        self.write_header(tree, header)
+
+        pkg = os.path.join(self.output_dir, "filled.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-D", "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # the missing digest was computed from the payload we wrote
+        header = self.read_header(self.repacked(pkg))
+        self.assertEqual(self.tag_value(header, "Payloadsha256"), payload_sha256(pkg))

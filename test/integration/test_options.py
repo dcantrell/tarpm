@@ -108,6 +108,35 @@ class TarpmPayloadOverrideHelp(RequiresTarpm):
             self.assertNotEqual(out.find(opt), -1)
 
 
+# Verify the keep digests option is rejected when extracting or listing
+class TarpmKeepDigestsWrongMode(RequiresTarpm):
+    def runTest(self):
+        for mode in ["-x", "-t"]:
+            p = subprocess.Popen(
+                [self.tarpm, mode, "-D", "-f", self.tarpm],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = p.communicate()
+            self.assertEqual(p.returncode, 1)
+            s = "-D may only be used when creating an RPM"
+            self.assertNotEqual(err.decode("utf-8").find(s), -1)
+
+
+# Verify the keep digests option shows up in the help output
+class TarpmKeepDigestsHelp(RequiresTarpm):
+    def runTest(self):
+        p = subprocess.Popen(
+            [self.tarpm, "--help"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 0)
+
+        self.assertNotEqual(out.decode("utf-8").find("--keep-digests"), -1)
+
+
 # Verify the no payload option is rejected when listing or creating
 class TarpmNoPayloadWrongMode(RequiresTarpm):
     def runTest(self):

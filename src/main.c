@@ -98,16 +98,17 @@ usage(void)
     printf(_("    -g, --payload-group         Take file groups from the payload tree\n"));
     printf(_("    -l, --payload-linkto        Take symlink targets from the payload tree\n"));
     printf(_("    -a, --payload-all           Take all of the above from the payload tree\n"));
+    printf(_("    -D, --keep-digests          Use the digests as-is from the JSON header files\n"));
     printf(_("    -V, --version               Display version information\n"));
     printf(_("    -?, --help                  Display this screen\n"));
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
     printf(_("The -n option may only be used when extracting an RPM.\n"));
-    printf(_("The -m, -u, -g, -l, -a, and -F options may only be used when creating an RPM.\n"));
+    printf(_("The -m, -u, -g, -l, -a, -D, and -F options may only be used when creating an RPM.\n"));
     printf(_("The default format is %d.  The format shapes the lead, the signature\n"), RPM_FORMAT_DEFAULT);
     printf(_("header, the payload digest tags in the main header, and the payload\n"));
     printf(_("compressor.  The signature header is generated, so -S is ignored when\n"));
-    printf(_("creating an RPM.\n"));
+    printf(_("creating an RPM unless -D is given.\n"));
     printf(_("See the %s(1) man page for more information.\n"), COMMAND_NAME);
 
     return;
@@ -128,7 +129,7 @@ main(int argc, char **argv)
     int flags = R_OK;
     char *opt = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:P:F:muglanV?";
+    char *short_opts = "txcvf:O:L:S:H:P:F:muglaDnV?";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -147,6 +148,7 @@ main(int argc, char **argv)
         { "payload-group", no_argument, 0, 'g' },
         { "payload-linkto", no_argument, 0, 'l' },
         { "payload-all", no_argument, 0, 'a' },
+        { "keep-digests", no_argument, 0, 'D' },
         { "version", no_argument, 0, 'V' },
         { "help", no_argument, 0, '?' },
         { 0, 0, 0, 0 }
@@ -305,6 +307,9 @@ main(int argc, char **argv)
             case 'a':
                 payload_overrides |= PAYLOAD_OVERRIDE_ALL;
                 break;
+            case 'D':
+                keep_digests = true;
+                break;
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
                 exit(EXIT_SUCCESS);
@@ -347,6 +352,8 @@ main(int argc, char **argv)
                 payload_overrides |= PAYLOAD_OVERRIDE_LINKTO;
             } else if (*opt == 'a') {
                 payload_overrides |= PAYLOAD_OVERRIDE_ALL;
+            } else if (*opt == 'D') {
+                keep_digests = true;
             } else if (*opt == 'f') {
                 /* the filename must come after 'f' */
                 if (filename) {
@@ -422,6 +429,11 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** -m, -u, -g, -l, and -a may only be used when creating an RPM"));
     }
 
+    /* keeping header.json digests only means something when we create an RPM */
+    if (!c_flag && keep_digests) {
+        errx(EXIT_FAILURE, _("*** -D may only be used when creating an RPM"));
+    }
+
     /* the format option only means something when we create an RPM */
     if (!c_flag && haveformat) {
         errx(EXIT_FAILURE, _("*** -F may only be used when creating an RPM"));
@@ -442,8 +454,8 @@ main(int argc, char **argv)
         errx(EXIT_FAILURE, _("*** \"%s\" may not be used when creating an RPM"), OUTPUT_STDOUT);
     }
 
-    /* we generate the signature header, so -S has nothing to say here */
-    if (c_flag && paths.signature != NULL) {
+    /* we generate the signature header, so -S only matters for the digests -D keeps */
+    if (c_flag && paths.signature != NULL && !keep_digests) {
         warnx(_("*** -S is ignored when creating an RPM"));
     }
 

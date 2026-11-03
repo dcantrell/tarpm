@@ -78,7 +78,8 @@ extern int rpmformat;
 
 void filter_format_tags(struct json_object *tags, const int format);
 int apply_rpmformat(struct json_object *header, const int format);
-int update_payload_tags(struct json_object *header, const int payloadfd, const int format);
+uint32_t kept_payload_digests(struct json_object *header);
+int update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept);
 
 /* defaults.c */
 int apply_header_defaults(struct json_object *header, const int format);
@@ -115,6 +116,17 @@ int dependency_index(struct json_object *dependencies, const char *key, struct j
  * command line before we create an RPM.
  */
 extern uint32_t payload_overrides;
+
+/*
+ * NOTE:  THIS IS DANGEROUS AND REALLY FOR TESTING AND DEBUGGING ONLY
+ *
+ * Use the digests header.json and signature.json carry instead of
+ * recomputing them.  This covers the file digests, the payload digest
+ * tags, and the digests in the signature header.  We set this from
+ * the command line before we create an RPM.  A digest missing from
+ * the JSON still gets a computed one.
+ */
+extern bool keep_digests;
 
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);

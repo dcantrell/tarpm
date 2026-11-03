@@ -180,6 +180,12 @@ struct file_list_build {
 uint32_t payload_overrides = PAYLOAD_OVERRIDE_NONE;
 
 /*
+ * Favor the digests header.json and signature.json carry over ones we
+ * compute.  Off by default, so we recompute.
+ */
+bool keep_digests = false;
+
+/*
  * Maps a single RPMFILE_* bit to the name it carries in the "files"
  * array.  The names are the enum constant names from rpmfileAttrs_e
  * with the RPMFILE_ prefix trimmed and lowercased.
@@ -2332,10 +2338,12 @@ file_mtime_value(struct json_object *file)
 /*
  * Work out the digest to store for a file.  We read it back out of
  * the payload so an edited file lands a correct one in the header.
- * With no regular file there we keep what header.json had.  Entries
- * with no digest (directories, symlinks, device nodes) carry an empty
- * string so the array stays parallel to the file list.  The caller
- * has to free what comes back.
+ * With no regular file there we keep what header.json had.  With
+ * keep_digests we keep what header.json had regardless, so a hand
+ * edited digest reaches the package unchecked.  Entries with no
+ * digest (directories, symlinks, device nodes) carry an empty string
+ * so the array stays parallel to the file list.  The caller has to
+ * free what comes back.
  */
 static char *
 file_digest_value(struct json_object *file, const char *file_path, const struct stat *sb, const uint32_t digestalgo)
@@ -2344,6 +2352,15 @@ file_digest_value(struct json_object *file, const char *file_path, const struct 
     const char *str = NULL;
 
     str = key_string(file, RPM_FILE_DIGEST_DESC, "");
+
+    /*
+     * When asked, take the digest the entry carries as-is and do not
+     * recompute it.  A missing or empty digest still falls through so
+     * a regular file gets a computed one.
+     */
+    if (keep_digests && str[0] != '\0') {
+        return strdup(str);
+    }
 
     if (str[0] != '\0' && digestalgo != 0 && sb != NULL && S_ISREG(sb->st_mode)) {
         digest = mkfiledigest(file_path, digestalgo);

@@ -1533,11 +1533,91 @@ add_signature_files(struct json_object *signature, struct json_object *header, c
 }
 
 /*
- * Update the digests and sizes in the signature using the header and
- * payload data.  Returns non-zero on failure.
+ * Read signature.json for -D, from the -S path when given and from the
+ * input directory otherwise.  A missing signature.json in the input
+ * directory is not an error, we compute every digest then.  Sets kept
+ * to the allocated JSON or NULL and returns non-zero on failure.
  */
 static int
-update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd, const int format)
+read_kept_signature(const struct json_paths *paths, struct json_object **kept)
+{
+    const char *path = OUTPUT_SIGNATURE;
+
+    *kept = NULL;
+
+    if (!keep_digests) {
+        return 0;
+    }
+
+    if (paths != NULL && paths->signature != NULL) {
+        path = paths->signature;
+    } else if (access(path, F_OK) == -1) {
+        return 0;
+    }
+
+    *kept = read_json_file(path);
+
+    if (*kept == NULL) {
+        warnx(_("*** unable to read %s"), path);
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * Replace the signature digests we computed with the ones signature.json
+ * carries.  Only the digests the format put in the signature header
+ * are replaced, so a v4 format Md5 does not land in a v6 format
+ * signature.  Returns non-zero on failure.
+ */
+static int
+keep_signature_digests(struct json_object *tags, struct json_object *kept)
+{
+    size_t i = 0;
+    const char *name = NULL;
+    const char *value = NULL;
+    struct json_object *kepttags = NULL;
+    const uint32_t digests[] = { RPMSIGTAG_MD5, RPMSIGTAG_SHA1, RPMSIGTAG_SHA256, RPMSIGTAG_SHA3_256_VALUE, 0 };
+
+    if (kept == NULL) {
+        return 0;
+    }
+
+    if (json_object_object_get_ex(kept, RPM_ENTRY_TAGS_DESC, &kepttags) == 0) {
+        warnx(_("*** missing tags in signature.json"));
+        return -1;
+    }
+
+    for (i = 0; digests[i] != 0; i++) {
+        name = sig_tag_name(digests[i]);
+
+        if (get_tag_value(tags, name) == NULL) {
+            continue;
+        }
+
+        value = get_tag_value(kepttags, name);
+
+        if (value == NULL || value[0] == '\0') {
+            continue;
+        }
+
+        if (set_tag_value(tags, name, value) != 0) {
+            warnx(_("*** failed to update %s in signature"), name);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Update the digests and sizes in the signature using the header and
+ * payload data.  A digest kept carries goes in place of the computed
+ * one.  Returns non-zero on failure.
+ */
+static int
+update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd, const int format, struct json_object *kept)
 {
     int i = 0;
     unsigned char *digest = NULL;
@@ -1757,6 +1837,11 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         free(buf);
     }
 
+    /* with -D the digests in signature.json win */
+    if (keep_signature_digests(tags, kept) != 0) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -1768,11 +1853,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     bool isreg = false;
     FILE *rpm = NULL;
     int payloadfd = -1;
+    uint32_t keptpayload = 0;
     struct stat sb;
     char *header_dir = NULL;
     char *payload_dir = NULL;
     const char *header_path = OUTPUT_HEADER;
     struct json_object *signature = NULL;
+    struct json_object *keptsig = NULL;
     struct json_object *header = NULL;
     struct json_object *tags = NULL;
     struct json_object *files = NULL;
@@ -1841,8 +1928,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     /*
      * Build the signature header ourselves.  Everything in it is
-     * recalculated from the header and the payload, so there is
-     * nothing in signature.json worth reading back.
+     * recalculated from the header and the payload.  Only -D reads
+     * signature.json, for the digests it carries.
      */
     signature = make_signature(rpmformat);
 
@@ -1886,6 +1973,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
         add_payload_files(tags, files, payload_dir);
     }
+
+    /* note the payload digests header.json carries before placeholders go in */
+    keptpayload = kept_payload_digests(header);
 
     /*
      * Put the main header in to the shape the format calls for before
@@ -1936,7 +2026,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* work out the payload digests and sizes the format calls for */
-    if (update_payload_tags(header, payloadfd, rpmformat) != 0) {
+    if (update_payload_tags(header, payloadfd, rpmformat, keptpayload) != 0) {
         close(payloadfd);
         warnx("update_payload_tags");
         free(header_dir);
@@ -1955,14 +2045,25 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    /* recalculate the digests and update the signature data using the updated header */
-    if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat) != 0) {
+    /* with -D the digests signature.json carries go in as-is */
+    if (read_kept_signature(paths, &keptsig) != 0) {
         close(payloadfd);
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
+
+    /* recalculate the digests and update the signature data using the updated header */
+    if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat, keptsig) != 0) {
+        close(payloadfd);
+        json_object_put(keptsig);
         warnx("update_signature");
         free(header_dir);
         free(payload_dir);
         return -1;
     }
+
+    json_object_put(keptsig);
 
     /*
      * The file and verity signatures go in last, the way rpmsign(1)

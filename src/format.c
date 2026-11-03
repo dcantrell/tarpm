@@ -456,12 +456,69 @@ apply_rpmformat(struct json_object *header, const int format)
 }
 
 /*
+ * Return a mask of the payload digest tags header.json carries a
+ * value for, one bit per payload_digests[] entry.  We have to run
+ * before apply_rpmformat() adds placeholders.  Without keep_digests
+ * the mask is empty so every digest gets computed.
+ */
+uint32_t
+kept_payload_digests(struct json_object *header)
+{
+    size_t i = 0;
+    int idx = -1;
+    uint32_t kept = 0;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    if (!keep_digests || header == NULL) {
+        return 0;
+    }
+
+    if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
+        return 0;
+    }
+
+    for (i = 0; payload_digests[i].tag != 0; i++) {
+        idx = find_tag(tags, payload_digests[i].tag);
+
+        if (idx < 0) {
+            continue;
+        }
+
+        entry = json_object_array_get_idx(tags, idx);
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+            continue;
+        }
+
+        /* 5092 and 5097 hold the digest in a one element array */
+        if (json_object_get_type(value) == json_type_array) {
+            if (json_object_array_length(value) < 1) {
+                continue;
+            }
+
+            value = json_object_array_get_idx(value, 0);
+        }
+
+        if (value == NULL || json_object_get_string_len(value) == 0) {
+            continue;
+        }
+
+        kept |= (uint32_t) 1 << i;
+    }
+
+    return kept;
+}
+
+/*
  * Work out the payload digests and sizes and write them in to the
  * main header.  The payload has to exist by the time we are called.
+ * A digest with its bit set in kept stays as header.json has it.
  * Returns non-zero on failure.
  */
 int
-update_payload_tags(struct json_object *header, const int payloadfd, const int format)
+update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept)
 {
     size_t i = 0;
     size_t ntags = 0;
@@ -502,6 +559,12 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
         if (digest == NULL) {
             warnx(_("*** failed to compute the %s digest"), rpmTagGetName(payload_digests[i].tag));
             return -1;
+        }
+
+        /* we still computed it since the sizes come from the same pass */
+        if (kept & ((uint32_t) 1 << i)) {
+            free(digest);
+            continue;
         }
 
         if (set_payload_tag(tags, payload_digests[i].tag, digest) != 0) {
