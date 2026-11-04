@@ -230,20 +230,49 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
 }
 
 /*
+ * Returns true if path is below base and nothing on the way from base
+ * to it is a symlink.  path has to be absolute with no "." or ".."
+ * left in it.
+ */
+static bool
+tag_file_below(const char *path, const char *base)
+{
+    size_t len = 0;
+
+    if (path == NULL || base == NULL) {
+        return false;
+    }
+
+    len = strlen(base);
+
+    while (len > 0 && base[len - 1] == '/') {
+        len--;
+    }
+
+    if (strncmp(path, base, len) || path[len] != '/') {
+        return false;
+    }
+
+    return path_beneath(base, path + len, false);
+}
+
+/*
  * Read every file named by a file-backed tag so the sizing pass and
  * the write pass work from the same bytes.  A relative filename is
- * taken from tagfile_dir, which is where header.json sits.  Results
- * are indexed by position in the tags array.  Returns 0 on success,
- * -1 if any named file could not be read.
+ * taken from tagfile_dir, which is where header.json sits.  The file
+ * has to be below tagfile_dir or below payload_dir, which can be
+ * anywhere.  Results are indexed by position in the tags array.
+ * Returns 0 on success, -1 if any named file could not be read.
  */
 static int
-read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *tagfile_dir, bool is_signature)
+read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *tagfile_dir, const char *payload_dir, bool is_signature)
 {
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
     rpmTagVal tag_number = 0;
     const char *name = NULL;
+    char *full = NULL;
     char *path = NULL;
 
     if (tags == NULL || tagfiles == NULL) {
@@ -273,10 +302,26 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
             continue;
         }
 
-        if (tagfile_dir == NULL || name[0] == '/') {
-            path = strdup(name);
-        } else {
-            path = joinpath(tagfile_dir, name, NULL);
+        full = NULL;
+
+        if (name[0] == '/') {
+            full = strdup(name);
+        } else if (tagfile_dir != NULL) {
+            full = joinpath(tagfile_dir, name, NULL);
+        }
+
+        /*
+         * We resolve ".." ourselves and open what that gives us, so a
+         * crafted header.json cannot pull in a file from anywhere but
+         * the two directories that belong to the package.
+         */
+        path = abspath(full);
+        free(full);
+
+        if (!tag_file_below(path, tagfile_dir) && !tag_file_below(path, payload_dir)) {
+            warnx(_("*** the %s tag names \"%s\", which is not a file below the directory holding %s or the payload directory"), rpmTagGetName(tag_number), name, OUTPUT_HEADER);
+            free(path);
+            return -1;
         }
 
         if (read_tag_file(path, &tagfiles[i].data, &tagfiles[i].len) == -1) {
@@ -1164,7 +1209,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
+    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);

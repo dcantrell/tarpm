@@ -282,6 +282,13 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
         }
     } else if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         relative_path = joinpath(params->dirname, params->basename, NULL);
+
+        if (!path_beneath(payload_dir, relative_path, false)) {
+            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
+            free(relative_path);
+            return -1;
+        }
+
         file_path = joinpath(payload_dir, relative_path, NULL);
         r = write_file_data(file_path, params->size);
         free(file_path);
@@ -408,6 +415,15 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
+        if (!path_beneath(payload_dir, relative_path, false)) {
+            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
+            archive_entry_free(entry);
+            free(full_path);
+            free(file_path);
+            free(relative_path);
+            return -1;
+        }
+
         if (write_file_data(file_path, params->size) != 0) {
             archive_entry_free(entry);
             free(full_path);
@@ -1952,6 +1968,46 @@ warn_nevr_slash(struct json_object *header)
     return;
 }
 
+/*
+ * Check that every path in the "files" array stays in the payload
+ * tree.  The path is joined to payload_dir to find the file, so ".."
+ * or a symlinked directory in the tree would let a crafted header.json
+ * put any file we can read in to the package.  Every bad path gets a
+ * warning.  Returns 0 if all of them are fine, -1 otherwise.
+ */
+static int
+check_payload_paths(struct json_object *header, const char *payload_dir)
+{
+    int r = 0;
+    size_t i = 0;
+    const char *path = NULL;
+    struct json_object *files = NULL;
+    struct json_object *value = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files) || json_object_get_type(files) != json_type_array) {
+        return 0;
+    }
+
+    for (i = 0; i < json_object_array_length(files); i++) {
+        if (!json_object_object_get_ex(json_object_array_get_idx(files, i), RPM_FILE_PATH_DESC, &value)) {
+            continue;
+        }
+
+        path = json_object_get_string(value);
+
+        if (path == NULL) {
+            continue;
+        }
+
+        if (!path_beneath(payload_dir, path, true)) {
+            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
+            r = -1;
+        }
+    }
+
+    return r;
+}
+
 /* Handler for -c mode (create) */
 int
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
@@ -2081,6 +2137,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         }
 
         add_payload_files(tags, files, payload_dir);
+    }
+
+    if (check_payload_paths(header, payload_dir) != 0) {
+        json_object_put(header);
+        json_object_put(signature);
+        free(header_dir);
+        free(payload_dir);
+        return -1;
     }
 
     /* note the payload digests header.json carries before placeholders go in */

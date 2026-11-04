@@ -240,6 +240,180 @@ class TestCreateRPMWithSymlinks(TestUnpackRPM):
         self.assertTrue(os.path.isfile(original_path))
 
 
+def edit_header(path, func):
+    """Load header.json, hand it to func to change, and write it back"""
+    with open(path) as f:
+        header = json.load(f)
+
+    func(header)
+
+    with open(path, "w") as f:
+        json.dump(header, f)
+
+
+def run_create(tarpm, rpm, tree):
+    """Run tarpm -c and return the exit code and stderr"""
+    proc = subprocess.Popen(
+        [tarpm, "-c", "-f", rpm, tree],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = proc.communicate()
+    return proc.returncode, err.decode("utf-8")
+
+
+def set_description_file(header, name):
+    """Point the Description tag at another file"""
+    for tag in header["tags"]:
+        if tag["tag"] == "Description":
+            tag["file"] = name
+
+
+class CreateRefusesPathOutsidePayload(TestUnpackRPM):
+    """A files entry with ".." does not pull in a file outside the tree"""
+
+    def runTest(self):
+        super().runTest()
+
+        # payload/../secret.txt is the extract directory itself
+        with open(os.path.join(self.output_dir, "secret.txt"), "w") as f:
+            f.write("not for the package\n")
+
+        edit_header(
+            self.header,
+            lambda h: h.setdefault("files", []).append(
+                {"path": "/../secret.txt", "type": "file", "mode": "0644"}
+            ),
+        )
+
+        rpm = os.path.join(self.output_dir, "out.rpm")
+        rc, err = run_create(self.tarpm, rpm, self.output_dir)
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn("/../secret.txt leaves the payload tree", err)
+        self.assertFalse(os.path.exists(rpm))
+
+
+class CreateRefusesSymlinkedPayloadDir(TestUnpackRPM):
+    """A symlinked directory in the payload tree is not followed"""
+
+    def runTest(self):
+        super().runTest()
+
+        outside = os.path.join(self.output_dir, "outside")
+        os.makedirs(outside)
+
+        with open(os.path.join(outside, "secret.txt"), "w") as f:
+            f.write("not for the package\n")
+
+        os.symlink(outside, os.path.join(self.output_dir, "payload", "evil"))
+
+        edit_header(
+            self.header,
+            lambda h: h.setdefault("files", []).append(
+                {"path": "/evil/secret.txt", "type": "file", "mode": "0644"}
+            ),
+        )
+
+        rpm = os.path.join(self.output_dir, "out.rpm")
+        rc, err = run_create(self.tarpm, rpm, self.output_dir)
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn("/evil/secret.txt leaves the payload tree", err)
+        self.assertFalse(os.path.exists(rpm))
+
+
+class CreateRefusesTagFileOutsideTree(TestUnpackRPM):
+    """The file key of a tag cannot name a file outside the tree"""
+
+    def runTest(self):
+        super().runTest()
+
+        secret = os.path.join(os.path.dirname(self.output_dir), "secret.txt")
+        rpm = os.path.join(self.output_dir, "out.rpm")
+
+        for name in [secret, "../secret.txt", "sub/../../secret.txt"]:
+            edit_header(self.header, lambda h: set_description_file(h, name))
+            rc, err = run_create(self.tarpm, rpm, self.output_dir)
+            self.assertEqual(rc, 1, msg=err)
+            self.assertIn('names "%s", which is not a file below' % name, err)
+            self.assertFalse(os.path.exists(rpm))
+
+
+class CreateRefusesSymlinkedTagFile(TestUnpackRPM):
+    """The file key of a tag cannot name a symlink"""
+
+    def runTest(self):
+        super().runTest()
+
+        os.symlink("/etc/passwd", os.path.join(self.output_dir, "link.txt"))
+        edit_header(self.header, lambda h: set_description_file(h, "link.txt"))
+
+        rpm = os.path.join(self.output_dir, "out.rpm")
+        rc, err = run_create(self.tarpm, rpm, self.output_dir)
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn('names "link.txt", which is not a file below', err)
+
+
+class CreateReadsTagFileInSeparatePayload(TestUnpackRPM):
+    """The file key of a tag may name a file in a payload directory elsewhere"""
+
+    def runTest(self):
+        super().runTest()
+
+        # header.json goes in meta/ and the payload in pl/, apart from each other
+        meta = os.path.join(self.output_dir, "meta")
+        pl = os.path.join(self.output_dir, "pl")
+        os.makedirs(meta)
+        os.makedirs(pl)
+        header = os.path.join(meta, "header.json")
+        shutil.move(self.header, header)
+        shutil.move(
+            os.path.join(self.output_dir, "description.txt"),
+            os.path.join(pl, "description.txt"),
+        )
+
+        rpm = os.path.join(self.output_dir, "out.rpm")
+        args = [self.tarpm, "-c", "-f", rpm, "-H", header, "-P", pl, self.output_dir]
+
+        # relative to header.json and absolute both reach the payload directory
+        for name in ["../pl/description.txt", os.path.join(pl, "description.txt")]:
+            edit_header(header, lambda h: set_description_file(h, name))
+            proc = subprocess.run(args, capture_output=True)
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr.decode("utf-8"))
+            self.assertTrue(os.path.isfile(rpm))
+            os.unlink(rpm)
+
+        # the directory above both is neither of them
+        edit_header(header, lambda h: set_description_file(h, "../lead.json"))
+        proc = subprocess.run(args, capture_output=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(
+            'names "../lead.json", which is not a file below',
+            proc.stderr.decode("utf-8"),
+        )
+
+
+class CreateReadsTagFileInSubdirectory(TestUnpackRPM):
+    """The file key of a tag may name a file in a subdirectory"""
+
+    def runTest(self):
+        super().runTest()
+
+        os.makedirs(os.path.join(self.output_dir, "sub"))
+        shutil.copy(
+            os.path.join(self.output_dir, "description.txt"),
+            os.path.join(self.output_dir, "sub", "description.txt"),
+        )
+        os.unlink(os.path.join(self.output_dir, "description.txt"))
+        edit_header(
+            self.header, lambda h: set_description_file(h, "sub/description.txt")
+        )
+
+        rpm = os.path.join(self.output_dir, "out.rpm")
+        rc, err = run_create(self.tarpm, rpm, self.output_dir)
+        self.assertEqual(rc, 0, msg=err)
+        self.assertTrue(os.path.isfile(rpm))
+
+
 class TestCreateRPMWithDirectories(TestUnpackRPM):
     """Test creating an RPM with nested directory structures"""
 

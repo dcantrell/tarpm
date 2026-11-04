@@ -35,6 +35,7 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 #include "tarpm.h"
 
@@ -160,4 +161,75 @@ char *joinpath(const char *path, ...)
     list_free(list, free);
 
     return built;
+}
+
+/*
+ * Returns true if path names something below base without leaving
+ * it.  One leading slash is allowed and the path is still read as
+ * relative to base.  Every component has to be non-empty and may not
+ * be "." or "..".  No component that exists under base may be a
+ * symlink, except the last one when allow_last_link is true.  Once a
+ * component is missing there is nothing left to follow, so we only
+ * check the names of the rest.
+ */
+bool path_beneath(const char *base, const char *path, const bool allow_last_link)
+{
+    size_t len = 0;
+    bool last = false;
+    bool exists = true;
+    const char *start = NULL;
+    const char *end = NULL;
+    char *prefix = NULL;
+    char *sub = NULL;
+    struct stat sb;
+
+    if (base == NULL || path == NULL) {
+        return false;
+    }
+
+    if (path[0] == '/') {
+        path++;
+    }
+
+    if (path[0] == '\0') {
+        return false;
+    }
+
+    start = path;
+
+    while (!last) {
+        end = strchr(start, '/');
+
+        if (end == NULL) {
+            end = start + strlen(start);
+            last = true;
+        }
+
+        len = end - start;
+
+        if (len == 0 || (len == 1 && start[0] == '.') || (len == 2 && !strncmp(start, "..", 2))) {
+            return false;
+        }
+
+        if (exists) {
+            prefix = xalloc(end - path + 1);
+            memcpy(prefix, path, end - path);
+            prefix[end - path] = '\0';
+            sub = joinpath(base, prefix, NULL);
+            free(prefix);
+
+            if (lstat(sub, &sb) == -1) {
+                exists = false;
+            } else if (S_ISLNK(sb.st_mode) && (!last || !allow_last_link)) {
+                free(sub);
+                return false;
+            }
+
+            free(sub);
+        }
+
+        start = end + 1;
+    }
+
+    return true;
 }

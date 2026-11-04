@@ -154,6 +154,7 @@ void close_magic(void);
 
 /* joinpath.c */
 char *joinpath(const char *path, ...);
+bool path_beneath(const char *base, const char *path, const bool allow_last_link);
 
 /* json.c */
 struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature);

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <unistd.h>
+#include <sys/stat.h>
 #include <CUnit/Basic.h>
 #include "tarpm.h"
 
@@ -92,6 +94,78 @@ test_joinpath(void)
     return;
 }
 
+void
+test_path_beneath(void)
+{
+    char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
+    char *path = NULL;
+
+    /* the don't crash case */
+    TARPM_ASSERT_FALSE(path_beneath(NULL, "usr", false));
+    TARPM_ASSERT_FALSE(path_beneath("/", NULL, false));
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+
+    /* usr/bin is a directory, lib is a symlink to it, file a symlink to a file */
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin", tmpdir);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(symlink("usr/bin", path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin/link", tmpdir);
+    TARPM_ASSERT_TRUE(symlink("/etc/passwd", path) == 0);
+    free(path);
+
+    /* names below the base, there or not, with or without a leading slash */
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "usr/bin", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "/usr/bin", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "/usr/bin/missing", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "/no/such/dir", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "file..name", false));
+
+    /* names that leave the base or are not plain */
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "/", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "..", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "/../etc/passwd", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr/../../etc/passwd", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "no/such/../dir", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr/./bin", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr//bin", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr/bin/", false));
+
+    /* a symlinked directory on the way is never allowed */
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "lib/link", false));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "lib/link", true));
+
+    /* a symlink at the end only when the caller allows it */
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "lib", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "lib", true));
+    TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr/bin/link", false));
+    TARPM_ASSERT_TRUE(path_beneath(tmpdir, "usr/bin/link", true));
+
+    /* clean up */
+    xasprintf(&path, "%s/usr/bin/link", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -105,7 +179,8 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test joinpath()", test_joinpath) == NULL) {
+    if (CU_add_test(pSuite, "test joinpath()", test_joinpath) == NULL ||
+        CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL) {
         return NULL;
     }
 
