@@ -871,7 +871,7 @@ class CreateRejectsNonStringValue(RequiresTarpm):
 
 
 class CreateRejectsBadRegionTags(RequiresTarpm):
-    """A second region tag, or the signature region tag in the main header, is turned away"""
+    """A second region tag, the wrong region tag, or a bad region value is turned away"""
 
     def runTest(self):
         # a region trailer the way rpm writes it, as base64
@@ -892,6 +892,28 @@ class CreateRejectsBadRegionTags(RequiresTarpm):
             (
                 [{"tag": "Headersignatures", "type": "binary blob", "value": region}],
                 "the Headersignatures tag does not belong in this header",
+            ),
+            (
+                [{"tag": "Headerimmutable", "type": "string", "value": region}],
+                "the Headerimmutable tag must have type binary blob and a value of 16 bytes",
+            ),
+            (
+                [
+                    {
+                        "tag": "Headerimmutable",
+                        "type": "binary blob",
+                        "value": "AAAAPwAAAAc=",
+                    }
+                ],
+                "the Headerimmutable tag must have type binary blob and a value of 16 bytes",
+            ),
+            (
+                [{"tag": "Headerimmutable", "type": "binary blob", "value": "A" * 64}],
+                "the Headerimmutable tag must have type binary blob and a value of 16 bytes",
+            ),
+            (
+                [{"tag": "Headerimmutable", "type": "binary blob", "value": 7}],
+                "the Headerimmutable tag must have type binary blob and a value of 16 bytes",
             ),
         ]
 

@@ -93,7 +93,7 @@ bool valid_header(struct rpmhdr *hdr);
 struct json_object *read_header(const int fd, const char *dest_dir);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
-int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size);
+int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size, bool is_signature);
 void fix_trailer_offset(uint8_t *trailer_data, const size_t trailer_size, const uint32_t nentries);
 
 /* changelog.c */

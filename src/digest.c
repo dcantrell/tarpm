@@ -325,13 +325,22 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
     i = -1;
 
     if (has_trailer(nentries, hdrinfo->estart)) {
+        if (n < RPM_TRAILER_SIZE) {
+            warnx(_("*** header data is too small to hold the region trailer"));
+            goto cleanup_mksigdigest;
+        }
+
         n -= RPM_TRAILER_SIZE;
-        i = get_trailer_data(data, &trailer_data, &trailer_size);
+        i = get_trailer_data(data, &trailer_data, &trailer_size, false);
+
+        /* a digest without the trailer would not match what we write */
+        if (i != 0) {
+            warnx(_("*** missing the region trailer in the header data"));
+            goto cleanup_mksigdigest;
+        }
 
         /* digest the trailer we are going to write, not the one we read */
-        if (i == 0) {
-            fix_trailer_offset(trailer_data, trailer_size, nentries);
-        }
+        fix_trailer_offset(trailer_data, trailer_size, nentries);
     }
 
     if (EVP_DigestUpdate(ctx, hdrinfo->datastart, n) == 0) {

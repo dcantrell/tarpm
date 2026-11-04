@@ -403,6 +403,34 @@ check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bo
 }
 
 /*
+ * The region tag value is the trailer itself, so it has to be binary
+ * data that decodes to exactly one trailer.
+ */
+static bool
+valid_region_value(struct json_object *entry, const rpmTagVal tag_number)
+{
+    struct json_object *key = NULL;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    bool r = false;
+
+    if (get_entry_type(entry) != RPM_BIN_TYPE) {
+        return false;
+    }
+
+    if (!json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key) || json_object_get_type(key) != json_type_string) {
+        return false;
+    }
+
+    if (rpmBase64Decode(json_object_get_string(key), (void **) &blob, &blobsize) == 0 && blobsize == RPM_TRAILER_SIZE) {
+        r = true;
+    }
+
+    free(blob);
+    return r;
+}
+
+/*
  * The region tag carries the trailer and the header sizing only makes
  * room for one.  A header carries at most one region tag and it has
  * to be the one for this kind of header, which is
@@ -447,6 +475,11 @@ check_region_tags(struct json_object *tags, bool is_signature)
         if (tag_number != region) {
             /* librpm has no name for Headersignatures, so use ours */
             warnx(_("*** the %s tag does not belong in this header, use %s"), sig_tag_name(tag_number), sig_tag_name(region));
+            r = -1;
+        }
+
+        if (!valid_region_value(entry, tag_number)) {
+            warnx(_("*** the %s tag must have type binary blob and a value of %d bytes"), sig_tag_name(tag_number), RPM_TRAILER_SIZE);
             r = -1;
         }
 
@@ -1288,19 +1321,20 @@ has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart)
 }
 
 /*
- * Looks for the trailer data in the header tags and if found, does a
- * base64 decode and stores that in the trailer_data parameter and the
- * size in the trailer_size parameter.  Returns 0 on success, non-zero
- * on error.  Caller must free trailer_data.
+ * Looks for the region tag of this kind of header in the header tags
+ * and if found, does a base64 decode and stores that in the
+ * trailer_data parameter and the size in the trailer_size parameter.
+ * Returns 0 on success, non-zero on error.  Caller must free
+ * trailer_data.
  */
 int
-get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size)
+get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size, bool is_signature)
 {
     size_t i = 0;
     int r = 0;
+    rpmTagVal region = HEADER_IMMUTABLE;
     struct json_object *tags = NULL;
     struct json_object *entry = NULL;
-    struct json_object *tobj = NULL;
     struct json_object *vobj = NULL;
     const char *trailer_value = NULL;
 
@@ -1308,25 +1342,34 @@ get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t 
         return -1;
     }
 
+    if (is_signature) {
+        region = HEADER_SIGNATURES;
+    } else {
+        region = HEADER_IMMUTABLE;
+    }
+
     if (json_object_object_get_ex(data, RPM_ENTRY_TAGS_DESC, &tags) == 1) {
         for (i = 0; i < json_object_array_length(tags); i++) {
             entry = json_object_array_get_idx(tags, i);
 
-            if (json_object_object_get_ex(entry, RPM_ENTRY_TRAILER_DESC, &tobj) == 1) {
-                if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &vobj) == 1) {
-                    trailer_value = json_object_get_string(vobj);
-                    r = rpmBase64Decode(trailer_value, (void **) trailer_data, trailer_size);
+            /* only the region tag that goes in to the header counts */
+            if (is_skipped_tag(entry, is_signature) || get_tag_number(entry, is_signature) != region) {
+                continue;
+            }
 
-                    if (r == 0 && *trailer_size == 16) {
-                        return 0;
-                    }
+            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &vobj) == 1) {
+                trailer_value = json_object_get_string(vobj);
+                r = rpmBase64Decode(trailer_value, (void **) trailer_data, trailer_size);
 
-                    free(*trailer_data);
-                    *trailer_data = NULL;
+                if (r == 0 && *trailer_size == RPM_TRAILER_SIZE) {
+                    return 0;
                 }
 
-                break;
+                free(*trailer_data);
+                *trailer_data = NULL;
             }
+
+            break;
         }
     }
 

@@ -97,19 +97,19 @@ test_get_trailer_data_null(void)
     int r = 0;
 
     /* NULL data returns error */
-    r = get_trailer_data(NULL, &trailer_data, &trailer_size);
+    r = get_trailer_data(NULL, &trailer_data, &trailer_size, false);
     TARPM_ASSERT_EQUAL(r, -1);
 
     /* NULL trailer_data returns error */
-    r = get_trailer_data(NULL, NULL, &trailer_size);
+    r = get_trailer_data(NULL, NULL, &trailer_size, false);
     TARPM_ASSERT_EQUAL(r, -1);
 
     /* NULL trailer_size returns error */
-    r = get_trailer_data(NULL, &trailer_data, NULL);
+    r = get_trailer_data(NULL, &trailer_data, NULL, false);
     TARPM_ASSERT_EQUAL(r, -1);
 
     /* all NULL returns error */
-    r = get_trailer_data(NULL, NULL, NULL);
+    r = get_trailer_data(NULL, NULL, NULL, false);
     TARPM_ASSERT_EQUAL(r, -1);
 
     return;
@@ -125,7 +125,7 @@ test_get_trailer_data_no_tags(void)
 
     /* data without tags array returns error */
     data = json_object_new_object();
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -145,7 +145,7 @@ test_get_trailer_data_empty_tags(void)
     data = json_object_new_object();
     tags = json_object_new_array();
     json_object_object_add(data, "tags", tags);
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -171,7 +171,7 @@ test_get_trailer_data_no_trailer(void)
     json_object_object_add(entry, "value", json_object_new_string("testpkg"));
     json_object_array_add(tags, entry);
     json_object_object_add(data, "tags", tags);
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -199,7 +199,7 @@ test_get_trailer_data_no_value(void)
     json_object_object_add(entry, "trailer", trailer);
     json_object_array_add(tags, entry);
     json_object_object_add(data, "tags", tags);
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -231,7 +231,7 @@ test_get_trailer_data_invalid_size(void)
     json_object_object_add(entry, "value", json_object_new_string(base64_8bytes));
     json_object_array_add(tags, entry);
     json_object_object_add(data, "tags", tags);
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, -1);
     json_object_put(data);
 
@@ -263,9 +263,52 @@ test_get_trailer_data_valid(void)
     json_object_object_add(entry, "value", json_object_new_string(base64_16bytes));
     json_object_array_add(tags, entry);
     json_object_object_add(data, "tags", tags);
-    r = get_trailer_data(data, &trailer_data, &trailer_size);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, true);
     TARPM_ASSERT_EQUAL(r, 0);
     TARPM_ASSERT_PTR_NOT_NULL(trailer_data);
+    TARPM_ASSERT_EQUAL(trailer_size, 16);
+    free(trailer_data);
+    trailer_data = NULL;
+
+    /* the main header only takes its own region tag */
+    r = get_trailer_data(data, &trailer_data, &trailer_size, false);
+    TARPM_ASSERT_EQUAL(r, -1);
+    TARPM_ASSERT_PTR_NULL(trailer_data);
+    json_object_put(data);
+
+    return;
+}
+
+void
+test_get_trailer_data_other_tag(void)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    uint8_t *trailer_data = NULL;
+    size_t trailer_size = 0;
+    int r = 0;
+    const char *base64_16bytes = NULL;
+
+    /* a trailer key on some other tag is not the region trailer */
+    base64_16bytes = "AAAAAAAAAAAAAAAAAAAAAA==";
+    data = json_object_new_object();
+    tags = json_object_new_array();
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    json_object_object_add(entry, "type", json_object_new_string("BIN"));
+    json_object_object_add(entry, "trailer", json_object_new_object());
+    json_object_object_add(entry, "value", json_object_new_string("AAAAAAAAAAA="));
+    json_object_array_add(tags, entry);
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Headerimmutable"));
+    json_object_object_add(entry, "type", json_object_new_string("BIN"));
+    json_object_object_add(entry, "trailer", json_object_new_object());
+    json_object_object_add(entry, "value", json_object_new_string(base64_16bytes));
+    json_object_array_add(tags, entry);
+    json_object_object_add(data, "tags", tags);
+    r = get_trailer_data(data, &trailer_data, &trailer_size, false);
+    TARPM_ASSERT_EQUAL(r, 0);
     TARPM_ASSERT_EQUAL(trailer_size, 16);
     free(trailer_data);
     json_object_put(data);
@@ -408,6 +451,7 @@ get_suite(void)
         CU_add_test(pSuite, "test get_trailer_data() with no value", test_get_trailer_data_no_value) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with invalid size", test_get_trailer_data_invalid_size) == NULL ||
         CU_add_test(pSuite, "test get_trailer_data() with valid data", test_get_trailer_data_valid) == NULL ||
+        CU_add_test(pSuite, "test get_trailer_data() skips other tags", test_get_trailer_data_other_tag) == NULL ||
         CU_add_test(pSuite, "test fix_trailer_offset()", test_fix_trailer_offset) == NULL ||
         CU_add_test(pSuite, "test create_header() with invalid data", test_create_header_invalid) == NULL ||
         CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL) {

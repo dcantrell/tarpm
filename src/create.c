@@ -103,10 +103,16 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
      * not written in the main data section
      */
     if (has_trailer(nentries, hdrinfo->estart)) {
+        /* create_header() always counts the trailer in nbytes */
+        if (n < RPM_TRAILER_SIZE) {
+            warnx(_("*** header data is too small to hold the region trailer"));
+            return -1;
+        }
+
         n -= RPM_TRAILER_SIZE;
 
         /* keep any write failure above */
-        if (get_trailer_data(data, &trailer_data, &trailer_size) == 0) {
+        if (get_trailer_data(data, &trailer_data, &trailer_size, is_signature) == 0) {
             fix_trailer_offset(trailer_data, trailer_size, nentries);
         } else {
             r = -1;
