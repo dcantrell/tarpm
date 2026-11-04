@@ -768,6 +768,92 @@ add_dependency_tags(struct json_object *tags, struct json_object *dependencies)
 }
 
 /*
+ * True if a dependency entry key is missing or holds a string.
+ */
+static bool
+string_or_missing(struct json_object *entry, const char *key)
+{
+    struct json_object *obj = NULL;
+
+    if (!json_object_object_get_ex(entry, key, &obj)) {
+        return true;
+    }
+
+    return json_object_get_type(obj) == json_type_string;
+}
+
+/*
+ * Make sure the dependencies object from header.json has the shape
+ * we read it with.  Each dependency type holds an array of objects.
+ * The name, comparison and version are strings and the sense flags
+ * an array of strings.
+ *
+ * Returns 0 on success, -1 if anything has the wrong type.
+ */
+int
+check_dependencies(struct json_object *dependencies)
+{
+    int i = 0;
+    size_t j = 0;
+    size_t k = 0;
+    struct json_object *deps = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *obj = NULL;
+
+    if (dependencies == NULL) {
+        return 0;
+    }
+
+    if (json_object_get_type(dependencies) != json_type_object) {
+        warnx(_("*** %s must be an object"), RPM_DEPENDENCIES_DESC);
+        return -1;
+    }
+
+    for (i = 0; dep_types[i].key != NULL; i++) {
+        if (!json_object_object_get_ex(dependencies, dep_types[i].key, &deps)) {
+            continue;
+        }
+
+        if (json_object_get_type(deps) != json_type_array) {
+            warnx(_("*** %s in %s must be an array"), dep_types[i].key, RPM_DEPENDENCIES_DESC);
+            return -1;
+        }
+
+        for (j = 0; j < json_object_array_length(deps); j++) {
+            entry = json_object_array_get_idx(deps, j);
+
+            if (json_object_get_type(entry) != json_type_object) {
+                warnx(_("*** entry %zu in %s must be an object"), j, dep_types[i].key);
+                return -1;
+            }
+
+            if (!string_or_missing(entry, RPM_DEPENDENCY_NAME_DESC) || !string_or_missing(entry, RPM_DEPENDENCY_COMPARISON_DESC) || !string_or_missing(entry, RPM_DEPENDENCY_VERSION_DESC)) {
+                warnx(_("*** entry %zu in %s has a %s, %s or %s that is not a string"), j, dep_types[i].key, RPM_DEPENDENCY_NAME_DESC, RPM_DEPENDENCY_COMPARISON_DESC, RPM_DEPENDENCY_VERSION_DESC);
+                return -1;
+            }
+
+            if (!json_object_object_get_ex(entry, RPM_SENSE_FLAGS_DESC, &obj)) {
+                continue;
+            }
+
+            if (json_object_get_type(obj) != json_type_array) {
+                warnx(_("*** entry %zu in %s has %s that is not an array of strings"), j, dep_types[i].key, RPM_SENSE_FLAGS_DESC);
+                return -1;
+            }
+
+            for (k = 0; k < json_object_array_length(obj); k++) {
+                if (json_object_get_type(json_object_array_get_idx(obj, k)) != json_type_string) {
+                    warnx(_("*** entry %zu in %s has %s that is not an array of strings"), j, dep_types[i].key, RPM_SENSE_FLAGS_DESC);
+                    return -1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+/*
  * Check if a tag is a dependency tag that should be excluded from normal tag processing.
  */
 bool

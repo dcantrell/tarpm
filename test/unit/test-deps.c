@@ -678,6 +678,79 @@ test_dependency_index(void)
     return;
 }
 
+/* Test check_dependencies() with good and bad shapes */
+void
+test_check_dependencies(void)
+{
+    struct json_object *dependencies = NULL;
+    struct json_object *deps = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *flags = NULL;
+
+    /* no dependencies at all is fine */
+    TARPM_ASSERT_EQUAL(check_dependencies(NULL), 0);
+
+    /* not an object */
+    dependencies = json_object_new_array();
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), -1);
+    json_object_put(dependencies);
+
+    /* a type that is not an array */
+    dependencies = json_object_new_object();
+    json_object_object_add(dependencies, "provides", json_object_new_string("hello"));
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), -1);
+    json_object_put(dependencies);
+
+    /* an entry that is not an object */
+    dependencies = json_object_new_object();
+    deps = json_object_new_array();
+    json_object_array_add(deps, json_object_new_int(1));
+    json_object_object_add(dependencies, "requires", deps);
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), -1);
+    json_object_put(dependencies);
+
+    /* a name that is null */
+    dependencies = json_object_new_object();
+    deps = json_object_new_array();
+    entry = json_object_new_object();
+    json_object_object_add(entry, "name", NULL);
+    json_object_array_add(deps, entry);
+    json_object_object_add(dependencies, "requires", deps);
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), -1);
+    json_object_put(dependencies);
+
+    /* sense flags holding a null */
+    dependencies = json_object_new_object();
+    deps = json_object_new_array();
+    entry = json_object_new_object();
+    json_object_object_add(entry, "name", json_object_new_string("sh"));
+    flags = json_object_new_array();
+    json_object_array_add(flags, NULL);
+    json_object_object_add(entry, "sense_flags", flags);
+    json_object_array_add(deps, entry);
+    json_object_object_add(dependencies, "requires", deps);
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), -1);
+    json_object_put(dependencies);
+
+    /* a good entry, and keys we do not know are left alone */
+    dependencies = json_object_new_object();
+    deps = json_object_new_array();
+    entry = json_object_new_object();
+    json_object_object_add(entry, "name", json_object_new_string("sh"));
+    json_object_object_add(entry, "comparison", json_object_new_string(">="));
+    json_object_object_add(entry, "version", json_object_new_string("1.0"));
+    flags = json_object_new_array();
+    json_object_array_add(flags, json_object_new_string("pre"));
+    json_object_object_add(entry, "sense_flags", flags);
+    json_object_array_add(deps, entry);
+    json_object_object_add(dependencies, "requires", deps);
+    json_object_object_add(dependencies, "other", json_object_new_int(1));
+    TARPM_ASSERT_EQUAL(check_dependencies(dependencies), 0);
+    json_object_put(dependencies);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -708,7 +781,8 @@ get_suite(void)
         CU_add_test(pSuite, "test is_dependency_tag() with non-dependency tags", test_is_dependency_tag_non_dependency_tags) == NULL ||
         CU_add_test(pSuite, "test dependency_type_key()", test_dependency_type_key) == NULL ||
         CU_add_test(pSuite, "test dependency_type_abbrev()", test_dependency_type_abbrev) == NULL ||
-        CU_add_test(pSuite, "test dependency_index()", test_dependency_index) == NULL) {
+        CU_add_test(pSuite, "test dependency_index()", test_dependency_index) == NULL ||
+        CU_add_test(pSuite, "test check_dependencies()", test_check_dependencies) == NULL) {
         return NULL;
     }
 

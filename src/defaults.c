@@ -208,16 +208,25 @@ add_self_provide(struct json_object *header, struct json_object *tags)
         json_object_object_add(header, RPM_DEPENDENCIES_DESC, dependencies);
     }
 
+    /* check_dependencies() turns these away before we get here */
+    if (json_object_get_type(dependencies) != json_type_object) {
+        return;
+    }
+
     if (!json_object_object_get_ex(dependencies, RPM_DEPENDENCY_PROVIDES_KEY, &provides)) {
         provides = json_object_new_array();
         json_object_object_add(dependencies, RPM_DEPENDENCY_PROVIDES_KEY, provides);
+    }
+
+    if (json_object_get_type(provides) != json_type_array) {
+        return;
     }
 
     /* the header may already provide the name */
     for (i = 0; i < json_object_array_length(provides); i++) {
         entry = json_object_array_get_idx(provides, i);
 
-        if (json_object_object_get_ex(entry, RPM_DEPENDENCY_NAME_DESC, &value) && !strcmp(name, json_object_get_string(value))) {
+        if (json_object_object_get_ex(entry, RPM_DEPENDENCY_NAME_DESC, &value) && json_object_get_type(value) == json_type_string && !strcmp(name, json_object_get_string(value))) {
             return;
         }
     }

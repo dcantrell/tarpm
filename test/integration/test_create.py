@@ -928,6 +928,113 @@ class CreateRejectsBadRegionTags(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsWrongValueType(RequiresTarpm):
+    """A tag value whose JSON type does not fit the tag type is turned away"""
+
+    def runTest(self):
+        cases = [
+            ("Platform", "string array", "linux", "is not an array of strings"),
+            ("Platform", "string array", ["linux", None], "is not an array of strings"),
+            ("Epoch", "int32", True, "is not a number or an array of numbers"),
+            ("Epoch", "int32", [1, "x"], "is not a number or an array of numbers"),
+            ("Epoch", "int32", "12x", "is not a number or an array of numbers"),
+            ("Cookie", "binary blob", 7, "is not base64 data"),
+            ("Cookie", "binary blob", "!!!", "is not base64 data"),
+        ]
+
+        for i, (name, tagtype, value, message) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": name, "type": tagtype, "value": value})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn("the %s tag has a" % name, err)
+            self.assertIn(message, err)
+            self.assertNotIn("Assertion", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateAcceptsNumberString(RequiresTarpm):
+    """A number tag may hold a string of digits"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "Epoch", "type": "int32", "value": "3"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query_rpm(pkg, "%{epoch}"), "3")
+
+
+class CreateRejectsBadDependencies(RequiresTarpm):
+    """A dependencies object of the wrong shape is turned away"""
+
+    def runTest(self):
+        cases = [
+            (["provides"], "dependencies must be an object"),
+            ({"provides": "hello"}, "provides in dependencies must be an array"),
+            ({"requires": [1]}, "entry 0 in requires must be an object"),
+            ({"requires": [{"name": None}]}, "entry 0 in requires has a name"),
+            (
+                {"requires": [{"name": "sh", "version": 1}]},
+                "entry 0 in requires has a name",
+            ),
+            (
+                {"requires": [{"name": "sh", "sense_flags": "pre"}]},
+                "entry 0 in requires has sense_flags that is not an array of strings",
+            ),
+            (
+                {"requires": [{"name": "sh", "sense_flags": [None]}]},
+                "entry 0 in requires has sense_flags that is not an array of strings",
+            ),
+        ]
+
+        for i, (dependencies, message) in enumerate(cases):
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i))
+            edit_header(
+                os.path.join(tree, "header.json"),
+                lambda h: h.update({"dependencies": dependencies}),
+            )
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn(message, err)
+            self.assertNotIn("Assertion", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateRejectsBadChangelogText(RequiresTarpm):
+    """Changelog text lines that are not strings are turned away"""
+
+    def runTest(self):
+        for i, text in enumerate([[None], ["one", 2]]):
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i))
+            changelog = [
+                {
+                    "timestamp": "Tue Mar 15 2022",
+                    "name": "Some One <nobody@example.com> - 1.0-1",
+                    "text": text,
+                }
+            ]
+            edit_header(
+                os.path.join(tree, "header.json"),
+                lambda h: h.update({"changelog": changelog}),
+            )
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn(
+                "changelog entry 0 has text that is not an array of strings", err
+            )
+            self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateKeepsChangelogBlankLines(RequiresTarpm):
     """Blank lines at either end of a changelog entry survive a round trip"""
 

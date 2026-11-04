@@ -228,7 +228,8 @@ split_changelog_text(const char *text)
 
 /*
  * Join JSON array of strings into text with newlines.
- * Returns allocated string. Caller must free.
+ * Returns allocated string or NULL if a line is not a string.  Caller
+ * must free.
  */
 static char *
 join_changelog_text(struct json_object *lines)
@@ -254,6 +255,11 @@ join_changelog_text(struct json_object *lines)
     /* Calculate total length needed */
     for (i = 0; i < len; i++) {
         line = json_object_array_get_idx(lines, i);
+
+        if (json_object_get_type(line) != json_type_string) {
+            return NULL;
+        }
+
         total_len += strlen(json_object_get_string(line)) + 1;
     }
 
@@ -513,6 +519,12 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
         /* Get text array and join back to string with newlines */
         if (json_object_object_get_ex(entry, "text", &obj)) {
             changelog_text = join_changelog_text(obj);
+
+            if (changelog_text == NULL) {
+                warnx(_("*** changelog entry %zu has text that is not an array of strings"), i);
+                free_changelog_arrays(times, names, texts);
+                return -1;
+            }
         }
 
         /* Add the parallel array entries if we have them all */

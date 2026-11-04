@@ -104,6 +104,7 @@ bool is_changelog_tag(rpmTagVal tag);
 /* deps.c */
 struct json_object *generate_dependencies(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo);
 void add_dependency_tags(struct json_object *tags, struct json_object *dependencies);
+int check_dependencies(struct json_object *dependencies);
 bool is_dependency_tag(rpmTagVal tag);
 const char *dependency_type_key(const char abbrev);
 char dependency_type_abbrev(const char *key);

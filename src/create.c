@@ -733,6 +733,10 @@ valid_file_list(const struct hdr_file_lists *hfl, size_t *numfiles)
         return false;
     }
 
+    if (json_object_get_type(hfl->basenames) != json_type_array || json_object_get_type(hfl->dirnames) != json_type_array || json_object_get_type(hfl->dirindexes) != json_type_array) {
+        return false;
+    }
+
     nbasenames = json_object_array_length(hfl->basenames);
     ndirnames = json_object_array_length(hfl->dirnames);
 
@@ -2032,6 +2036,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     struct json_object *header = NULL;
     struct json_object *tags = NULL;
     struct json_object *files = NULL;
+    struct json_object *dependencies = NULL;
     struct rpmlead *rawlead = NULL;
     struct rpmhdr *sig = NULL;
     struct rpmhdrinfo *siginfo = NULL;
@@ -2119,12 +2124,17 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
+    /* everything below reads the dependencies, so check them first */
+    if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {
+        dependencies = NULL;
+    }
+
     /*
      * Fill in the tags we can work out ourselves.  This runs first
      * because the payload scan below goes by the digest algorithm and
      * the package type it leaves behind.
      */
-    if (apply_header_defaults(header, rpmformat) != 0) {
+    if (check_dependencies(dependencies) != 0 || apply_header_defaults(header, rpmformat) != 0) {
         json_object_put(header);
         json_object_put(signature);
         free(header_dir);

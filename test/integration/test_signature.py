@@ -815,6 +815,37 @@ class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
         self.assertFalse("Rsa" in self.created_signature(created))
 
 
+class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
+    """With -k an Openpgp value that is not an array of strings is turned away"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        original = json.load(f)
+        f.close()
+
+        for value in [[None], [1]]:
+            signature = json.loads(json.dumps(original))
+            signature["tags"] = [t for t in signature["tags"] if t["tag"] != "Openpgp"]
+            signature["tags"].append(
+                {"tag": "Openpgp", "type": "string array", "value": value}
+            )
+
+            f = open(self.signature, "w")
+            json.dump(signature, f)
+            f.close()
+
+            created = os.path.join(self.output_dir, "created.rpm")
+            rc, err = self.create(created, ["-k"])
+            self.assertNotEqual(rc, 0)
+            self.assertIn(
+                "the Openpgp tag has a string array type but its value is not an array of strings",
+                err,
+            )
+            self.assertNotIn("Assertion", err)
+
+
 class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase):
     """With -k and no signature.json the package comes out unsigned"""
 

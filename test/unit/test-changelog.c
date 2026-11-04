@@ -381,6 +381,37 @@ test_add_changelog_tags_missing_timestamp(void)
     return;
 }
 
+/* Test add_changelog_tags with text lines that are not strings */
+void
+test_add_changelog_tags_bad_text(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *changelog = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *text = NULL;
+
+    tags = json_object_new_array();
+    changelog = json_object_new_array();
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "timestamp", json_object_new_string("Tue Mar 15 2022"));
+    json_object_object_add(entry, "name", json_object_new_string("John Doe <john@example.com>"));
+    text = json_object_new_array();
+    json_object_array_add(text, json_object_new_string("- Change"));
+    json_object_array_add(text, NULL);
+    json_object_object_add(entry, "text", text);
+    json_object_array_add(changelog, entry);
+
+    /* a null line fails rather than crashing */
+    TARPM_ASSERT_EQUAL(add_changelog_tags(tags, changelog), -1);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
+
+    json_object_put(tags);
+    json_object_put(changelog);
+
+    return;
+}
+
 /* Test add_changelog_tags with timestamps that cannot be read */
 void
 test_add_changelog_tags_unreadable_timestamp(void)
@@ -656,6 +687,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_changelog_tags() with empty text", test_add_changelog_tags_empty_text) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with missing timestamp", test_add_changelog_tags_missing_timestamp) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with unreadable timestamp", test_add_changelog_tags_unreadable_timestamp) == NULL ||
+        CU_add_test(pSuite, "test add_changelog_tags() with bad text", test_add_changelog_tags_bad_text) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with daylight saving", test_add_changelog_tags_daylight_saving) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with unknown timezone", test_add_changelog_tags_unknown_timezone) == NULL ||
         CU_add_test(pSuite, "test add_changelog_tags() with missing name", test_add_changelog_tags_missing_name) == NULL ||

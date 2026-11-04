@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <err.h>
 #include <arpa/inet.h>
@@ -353,15 +355,137 @@ entry_value_key(struct json_object *entry, const rpmTagVal tag)
     return RPM_ENTRY_VALUE_DESC;
 }
 
+/* The name to report a tag by in the header we are building */
+static const char *
+report_tag_name(const rpmTagVal tag, bool is_signature)
+{
+    if (is_signature) {
+        return sig_tag_name(tag);
+    }
+
+    return rpmTagGetName(tag);
+}
+
 /*
- * Additional check to ensure when the JSON data specifies an RPM
- * header type of "string" we are actually getting a JSON string
- * value.
+ * True if every element of an array has the given JSON type.
+ */
+static bool
+array_of(struct json_object *value, const enum json_type type)
+{
+    size_t i = 0;
+
+    if (json_object_get_type(value) != json_type_array) {
+        return false;
+    }
+
+    for (i = 0; i < json_object_array_length(value); i++) {
+        if (json_object_get_type(json_object_array_get_idx(value, i)) != type) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * True if a JSON value is a number.  We write the signature sizes as
+ * strings of digits and json-c reads those back as numbers, so a
+ * string that holds a whole number counts too.
+ */
+static bool
+is_number(struct json_object *value)
+{
+    const char *s = NULL;
+    char *end = NULL;
+
+    if (json_object_get_type(value) == json_type_int) {
+        return true;
+    }
+
+    if (json_object_get_type(value) != json_type_string) {
+        return false;
+    }
+
+    s = json_object_get_string(value);
+
+    if (*s == '\0') {
+        return false;
+    }
+
+    errno = 0;
+    (void) strtoll(s, &end, 10);
+
+    if (errno != 0 || *end != '\0') {
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * True if a number tag holds a number or an array of numbers.  The
+ * digest algorithms and the build time may be written by name or as
+ * a timestamp instead.
+ */
+static bool
+valid_number_value(const rpmTagType type, const rpmTagVal tag, struct json_object *value)
+{
+    size_t i = 0;
+
+    if (is_number(value)) {
+        return true;
+    }
+
+    if (type == RPM_INT32_TYPE && json_object_get_type(value) == json_type_string) {
+        if (tag == RPMTAG_FILEDIGESTALGO || tag == RPMTAG_PAYLOAD_DIGEST_ALGO || tag == RPMTAG_BUILDTIME) {
+            return true;
+        }
+    }
+
+    if (json_object_get_type(value) != json_type_array) {
+        return false;
+    }
+
+    for (i = 0; i < json_object_array_length(value); i++) {
+        if (!is_number(json_object_array_get_idx(value, i))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* True if a binary tag holds a base64 string */
+static bool
+valid_binary_value(struct json_object *value)
+{
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    bool r = false;
+
+    if (json_object_get_type(value) != json_type_string) {
+        return false;
+    }
+
+    if (rpmBase64Decode(json_object_get_string(value), (void **) &blob, &blobsize) == 0) {
+        r = true;
+    }
+
+    free(blob);
+    return r;
+}
+
+/*
+ * Make sure each tag value has the JSON type its RPM header type
+ * needs before we size and write the header.  A string is a JSON
+ * string and a string array is an array of them.  A number type is a
+ * number or an array of numbers.  A binary blob is a base64 string.
+ * The region tags have their own check in check_region_tags().
  *
- * Returns 0 on success, -1 if any value is not a string.
+ * Returns 0 on success, -1 if any value has the wrong type.
  */
 static int
-check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bool is_signature)
+check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool is_signature)
 {
     int r = 0;
     size_t i = 0;
@@ -369,6 +493,7 @@ check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bo
     rpmTagVal tag_number = 0;
     struct json_object *entry = NULL;
     struct json_object *key = NULL;
+    const char *name = NULL;
 
     if (tags == NULL || tagfiles == NULL) {
         return -1;
@@ -382,20 +507,38 @@ check_string_values(struct json_object *tags, const struct tagfile *tagfiles, bo
         }
 
         entry_type = get_entry_type(entry);
+        tag_number = get_tag_number(entry, is_signature);
 
-        if (entry_type != RPM_STRING_TYPE && entry_type != RPM_I18NSTRING_TYPE) {
+        if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
             continue;
         }
-
-        tag_number = get_tag_number(entry, is_signature);
 
         if (!json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key)) {
             continue;
         }
 
-        if (json_object_get_type(key) != json_type_string) {
-            warnx(_("*** the %s tag has a string type but its value is not a string"), rpmTagGetName(tag_number));
-            r = -1;
+        name = report_tag_name(tag_number, is_signature);
+
+        if (entry_type == RPM_STRING_TYPE || entry_type == RPM_I18NSTRING_TYPE) {
+            if (json_object_get_type(key) != json_type_string) {
+                warnx(_("*** the %s tag has a string type but its value is not a string"), name);
+                r = -1;
+            }
+        } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
+            if (!array_of(key, json_type_string)) {
+                warnx(_("*** the %s tag has a string array type but its value is not an array of strings"), name);
+                r = -1;
+            }
+        } else if (entry_type == RPM_INT8_TYPE || entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
+            if (!valid_number_value(entry_type, tag_number, key)) {
+                warnx(_("*** the %s tag has a number type but its value is not a number or an array of numbers"), name);
+                r = -1;
+            }
+        } else if (entry_type == RPM_BIN_TYPE) {
+            if (!valid_binary_value(key)) {
+                warnx(_("*** the %s tag has a binary blob type but its value is not base64 data"), name);
+                r = -1;
+            }
         }
     }
 
@@ -1242,7 +1385,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_string_values(tags, tagfiles, is_signature) == -1) {
+    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);
