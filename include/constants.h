@@ -298,6 +298,14 @@
 #define RPM_DEFAULT_PAYLOADFORMAT      "cpio"
 #define RPM_DEFAULT_PAYLOADCOMPRESSOR  "gzip"
 #define RPM_DEFAULT_PAYLOADFLAGS       "9"
+
+/*
+ * The Payloadcompressor value in header.json for an uncompressed
+ * payload.  rpm has no name for this, so it stays out of the package,
+ * which carries no Payloadcompressor tag and Payloadflags of 0.
+ */
+#define PAYLOADCOMPRESSOR_NONE         "none"
+#define RPM_UNCOMPRESSED_PAYLOADFLAGS  "0"
 #define RPM_DEFAULT_SOURCERPM          "(none)"
 
 /*

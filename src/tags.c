@@ -368,6 +368,23 @@ sig_tag_name(uint32_t tag)
     }
 }
 
+/* Take every copy of a tag out of the tags array */
+void
+drop_tag(struct json_object *tags, const rpmTagVal tag)
+{
+    size_t i = 0;
+
+    while (i < json_object_array_length(tags)) {
+        if (get_tag_number(json_object_array_get_idx(tags, i), false) == tag) {
+            json_object_array_del_idx(tags, i, 1);
+        } else {
+            i++;
+        }
+    }
+
+    return;
+}
+
 /*
  * Returns true if the tag is a signature header tag that rpmsign
  * writes.  Only rpmsign can make these, so we leave them out of a

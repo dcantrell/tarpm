@@ -152,6 +152,41 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
 }
 
 /*
+ * rpmbuild leaves the compressor tag off an uncompressed payload and
+ * create turns a missing tag in to the default compressor, so we name
+ * it in header.json.  rpm reads a missing tag as gzip and an old
+ * package can really be that, so we look at the start of the payload,
+ * which is where fd sits, and go by the cpio magic.
+ */
+static void
+mark_uncompressed_payload(const int fd, struct json_object *header)
+{
+    char magic[5];
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
+        return;
+    }
+
+    if (has_tag(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR))) {
+        return;
+    }
+
+    if (read(fd, magic, sizeof(magic)) != (ssize_t) sizeof(magic) || memcmp(magic, "07070", sizeof(magic))) {
+        return;
+    }
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR)));
+    json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_STRING_TYPE)));
+    json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(PAYLOADCOMPRESSOR_NONE));
+    json_object_array_add(tags, entry);
+
+    return;
+}
+
+/*
  * Read the lead, the signature, and the header out of the RPM and
  * write each one to its JSON file.  Returns 0 if that worked and -1
  * if it did not.
@@ -203,6 +238,9 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 
     /* move the file and verify signatures to the "files" array */
     move_file_signatures(signature, header);
+
+    /* the payload starts here, right after the main header */
+    mark_uncompressed_payload(rpmfd, header);
 
     /* close the RPM after reading headers */
     if (close(rpmfd) == -1) {

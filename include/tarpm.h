@@ -176,6 +176,7 @@ const char *sig_tag_name(uint32_t tag);
 bool is_rpmsign_tag(uint32_t tag);
 bool is_file_signature_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
+void drop_tag(struct json_object *tags, const rpmTagVal tag);
 rpmTagVal renamed_tag_number(const char *tag);
 bool has_tag(const struct json_object *tags, const char *name);
 const char *get_tag_value(const struct json_object *tags, const char *name);

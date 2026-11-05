@@ -2823,23 +2823,6 @@ build_file_lists(struct file_list_build *build, struct json_object *files)
     return;
 }
 
-/* Take every copy of a tag out of the tags array */
-static void
-drop_tag(struct json_object *tags, const rpmTagVal tag)
-{
-    size_t i = 0;
-
-    while (i < json_object_array_length(tags)) {
-        if (get_tag_number(json_object_array_get_idx(tags, i), false) == tag) {
-            json_object_array_del_idx(tags, i, 1);
-        } else {
-            i++;
-        }
-    }
-
-    return;
-}
-
 /*
  * Determine if we should use RPMTAG_FILESIZES or RPMTAG_LONGFILESIZES
  * based on both the RPM format version and, if necessary, the size of

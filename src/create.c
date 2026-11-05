@@ -916,6 +916,22 @@ order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, con
     return ordered;
 }
 
+/* True if create_payload() can write a payload for this compressor */
+static bool
+known_compressor(const char *compressor)
+{
+    size_t i = 0;
+    const char *names[] = { "gzip", "bzip2", "xz", "lzma", "zstd" };
+
+    for (i = 0; i < (sizeof(names) / sizeof(names[0])); i++) {
+        if (!strcmp(compressor, names[i])) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /*
  * Helper for create_rpm() that writes the payload to a temporary
  * file.  Returns an open file descriptor to use later when putting
@@ -959,6 +975,14 @@ create_payload(struct json_object *header, const char *payload_dir)
     /* get the header tags array */
     if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in header data"));
+        return -1;
+    }
+
+    /* an unknown name would get an uncompressed payload */
+    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+
+    if (tag != NULL && !known_compressor(tag)) {
+        warnx(_("*** unknown Payloadcompressor \"%s\", use gzip, bzip2, xz, lzma, zstd, or none"), tag);
         return -1;
     }
 
@@ -1108,15 +1132,11 @@ create_payload(struct json_object *header, const char *payload_dir)
                 zstd.level = 22;
             }
         }
-    } else if (tag == NULL || !strcmp(tag, "none")) {
-        /* no compression, but RPM still needs 512-byte blocks for the cpio payload */
+    } else if (tag == NULL) {
+        /* rpmbuild does not pad an uncompressed payload, so neither do we */
         archive_write_add_filter_none(payload);
 
-        if (archive_write_set_bytes_per_block(payload, 512) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_bytes_per_block: %s", archive_error_string(payload));
-        }
-
-        if (archive_write_set_bytes_in_last_block(payload, 512) != ARCHIVE_OK) {
+        if (archive_write_set_bytes_in_last_block(payload, 1) != ARCHIVE_OK) {
             errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
         }
     } else if (!strcmp(tag, "gzip")) {
@@ -1136,17 +1156,6 @@ create_payload(struct json_object *header, const char *payload_dir)
         archive_write_add_filter_xz(payload);
     } else if (!strcmp(tag, "lzma")) {
         archive_write_add_filter_lzma(payload);
-    } else {
-        /* unknown compression - default to none with 512 byte blocks */
-        archive_write_add_filter_none(payload);
-
-        if (archive_write_set_bytes_per_block(payload, 512) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_bytes_per_block: %s", archive_error_string(payload));
-        }
-
-        if (archive_write_set_bytes_in_last_block(payload, 512) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
-        }
     }
 
     /* set the compression level for non-zstd compressors */

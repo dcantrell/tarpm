@@ -977,6 +977,58 @@ class CreateRejectsUnknownTagName(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsUnknownCompressor(RequiresTarpm):
+    """A Payloadcompressor tarpm does not know is turned away"""
+
+    def runTest(self):
+        for i, name in enumerate(["zx", "lz4", "ufdio", ""]):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": "Payloadcompressor", "type": "string", "value": name})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+
+            # a package already there stays when the name is refused
+            f = open(pkg, "w")
+            f.write("keep me\n")
+            f.close()
+
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn('unknown Payloadcompressor "%s"' % name, err)
+
+            f = open(pkg)
+            self.assertEqual(f.read(), "keep me\n")
+            f.close()
+
+
+class CreateAcceptsCompressorNone(RequiresTarpm):
+    """A Payloadcompressor of none leaves the tag off an uncompressed package"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "Payloadcompressor", "type": "string", "value": "none"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+
+        f = open(os.path.join(tree, "payload", "README"), "w")
+        f.write("hello\n")
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(
+            query_rpm(pkg, "%{payloadcompressor}|%{payloadflags}"), "(none)|0"
+        )
+
+        # the cpio archive sits in the package as it is
+        f = open(pkg, "rb")
+        data = f.read()
+        f.close()
+
+        self.assertIn(b"070701", data)
+
+
 class CreateAcceptsNumberString(RequiresTarpm):
     """A number tag may hold a string of digits"""
 

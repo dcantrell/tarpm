@@ -257,6 +257,7 @@ apply_header_defaults(struct json_object *header, const int format)
     char *buf = NULL;
     const char *name = NULL;
     const char *arch = NULL;
+    const char *compressor = NULL;
     bool source_package = false;
     struct json_object *tags = NULL;
     struct utsname uts;
@@ -306,8 +307,19 @@ apply_header_defaults(struct json_object *header, const int format)
     /* headerCheckPayloadFormat() in lib/depends.cc takes cpio and nothing else */
     add_default_tag(tags, RPMTAG_PAYLOADFORMAT, RPM_STRING_TYPE, RPM_DEFAULT_PAYLOADFORMAT);
 
-    /* match rpm when the metadata names no compressor */
-    if (format == RPM_FORMAT_V6 && !source_package) {
+    /*
+     * rpmbuild marks an uncompressed payload with no compressor tag
+     * and flags of 0.  The name "none" is how a tree asks for that
+     * and it never reaches the header.  Otherwise match rpm when the
+     * metadata names no compressor.
+     */
+    compressor = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+
+    if (compressor != NULL && !strcmp(compressor, PAYLOADCOMPRESSOR_NONE)) {
+        drop_tag(tags, RPMTAG_PAYLOADCOMPRESSOR);
+        drop_tag(tags, RPMTAG_PAYLOADFLAGS);
+        add_default_tag(tags, RPMTAG_PAYLOADFLAGS, RPM_STRING_TYPE, RPM_UNCOMPRESSED_PAYLOADFLAGS);
+    } else if (format == RPM_FORMAT_V6 && !source_package) {
         add_default_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR);
         add_default_tag(tags, RPMTAG_PAYLOADFLAGS, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR_LEVEL);
     } else {

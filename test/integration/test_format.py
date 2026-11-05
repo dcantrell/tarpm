@@ -12,7 +12,12 @@ import unittest
 import rpmfluff
 import rpm
 from baseclass import NAME, TestUnpackRPM
-from baseclass import HAVE_RPM_FORMAT_SIX, rpm_at_least
+from baseclass import HAVE_RPM_FORMAT_SIX, RPMBUILD_FORMAT_ARGS, rpm_at_least
+
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 # The main header tags rpm writes for the payload, one set per RPM
 # format.  writeRPM() in build/pack.cc in the rpm source puts these in.
@@ -421,6 +426,100 @@ class VerifyCreateFormatFourCompression(TestUnpackRPM):
         tags = header_tags(extracted_header(self, created, "again"))
         self.assertEqual(tags["Payloadcompressor"], "zstd")
         self.assertEqual(tags["Payloadflags"], "10")
+
+
+def query_compressor(pkg):
+    """Return the compressor and flags rpm reads from a package"""
+    proc = subprocess.Popen(
+        ["rpm", "-qp", "--qf", "%{payloadcompressor}|%{payloadflags}", pkg],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = proc.communicate()
+
+    return out.decode()
+
+
+class VerifyUncompressedPackageStaysUncompressed(TestUnpackRPM):
+    """An uncompressed rpmbuild package comes back uncompressed"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _binary_payload w0.ufdio\n"
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        # the package has no such tag, extract names it for the next create
+        f = open(self.header)
+        tags = header_tags(json.load(f))
+        f.close()
+        self.assertEqual(tags["Payloadcompressor"], "none")
+
+        args = [self.tarpm, "-c", "-f"]
+        created = os.path.join(self.output_dir, "created.rpm")
+        args += [created] + RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(query_compressor(created), "(none)|0")
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        one = f.read()
+        f.close()
+
+        f = open(created, "rb")
+        two = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+
+
+class VerifyMissingCompressorStaysGzip(TestUnpackRPM):
+    """A compressed payload with no compressor tag is not called uncompressed"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _binary_payload w9.gzdio\n"
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = bytearray(f.read())
+        f.close()
+
+        # the lead is 96 bytes, then the signature header padded to 8
+        nentries, nbytes = struct.unpack_from(">II", data, 96 + 8)
+        hlen = 16 * nentries + nbytes
+        hdr = 96 + 16 + hlen + (8 - (hlen % 8)) % 8
+        nentries, nbytes = struct.unpack_from(">II", data, hdr + 8)
+
+        # older packages have no such tag, so turn it in to one nothing reads
+        found = False
+
+        for i in range(nentries):
+            entry = hdr + 16 + 16 * i
+
+            if struct.unpack_from(">I", data, entry)[0] == 1125:
+                struct.pack_into(">I", data, entry, 1999)
+                found = True
+
+        self.assertTrue(found)
+
+        pkg = os.path.join(self.output_dir, "notag.rpm")
+        f = open(pkg, "wb")
+        f.write(data)
+        f.close()
+
+        tags = header_tags(extracted_header(self, pkg, "notag"))
+        self.assertNotIn("Payloadcompressor", tags)
 
 
 class VerifyCreateDefaultCompression(TestUnpackRPM):
