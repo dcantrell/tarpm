@@ -1639,10 +1639,61 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
 }
 
 /*
+ * Check a package signature value from signature.json and return a new
+ * signature header entry for it with the type rpm uses for the tag.
+ * Openpgp is an array of non-empty strings, the others are base64
+ * strings.  Returns NULL on failure.
+ */
+static struct json_object *
+kept_signature_entry(const uint32_t tag, struct json_object *value)
+{
+    size_t i = 0;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+    struct json_object *element = NULL;
+    struct json_object *copy = NULL;
+
+    if (tag == RPMSIGTAG_OPENPGP_VALUE) {
+        if (json_object_get_type(value) != json_type_array) {
+            warnx(_("*** the %s value in signature.json is not an array of strings"), sig_tag_name(tag));
+            return NULL;
+        }
+
+        for (i = 0; i < json_object_array_length(value); i++) {
+            element = json_object_array_get_idx(value, i);
+
+            if (json_object_get_type(element) != json_type_string || json_object_get_string_len(element) == 0) {
+                warnx(_("*** the %s value in signature.json is not an array of strings"), sig_tag_name(tag));
+                return NULL;
+            }
+        }
+    } else {
+        if (json_object_get_type(value) != json_type_string || rpmBase64Decode(json_object_get_string(value), (void **) &blob, &blobsize) != 0) {
+            warnx(_("*** the %s value in signature.json is not base64 data"), sig_tag_name(tag));
+            return NULL;
+        }
+
+        free(blob);
+    }
+
+    if (json_object_deep_copy(value, &copy, NULL) != 0) {
+        warnx(_("*** unable to copy %s from signature.json"), sig_tag_name(tag));
+        return NULL;
+    }
+
+    if (tag == RPMSIGTAG_OPENPGP_VALUE) {
+        return new_signature_entry(tag, RPM_STRING_ARRAY_TYPE, copy);
+    }
+
+    return new_signature_entry(tag, RPM_BIN_TYPE, copy);
+}
+
+/*
  * Copy the package signatures signature.json carries in to the
  * signature header for -k.  These are the rpmsign(1) tags other than
  * the file and verity signatures, which come from header.json.  An
- * entry with no value is left out.  The room they take comes out of
+ * entry with no value is left out.  Each entry is rebuilt with the
+ * type rpm uses for the tag.  The room they take comes out of
  * the reserved space, the way rpmsign(1) adds them.  Returns non-zero
  * on failure.
  */
@@ -1683,7 +1734,7 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
             continue;
         }
 
-        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value) || value == NULL) {
             continue;
         }
 
@@ -1692,14 +1743,14 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
             if (json_object_array_length(value) == 0) {
                 continue;
             }
-        } else if (json_object_get_string_len(value) == 0) {
+        } else if (json_object_get_type(value) == json_type_string && json_object_get_string_len(value) == 0) {
             continue;
         }
 
-        copy = NULL;
+        /* only the value comes from signature.json */
+        copy = kept_signature_entry(tag, value);
 
-        if (json_object_deep_copy(entry, &copy, NULL) != 0) {
-            warnx(_("*** unable to copy %s from signature.json"), sig_tag_name(tag));
+        if (copy == NULL) {
             return -1;
         }
 

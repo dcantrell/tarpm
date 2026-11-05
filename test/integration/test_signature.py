@@ -803,6 +803,7 @@ class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
         f.close()
 
         signature["tags"].append({"tag": "Rsa", "type": "binary blob", "value": ""})
+        signature["tags"].append({"tag": "Dsa", "type": "binary blob", "value": None})
 
         f = open(self.signature, "w")
         json.dump(signature, f)
@@ -812,7 +813,9 @@ class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
         rc, err = self.create(created, ["-k"])
         self.assertEqual(rc, 0, msg=err)
 
-        self.assertFalse("Rsa" in self.created_signature(created))
+        tags = self.created_signature(created)
+        self.assertFalse("Rsa" in tags)
+        self.assertFalse("Dsa" in tags)
 
 
 class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
@@ -825,7 +828,7 @@ class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
         original = json.load(f)
         f.close()
 
-        for value in [[None], [1]]:
+        for value in [[None], [1], [""], FAKE_SIGNATURE]:
             signature = json.loads(json.dumps(original))
             signature["tags"] = [t for t in signature["tags"] if t["tag"] != "Openpgp"]
             signature["tags"].append(
@@ -840,10 +843,79 @@ class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
             rc, err = self.create(created, ["-k"])
             self.assertNotEqual(rc, 0)
             self.assertIn(
-                "the Openpgp tag has a string array type but its value is not an array of strings",
+                "the Openpgp value in signature.json is not an array of strings",
                 err,
             )
             self.assertNotIn("Assertion", err)
+
+
+class VerifyCreateKeepSignaturesRejectsBadRsa(KeepSignaturesBase):
+    """With -k an Rsa value that is not base64 data is turned away"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        original = json.load(f)
+        f.close()
+
+        for value in [7, [FAKE_SIGNATURE], "not base64!"]:
+            signature = json.loads(json.dumps(original))
+            signature["tags"].append({"tag": "Rsa", "type": "int32", "value": value})
+
+            f = open(self.signature, "w")
+            json.dump(signature, f)
+            f.close()
+
+            created = os.path.join(self.output_dir, "created.rpm")
+            rc, err = self.create(created, ["-k"])
+            self.assertNotEqual(rc, 0)
+            self.assertIn("the Rsa value in signature.json is not base64 data", err)
+            self.assertNotIn("Assertion", err)
+
+
+class VerifyCreateKeepSignaturesUsesRpmType(KeepSignaturesBase):
+    """With -k a kept entry takes the rpm type and only its value is copied"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        signature["tags"].append(
+            {
+                "tag": "Rsa",
+                "type": "string",
+                "value": FAKE_SIGNATURE,
+                "trailer": FAKE_SIGNATURE,
+            }
+        )
+
+        f = open(self.signature, "w")
+        json.dump(signature, f)
+        f.close()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+
+        again = os.path.join(self.output_dir, "again")
+        os.makedirs(again)
+
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", created, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(again, "signature.json"))
+        tags = json.load(f)["tags"]
+        f.close()
+
+        rsa = [t for t in tags if t["tag"] == "Rsa"]
+        self.assertEqual(len(rsa), 1)
+        self.assertEqual(rsa[0]["type"], "binary blob")
+        self.assertEqual(rsa[0]["value"].strip(), FAKE_SIGNATURE)
+        self.assertFalse("trailer" in rsa[0])
 
 
 class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase):

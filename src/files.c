@@ -3161,7 +3161,7 @@ move_file_signatures(struct json_object *signature, struct json_object *header)
  * Given a value and type, create a signature header tag and return it
  * as JSON object.
  */
-static struct json_object *
+struct json_object *
 new_signature_entry(const rpmTagVal tag, const rpmTagType type, struct json_object *value)
 {
     struct json_object *entry = NULL;

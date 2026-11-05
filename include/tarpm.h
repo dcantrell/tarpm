@@ -143,6 +143,7 @@ struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdr
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
 void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);
 void move_file_signatures(struct json_object *signature, struct json_object *header);
+struct json_object *new_signature_entry(const rpmTagVal tag, const rpmTagType type, struct json_object *value);
 void add_file_signature_tags(struct json_object *signature, struct json_object *header, const char *payload_dir, const int format);
 bool is_file_list_tag(rpmTagVal tag);
 
