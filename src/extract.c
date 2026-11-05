@@ -272,7 +272,7 @@ make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mo
  * that does not work.  Returns 0 if it worked and -1 if it did not.
  */
 static int
-extract_payload(const char *filename, const char *cwd, const char *dest_dir, const char *payload_dir, const bool verbose)
+extract_payload(const char *filename, const char *payload_dir, const bool verbose)
 {
     int r = -1;
     char *payload_file = NULL;
@@ -286,20 +286,7 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
         return 0;
     }
 
-    /*
-     * Direct extraction failed, so fall back to convert_payload().
-     * The payload goes in dest_dir, so make sure that exists.
-     */
-    if (mkdirp(dest_dir, OUTPUT_DIR_MODE) == -1) {
-        warnx("mkdirp");
-        return -1;
-    }
-
-    if (chdir(dest_dir) == -1) {
-        warn("chdir");
-        return -1;
-    }
-
+    /* direct extraction failed, so fall back to convert_payload() */
     payload_file = convert_payload(filename);
 
     if (payload_file == NULL) {
@@ -307,9 +294,7 @@ extract_payload(const char *filename, const char *cwd, const char *dest_dir, con
         return -1;
     }
 
-    if (chdir(cwd) == -1) {
-        warn("chdir");
-    } else if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
+    if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
         warnx("unpack_archive");
     } else {
         r = 0;
@@ -400,7 +385,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
             goto cleanup;
         }
 
-        if (extract_payload(filename, cwd, dest_dir, payload_dir, verbose) != 0) {
+        if (extract_payload(filename, payload_dir, verbose) != 0) {
             goto cleanup;
         }
     }

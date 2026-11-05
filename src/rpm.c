@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <err.h>
 #include <locale.h>
 #include <archive.h>
@@ -19,7 +21,9 @@
  * Given a path to an RPM package, convert the payload to a tar file
  * for later use with extract_rpm().  This happens in cases where
  * libarchive cannot detect the cpio stream in an opened RPM file.
- * The caller must free the returned path string.
+ * The tar file is a new file under $TMPDIR, or /tmp if that is not
+ * set.  The caller must unlink the file and free the returned path
+ * string.
  *
  * A lot of this is adapted from rpm2archive.c from the rpm sources.
  */
@@ -50,6 +54,8 @@ convert_payload(const char *rpm)
     rpm_loff_t left;
     size_t len = 0;
     size_t rd = 0;
+    int fd = -1;
+    const char *tmpdir = NULL;
     bool failed = false;
 
     if (rpm == NULL) {
@@ -164,12 +170,26 @@ convert_payload(const char *rpm)
         free(ctype);
     }
 
-    xasprintf(&payload, "%s.tar", rpm);
+    /* mkstemp() makes a new file, so we never write through a symlink */
+    tmpdir = getenv("TMPDIR");
 
-    if (archive_write_open_filename(archive, payload) != ARCHIVE_OK) {
-        warnx("*** archive_write_open_filename: %s", archive_error_string(archive));
+    if (tmpdir == NULL || *tmpdir == '\0') {
+        tmpdir = "/tmp";
+    }
+
+    xasprintf(&payload, "%s/%s-payload-XXXXXX", tmpdir, COMMAND_NAME);
+    fd = mkstemp(payload);
+
+    if (fd == -1) {
+        warn("*** mkstemp %s", payload);
         free(payload);
         payload = NULL;
+        goto cleanup;
+    }
+
+    if (archive_write_open_fd(archive, fd) != ARCHIVE_OK) {
+        warnx("*** archive_write_open_fd: %s", archive_error_string(archive));
+        failed = true;
         goto cleanup;
     }
 
@@ -289,6 +309,12 @@ cleanup:
         }
 
         archive_write_free(archive);
+    }
+
+    /* archive_write_open_fd() leaves the descriptor open */
+    if (fd != -1 && close(fd) == -1) {
+        warn("close");
+        failed = true;
     }
 
     rpmfilesFree(files);

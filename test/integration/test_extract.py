@@ -852,11 +852,13 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
     def runTest(self):
         self.rpm.do_make()
 
-        # the tar lands next to the package, so work on a copy of our
-        # own where we can see it
+        # the tar lands in $TMPDIR, so give it one of our own
         original = self.rpm.get_built_rpm(get_expected_arch())
         pkg = os.path.join(self.output_dir, os.path.basename(original))
         shutil.copyfile(original, pkg)
+        tmpdir = os.path.join(self.output_dir, "tmp")
+        os.makedirs(tmpdir)
+        env = dict(os.environ, TMPDIR=tmpdir)
 
         args = [
             self.tarpm,
@@ -868,11 +870,16 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
             "-P",
             self.payload_dir,
         ]
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+        )
         out, err = proc.communicate()
 
         self.assertNotEqual(proc.returncode, 0, msg=out)
-        self.assertFalse(os.path.exists(pkg + ".tar"), msg="temporary tar left behind")
+        self.assertEqual(os.listdir(tmpdir), [], msg="temporary tar left behind")
+        self.assertFalse(
+            os.path.exists(pkg + ".tar"), msg="tar written next to package"
+        )
 
 
 class VerifyMalformedHeaderIsRejected(TestUnpackRPM):
@@ -995,6 +1002,10 @@ class LibrpmPayload(RequiresTarpm):
         f.write(make_random_content(256 * 1024))
         f.close()
 
+        # the tar file the librpm reader writes goes here
+        self.tmpdir = os.path.join(self.output_dir, "tmp")
+        os.makedirs(self.tmpdir)
+
     def build(self):
         """Create the v6 format package and return its path"""
         pkg = os.path.join(self.output_dir, "hello.rpm")
@@ -1007,17 +1018,28 @@ class LibrpmPayload(RequiresTarpm):
 
     def assertNoTarLeft(self):
         """Assert the tar file the librpm reader writes was removed"""
+        self.assertEqual(os.listdir(self.tmpdir), [])
+
         for dirpath, dirnames, filenames in os.walk(self.output_dir):
             self.assertEqual([f for f in filenames if f.endswith(".tar")], [])
 
-    def extract(self, pkg, name, preexec_fn=None):
+    def extract(self, pkg, name, preexec_fn=None, extra=None):
         """Extract a package and return (returncode, stderr)"""
-        args = [self.tarpm, "-x", "-f", pkg, "-O", os.path.join(self.output_dir, name)]
+        args = [self.tarpm, "-x", "-f", pkg]
+
+        if name is not None:
+            args += ["-O", os.path.join(self.output_dir, name)]
+
+        if extra is not None:
+            args += extra
+
         proc = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             preexec_fn=preexec_fn,
+            env=dict(os.environ, TMPDIR=self.tmpdir),
+            cwd=self.output_dir,
         )
         out, err = proc.communicate()
 
@@ -1064,6 +1086,63 @@ class VerifyCorruptPayloadFails(LibrpmPayload):
         self.assertGreater(rc, 0, msg=err)
         self.assertIn("error reading RPM payload", err)
 
+        self.assertNoTarLeft()
+
+
+class VerifyPayloadTarIgnoresPlantedSymlink(LibrpmPayload):
+    """The librpm reader does not write through a symlink next to the package"""
+
+    def runTest(self):
+        pkg = self.build()
+
+        # the old tar file name, pointing at a file we want left alone
+        victim = os.path.join(self.output_dir, "victim")
+        f = open(victim, "w")
+        f.write("keep me\n")
+        f.close()
+        os.symlink(victim, pkg + ".tar")
+
+        rc, err = self.extract(pkg, "tree")
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(victim)
+        self.assertEqual(f.read(), "keep me\n")
+        f.close()
+
+        readme = os.path.join(self.output_dir, "tree", "payload", "usr/share/hello/big")
+        self.assertTrue(os.path.isfile(readme))
+
+        os.unlink(pkg + ".tar")
+        self.assertNoTarLeft()
+
+
+class VerifyPayloadTarMakesNoOutputDir(LibrpmPayload):
+    """The librpm reader makes no NEVRA directory when every output goes elsewhere"""
+
+    def runTest(self):
+        pkg = self.build()
+
+        other = os.path.join(self.output_dir, "other")
+        os.makedirs(other)
+        extra = [
+            "-L",
+            os.path.join(other, "lead.json"),
+            "-S",
+            os.path.join(other, "signature.json"),
+            "-H",
+            os.path.join(other, "header.json"),
+            "-P",
+            os.path.join(other, "payload"),
+        ]
+
+        before = set(os.listdir(self.output_dir))
+        rc, err = self.extract(pkg, None, extra=extra)
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(set(os.listdir(self.output_dir)), before)
+        self.assertTrue(
+            os.path.isfile(os.path.join(other, "payload", "usr/share/hello/big"))
+        )
         self.assertNoTarLeft()
 
 
