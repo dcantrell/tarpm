@@ -546,6 +546,57 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
 }
 
 /*
+ * Every tag we write needs a number.  get_tag_number() gives back
+ * RPMTAG_NOT_FOUND for a name it does not know, which would go in to
+ * the header as a tag rpm rejects.
+ *
+ * Returns 0 on success, -1 if any tag name is unknown.
+ */
+static int
+check_tag_numbers(struct json_object *tags, bool is_signature)
+{
+    int r = 0;
+    size_t i = 0;
+    rpmTagVal tag_number = 0;
+    struct json_object *entry = NULL;
+    struct json_object *key = NULL;
+    const char *name = NULL;
+
+    if (tags == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (is_skipped_tag(entry, is_signature)) {
+            continue;
+        }
+
+        tag_number = get_tag_number(entry, is_signature);
+
+        if (tag_number != RPMTAG_NOT_FOUND && tag_number != 0) {
+            continue;
+        }
+
+        name = NULL;
+
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &key)) {
+            name = json_object_get_string(key);
+        }
+
+        if (name == NULL) {
+            name = "";
+        }
+
+        warnx(_("*** unknown tag \"%s\" in header data"), name);
+        r = -1;
+    }
+
+    return r;
+}
+
+/*
  * The region tag value is the trailer itself, so it has to be binary
  * data that decodes to exactly one trailer.
  */
@@ -1385,7 +1436,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1) {
+    if (check_tag_numbers(tags, is_signature) == -1 || check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);

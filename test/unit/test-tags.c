@@ -329,6 +329,35 @@ test_get_tag_number(void)
     json_object_object_add(entry, "tag", json_object_new_string("#272"));
     result = get_tag_number(entry, true);
     TARPM_ASSERT_TRUE(result == 272);
+    result = get_tag_number(entry, false);
+    TARPM_ASSERT_TRUE(result == 272);
+    json_object_put(entry);
+
+    /* a name nobody knows is not found, not tag 0 */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Nmae"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMTAG_NOT_FOUND);
+    TARPM_ASSERT_TRUE(get_tag_number(entry, true) == RPMTAG_NOT_FOUND);
+    json_object_put(entry);
+
+    /* a bad numeric form is not found either */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("#0"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMTAG_NOT_FOUND);
+    TARPM_ASSERT_TRUE(get_tag_number(entry, true) == RPMTAG_NOT_FOUND);
+    json_object_put(entry);
+
+    /* signature tag names do not stand in for main header tags */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Md5"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, true) == RPMSIGTAG_MD5);
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMTAG_NOT_FOUND);
+    json_object_put(entry);
+
+    /* except the signature region tag, which librpm has no name for */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Headersignatures"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == HEADER_SIGNATURES);
     json_object_put(entry);
 
     /* test with entry missing tag field */

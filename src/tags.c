@@ -407,26 +407,39 @@ is_file_signature_tag(uint32_t tag)
     return false;
 }
 
+/*
+ * Return the number in a tag name of the "#XXXX" form we write for
+ * tags rpm has no name for, or 0 if the name is not of that form.
+ */
 static uint32_t
-sig_tag_number(const char *tag)
+numeric_tag_number(const char *tag)
 {
     char *endptr = NULL;
     long tag_num = 0;
 
+    if (tag == NULL || tag[0] != '#') {
+        return 0;
+    }
+
+    errno = 0;
+    tag_num = strtol(tag + 1, &endptr, 10);
+
+    if (errno == 0 && endptr != (tag + 1) && *endptr == '\0' && tag_num > 0 && tag_num <= INT32_MAX) {
+        return (uint32_t) tag_num;
+    }
+
+    return 0;
+}
+
+static uint32_t
+sig_tag_number(const char *tag)
+{
     if (tag == NULL) {
         return 0;
     }
 
-    /* Handle numeric tags in "#XXXX" format */
     if (tag[0] == '#') {
-        errno = 0;
-        tag_num = strtol(tag + 1, &endptr, 10);
-
-        if (errno == 0 && endptr != (tag + 1) && *endptr == '\0' && tag_num > 0) {
-            return (uint32_t) tag_num;
-        }
-
-        return 0;
+        return numeric_tag_number(tag);
     }
 
     if (!strcmp(tag, "Headersignatures")) {
@@ -533,7 +546,24 @@ get_tag_number(struct json_object *entry, bool signature)
         return t;
     }
 
-    return sig_tag_number(tagname);
+    /*
+     * The signature tag names are not main header tags.  Only the
+     * numeric form and the signature region tag, which librpm has no
+     * name for, carry over so check_region_tags() can report it.
+     */
+    if (!signature) {
+        sigtag = numeric_tag_number(tagname);
+
+        if (sigtag != 0) {
+            return sigtag;
+        }
+
+        if (tagname != NULL && !strcmp(tagname, "Headersignatures")) {
+            return HEADER_SIGNATURES;
+        }
+    }
+
+    return RPMTAG_NOT_FOUND;
 }
 
 /*

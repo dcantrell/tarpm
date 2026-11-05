@@ -956,6 +956,27 @@ class CreateRejectsWrongValueType(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsUnknownTagName(RequiresTarpm):
+    """A tag name tarpm does not know is turned away and not written as tag 0"""
+
+    def runTest(self):
+        cases = [
+            {"tag": "Nmae", "type": "string", "value": "hello"},
+            {"tag": "Md5", "type": "binary blob", "value": "AAAA"},
+            {"tag": "#0", "type": "string", "value": "hello"},
+        ]
+
+        for i, extra in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS] + [extra]
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn('unknown tag "%s" in header data' % extra["tag"], err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateAcceptsNumberString(RequiresTarpm):
     """A number tag may hold a string of digits"""
 
