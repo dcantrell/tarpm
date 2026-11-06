@@ -882,6 +882,130 @@ class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
         )
 
 
+class RawTagsPackage(TestUnpackRPM):
+    """Build a package and rewrite tag numbers so its arrays do not agree"""
+
+    # tag numbers to rewrite, overridden by each test
+    retag = {}
+    array = None
+    kept = []
+    message = None
+
+    def check(self):
+        self.rpm.add_simple_payload_file()
+        self.rpm.add_changelog_entry("second", VER, REL)
+
+        # more requires than changelog entries and files
+        for i in range(8):
+            self.rpm.add_requires("raw-tags-%d" % i)
+
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = bytearray(f.read())
+        f.close()
+
+        # the lead is 96 bytes, then the signature header padded to 8
+        nentries, nbytes = struct.unpack_from(">II", data, 96 + 8)
+        hlen = 16 * nentries + nbytes
+        hdr = 96 + 16 + hlen + (8 - (hlen % 8)) % 8
+        nentries, nbytes = struct.unpack_from(">II", data, hdr + 8)
+        found = 0
+
+        for i in range(nentries):
+            entry = hdr + 16 + 16 * i
+            tag = struct.unpack_from(">I", data, entry)[0]
+
+            if tag in self.retag:
+                struct.pack_into(">I", data, entry, self.retag[tag])
+                found += 1
+
+        self.assertEqual(found, len(self.retag))
+
+        pkg = os.path.join(self.output_dir, "raw.rpm")
+        f = open(pkg, "wb")
+        f.write(data)
+        f.close()
+
+        tree = os.path.join(self.output_dir, "tree")
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", pkg, "-O", tree],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(
+            "unable to build the %s array, keeping the raw tags" % self.array,
+            err.decode(),
+        )
+
+        f = open(os.path.join(tree, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        self.assertNotIn(self.array, header)
+        tags = [t["tag"] for t in header["tags"]]
+
+        for tag in self.kept:
+            self.assertIn(tag, tags)
+
+        # create turns the tree down instead of losing the data
+        new = os.path.join(self.output_dir, "new.rpm")
+        proc = subprocess.Popen(
+            [self.tarpm, "-c", "-f", new, tree],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(self.message, err.decode())
+        self.assertFalse(os.path.exists(new))
+
+
+class ExtractKeepsMismatchedChangelog(RawTagsPackage):
+    """Changelog arrays of differing lengths stay as raw tags"""
+
+    # swap Changelogname and Requirename
+    retag = {1081: 1049, 1049: 1081}
+    array = "changelog"
+    kept = ["Changelogtime", "Changelogname", "Changelogtext"]
+    message = "changelog tags in header.json have mismatched lengths"
+
+    def runTest(self):
+        self.check()
+
+        # the file list is fine, so the payload still comes out
+        payload = os.path.join(self.output_dir, "tree", "payload", "usr")
+        self.assertTrue(os.path.isdir(payload))
+
+
+class ExtractKeepsMismatchedFileList(RawTagsPackage):
+    """File list arrays of differing lengths stay as raw tags"""
+
+    # swap Dirindexes and Requireflags
+    retag = {1116: 1048, 1048: 1116}
+    array = "files"
+    kept = ["Basenames", "Dirnames", "Dirindexes", "Filemodes"]
+    message = "from the tags in header.json"
+
+    def runTest(self):
+        self.check()
+
+
+class ExtractKeepsPartialFileList(RawTagsPackage):
+    """A file list with one of its three main tags gone stays as raw tags"""
+
+    # turn Dirindexes in to a tag nothing reads
+    retag = {1116: 1999}
+    array = "files"
+    kept = ["Basenames", "Dirnames", "Filemodes"]
+    message = "from the tags in header.json"
+
+    def runTest(self):
+        self.check()
+
+
 class VerifyMalformedHeaderIsRejected(TestUnpackRPM):
     """A header whose sizes or offsets point outside its data is turned away"""
 

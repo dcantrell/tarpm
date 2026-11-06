@@ -1317,7 +1317,7 @@ valid_header(struct rpmhdr *hdr)
  * Returns an allocated json_object (caller must free), NULL on error.
  */
 struct json_object *
-read_header(const int fd, const char *dest_dir)
+read_header(const int fd, const char *dest_dir, bool *raw_tags)
 {
     uint32_t *buffer = NULL;
     struct rpmhdr *rawhdr = NULL;
@@ -1329,9 +1329,11 @@ read_header(const int fd, const char *dest_dir)
     struct json_object *dependencies = NULL;
     struct json_object *files = NULL;
 
-    if (fd < 0) {
+    if (fd < 0 || raw_tags == NULL) {
         return NULL;
     }
+
+    *raw_tags = false;
 
     /* read in the header signature -- identifies the start of an RPM header block */
     rawhdr = read_header_signature(fd);
@@ -1398,6 +1400,9 @@ read_header(const int fd, const char *dest_dir)
 
     if (files != NULL) {
         json_object_object_add(header, RPM_FILES_DESC, files);
+    } else if (keep_raw_entries(jvals, rawhdr, hdrinfo, dest_dir, is_file_list_tag)) {
+        warnx(_("*** unable to build the %s array, keeping the raw tags in %s"), RPM_FILES_DESC, OUTPUT_HEADER);
+        *raw_tags = true;
     }
 
     /* build the changelog array if changelog tags are present */
@@ -1405,6 +1410,9 @@ read_header(const int fd, const char *dest_dir)
 
     if (changelog != NULL) {
         json_object_object_add(header, RPM_CHANGELOG_DESC, changelog);
+    } else if (keep_raw_entries(jvals, rawhdr, hdrinfo, dest_dir, is_changelog_tag)) {
+        warnx(_("*** unable to build the %s array, keeping the raw tags in %s"), RPM_CHANGELOG_DESC, OUTPUT_HEADER);
+        *raw_tags = true;
     }
 
     /* cleanup */

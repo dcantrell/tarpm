@@ -90,7 +90,7 @@ struct json_object *make_signature(const int format);
 
 /* header.c */
 bool valid_header(struct rpmhdr *hdr);
-struct json_object *read_header(const int fd, const char *dest_dir);
+struct json_object *read_header(const int fd, const char *dest_dir, bool *raw_tags);
 int create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature);
 bool has_trailer(const uint32_t nentries, const struct rpmhdrentry *estart);
 int get_trailer_data(const struct json_object *data, uint8_t **trailer_data, size_t *trailer_size, bool is_signature);
@@ -162,6 +162,7 @@ bool path_beneath(const char *base, const char *path, const bool allow_last_link
 struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature);
 struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
+bool keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const char *dest_dir, bool (*is_member)(rpmTagVal));
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *path);
 

@@ -2039,6 +2039,76 @@ warn_nevr_slash(struct json_object *header)
 }
 
 /*
+ * Return how many values a tag in a 'tags' array holds, which is zero
+ * for a tag that is not there.
+ */
+static size_t
+raw_tag_count(struct json_object *tags, const rpmTagVal tag)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (get_tag_number(entry, false) != tag) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
+            return 0;
+        }
+
+        if (json_object_get_type(value) == json_type_array) {
+            return json_object_array_length(value);
+        }
+
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * Check the file list and changelog tags header.json carries raw, as
+ * an extract does when the dedicated arrays cannot be built.  We make
+ * the file list tags ourselves, so raw ones would end up in the header
+ * twice.  The changelog tags go in as they are, so they have to agree.
+ * Returns 0 if the tags are fine, -1 otherwise.
+ */
+static int
+check_raw_tags(struct json_object *header)
+{
+    size_t i = 0;
+    size_t ntimes = 0;
+    rpmTagVal tag = 0;
+    struct json_object *tags = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
+        return 0;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        tag = get_tag_number(json_object_array_get_idx(tags, i), false);
+
+        if (is_file_list_tag(tag)) {
+            warnx(_("*** remove %s from the tags in %s, tarpm builds the file list tags"), rpmTagGetName(tag), OUTPUT_HEADER);
+            return -1;
+        }
+    }
+
+    ntimes = raw_tag_count(tags, RPMTAG_CHANGELOGTIME);
+
+    if (ntimes != raw_tag_count(tags, RPMTAG_CHANGELOGNAME) || ntimes != raw_tag_count(tags, RPMTAG_CHANGELOGTEXT)) {
+        warnx(_("*** changelog tags in %s have mismatched lengths"), OUTPUT_HEADER);
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
  * Check that every path in the "files" array stays in the payload
  * tree.  The path is joined to payload_dir to find the file, so ".."
  * or a symlinked directory in the tree would let a crafted header.json
@@ -2203,6 +2273,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     warn_nevr_slash(header);
+
+    if (check_raw_tags(header) != 0) {
+        json_object_put(header);
+        json_object_put(signature);
+        free(header_dir);
+        free(payload_dir);
+        return -1;
+    }
 
     /* pick up the files added to the payload tree */
     if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {

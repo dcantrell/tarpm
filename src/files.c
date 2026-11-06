@@ -1242,15 +1242,18 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
 
         if (dirname == NULL) {
             warnx(_("*** invalid dirindex %u (max %u)"), fc.dirindex->value, ndirnames - 1);
-        } else {
-            /* Combine dirname and basename */
-            xasprintf(&path, "%s%s", dirname, fc.basename->str);
-
-            json_object_array_add(files, file_entry(&fmd, &fc, dependencies, path));
-
-            free(path);
-            path = NULL;
+            json_object_put(files);
+            free_file_metadata(&fmd);
+            return NULL;
         }
+
+        /* Combine dirname and basename */
+        xasprintf(&path, "%s%s", dirname, fc.basename->str);
+
+        json_object_array_add(files, file_entry(&fmd, &fc, dependencies, path));
+
+        free(path);
+        path = NULL;
 
         next_file_cursors(&fc);
     }

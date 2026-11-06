@@ -690,6 +690,33 @@ def write_minimal_tree(tree, tags=MINIMAL_TAGS):
     return tree
 
 
+class CreateFromRawChangelogTags(RequiresTarpm):
+    """Raw changelog tags go in when they agree and are refused otherwise"""
+
+    def tree(self, name, names):
+        tags = MINIMAL_TAGS + [
+            {"tag": "Changelogtime", "type": "int32", "value": [1700000000]},
+            {"tag": "Changelogname", "type": "string array", "value": names},
+            {"tag": "Changelogtext", "type": "string array", "value": ["- text"]},
+        ]
+
+        return write_minimal_tree(os.path.join(self.output_dir, name), tags)
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "good.rpm")
+        tree = self.tree("good", ["A B <a@b.c>"])
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query_rpm(pkg, "%{changelogtext}"), "- text")
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        tree = self.tree("bad", ["A B <a@b.c>", "C D <c@d.e>"])
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("changelog tags in header.json have mismatched lengths", err)
+        self.assertFalse(os.path.exists(pkg))
+
+
 class CreateFromMinimalTree(RequiresTarpm):
     """A tree holding only header.json and a payload makes an installable package"""
 

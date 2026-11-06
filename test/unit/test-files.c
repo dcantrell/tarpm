@@ -273,6 +273,24 @@ test_generate_files_mismatched_lengths(void)
     return;
 }
 
+/* Test generate_files() with a dirindex past the end of the dirnames */
+void
+test_generate_files_invalid_dirindex(void)
+{
+    struct rpmhdr hdr;
+    struct rpmhdrinfo hdrinfo;
+    struct rpmhdrentry entries[NUM_ENTRIES];
+    uint8_t data[DATA_SIZE];
+    uint32_t val32 = htonl(5);
+
+    build_header(&hdr, &hdrinfo, entries, data);
+    memcpy(data + DIRINDEXES_OFFSET + sizeof(val32), &val32, sizeof(val32));
+
+    TARPM_ASSERT_PTR_NULL(generate_files(&hdr, &hdrinfo, NULL));
+
+    return;
+}
+
 /* Test generate_files() with a valid file list */
 void
 test_generate_files_valid(void)
@@ -3353,6 +3371,7 @@ get_suite(void)
     if (CU_add_test(pSuite, "test generate_files() with NULL", test_generate_files_null) == NULL ||
         CU_add_test(pSuite, "test generate_files() with no file list", test_generate_files_no_file_list) == NULL ||
         CU_add_test(pSuite, "test generate_files() with mismatched lengths", test_generate_files_mismatched_lengths) == NULL ||
+        CU_add_test(pSuite, "test generate_files() with an invalid dirindex", test_generate_files_invalid_dirindex) == NULL ||
         CU_add_test(pSuite, "test generate_files() with a valid file list", test_generate_files_valid) == NULL ||
         CU_add_test(pSuite, "test generate_files() with each file type", test_generate_files_types) == NULL ||
         CU_add_test(pSuite, "test generate_files() with Longfilesizes", test_generate_files_long_sizes) == NULL ||

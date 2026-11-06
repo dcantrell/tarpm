@@ -274,6 +274,47 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
 }
 
 /*
+ * Add the header tags that is_member picks to a 'tags' array.  We use
+ * this when the dedicated array for a group of tags cannot be built,
+ * so the values still reach header.json.  Returns true if the header
+ * has any of those tags.
+ */
+bool
+keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const char *dest_dir, bool (*is_member)(rpmTagVal))
+{
+    uint32_t i = 0;
+    uint32_t tag = 0;
+    bool found = false;
+    struct json_object *entry = NULL;
+    struct rpmhdrentry *hdrentry = NULL;
+
+    if (kvals == NULL || hdr == NULL || hdrinfo == NULL || is_member == NULL) {
+        return false;
+    }
+
+    hdrentry = hdrinfo->estart;
+
+    for (i = 0; i < hdr->nentries; i++) {
+        tag = ntohl(hdrentry[i].tag);
+
+        if (!is_member(tag)) {
+            continue;
+        }
+
+        entry = create_json_entry(&hdrentry[i], false);
+        add_entry_value(entry, tag, hdrinfo->datastart, ntohl(hdrentry[i].offset), ntohl(hdrentry[i].type), ntohl(hdrentry[i].count), dest_dir, false);
+        json_object_array_add(kvals, entry);
+        found = true;
+    }
+
+    if (found) {
+        json_object_array_sort(kvals, sort_by_tag_number);
+    }
+
+    return found;
+}
+
+/*
  * Wrapper for reading in a JSON file.
  */
 struct json_object *

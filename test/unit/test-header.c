@@ -26,8 +26,10 @@ clean_test_header(void)
 void
 test_read_header(void)
 {
+    bool raw_tags = false;
+
     /* check that invalid input returns an error */
-    TARPM_ASSERT_TRUE(read_header(-47, NULL) == NULL);
+    TARPM_ASSERT_TRUE(read_header(-47, NULL, &raw_tags) == NULL);
 
     return;
 }

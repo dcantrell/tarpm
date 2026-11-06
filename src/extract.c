@@ -188,8 +188,8 @@ mark_uncompressed_payload(const int fd, struct json_object *header)
 
 /*
  * Read the lead, the signature, and the header out of the RPM and
- * write each one to its JSON file.  Returns 0 if that worked and -1
- * if it did not.
+ * write each one to its JSON file.  Returns 0 if that worked, 1 if
+ * we had to keep raw tags in header.json, and -1 if it did not work.
  */
 static int
 extract_metadata(const char *filename, const char *dest_dir, const char *header_dir, const struct json_paths *paths)
@@ -199,6 +199,7 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
+    bool raw_tags = false;
 
     if (filename == NULL || dest_dir == NULL || header_dir == NULL || paths == NULL) {
         return -1;
@@ -229,7 +230,7 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     }
 
     /* extract the RPM header -- the third header (used) */
-    header = read_header(rpmfd, header_dir);
+    header = read_header(rpmfd, header_dir, &raw_tags);
 
     if (header == NULL) {
         warnx("read_header");
@@ -270,6 +271,10 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     json_object_put(header);
     json_object_put(signature);
     json_object_put(lead);
+
+    if (r == 0 && raw_tags) {
+        r = 1;
+    }
 
     return r;
 }
@@ -357,6 +362,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     char *payload_dir = NULL;
     struct json_paths nopaths;
     Header h;
+    int metadata = 0;
     int r = -1;
 
     if (cwd == NULL) {
@@ -407,7 +413,9 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /* read the RPM headers and write them out as JSON */
-    if (extract_metadata(filename, dest_dir, header_dir, paths) != 0) {
+    metadata = extract_metadata(filename, dest_dir, header_dir, paths);
+
+    if (metadata < 0) {
         goto cleanup;
     }
 
@@ -428,7 +436,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         }
     }
 
-    r = 0;
+    r = metadata;
 
 cleanup:
     free(payload_dir);
