@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import shutil
+import stat
 import struct
 import subprocess
 import unittest
@@ -1502,6 +1503,112 @@ class CreateFailsOnOneHeaderWriteError(RequiresTarpm):
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("fwrite", err.decode())
             self.assertFalse(os.path.exists(pkg))
+
+
+@unittest.skipUnless(os.environ.get("FAILFWRITE"), "FAILFWRITE is not set")
+class CreateFailureKeepsExistingPackage(RequiresTarpm):
+    """A failed write leaves the package that was there and no temporary file"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        outdir = os.path.join(self.output_dir, "out")
+        os.makedirs(outdir)
+
+        pkg = os.path.join(outdir, "hello.rpm")
+        f = open(pkg, "w")
+        f.write("old package")
+        f.close()
+
+        env = dict(os.environ)
+        env["LD_PRELOAD"] = os.environ["FAILFWRITE"]
+        env["FAIL_FWRITE"] = "1"
+
+        proc = subprocess.Popen(
+            [self.tarpm, "-c", "-f", pkg, tree],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        out, err = proc.communicate()
+        self.assertNotEqual(proc.returncode, 0)
+
+        f = open(pkg)
+        self.assertEqual(f.read(), "old package")
+        f.close()
+
+        self.assertEqual(os.listdir(outdir), ["hello.rpm"])
+
+
+class CreateReplacesExistingPackage(RequiresTarpm):
+    """A new package takes over the mode of the old one and replaces a symlink"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        self.outdir = os.path.join(self.output_dir, "out")
+        os.makedirs(self.outdir)
+
+    def create(self, pkg):
+        return run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+
+    def runTest(self):
+        # a new file gets the usual mode, not the 0600 of mkstemp()
+        pkg = os.path.join(self.outdir, "hello.rpm")
+        mask = os.umask(0o022)
+
+        try:
+            rc, out, err = self.create(pkg)
+        finally:
+            os.umask(mask)
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(stat.S_IMODE(os.stat(pkg).st_mode), 0o644)
+        self.assertEqual(query_rpm(pkg, "%{name}"), "hello")
+
+        # an existing file keeps its mode
+        os.chmod(pkg, 0o640)
+        rc, out, err = self.create(pkg)
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(stat.S_IMODE(os.stat(pkg).st_mode), 0o640)
+
+        # a symlink is replaced and what it points to is left alone
+        target = os.path.join(self.output_dir, "target")
+        f = open(target, "w")
+        f.write("keep me")
+        f.close()
+
+        link = os.path.join(self.outdir, "link.rpm")
+        os.symlink(target, link)
+        rc, out, err = self.create(link)
+        self.assertEqual(rc, 0, msg=err)
+        self.assertFalse(os.path.islink(link))
+
+        f = open(target)
+        self.assertEqual(f.read(), "keep me")
+        f.close()
+
+        self.assertEqual(sorted(os.listdir(self.outdir)), ["hello.rpm", "link.rpm"])
+
+
+@unittest.skipIf(os.geteuid() == 0, "root can write to a file with mode 444")
+class CreateRefusesReadOnlyPackage(RequiresTarpm):
+    """A package we cannot write to is not replaced"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        f = open(pkg, "w")
+        f.write("old package")
+        f.close()
+        os.chmod(pkg, 0o444)
+
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertNotEqual(rc, 0)
+
+        f = open(pkg)
+        self.assertEqual(f.read(), "old package")
+        f.close()
 
 
 @unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")

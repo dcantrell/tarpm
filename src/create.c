@@ -2039,6 +2039,97 @@ warn_nevr_slash(struct json_object *header)
 }
 
 /*
+ * Safety function to open the file we write the package to.  tmpname
+ * is the temporary file created.  The caller can rename or remove it,
+ * but must free the string.  Returns NULL on failure.
+ */
+static FILE *
+open_package(const char *filename, char **tmpname)
+{
+    int fd = -1;
+    bool exists = false;
+    char *dir = NULL;
+    mode_t mask = 0;
+    mode_t mode = 0;
+    struct stat sb;
+    FILE *rpm = NULL;
+
+    if (stat(filename, &sb) == 0) {
+        exists = true;
+    } else if (errno != ENOENT) {
+        warn("stat");
+        return NULL;
+    }
+
+    if (exists && !S_ISREG(sb.st_mode)) {
+        rpm = fopen(filename, "wb");
+
+        if (rpm == NULL) {
+            warn("fopen");
+        }
+
+        return rpm;
+    }
+
+    /* rename() would get past a file we cannot write to */
+    if (exists && access(filename, W_OK) == -1) {
+        warn("%s", filename);
+        return NULL;
+    }
+
+    dir = xdirname(filename);
+
+    if (dir == NULL) {
+        warnx(_("*** unable to find the directory of %s"), filename);
+        return NULL;
+    }
+
+    xasprintf(tmpname, "%s/.%s-XXXXXX", dir, COMMAND_NAME);
+    free(dir);
+    fd = mkstemp(*tmpname);
+
+    if (fd == -1) {
+        warn("*** mkstemp %s", *tmpname);
+        free(*tmpname);
+        *tmpname = NULL;
+        return NULL;
+    }
+
+    if (exists) {
+        mode = sb.st_mode & 07777;
+
+        /* only root can give a file away, others end up owning the new one */
+        if (fchown(fd, sb.st_uid, sb.st_gid) == -1 && errno != EPERM) {
+            warn("fchown");
+        }
+    } else {
+        mask = umask(0);
+        umask(mask);
+        mode = 0666 & ~mask;
+    }
+
+    if (fchmod(fd, mode) == -1) {
+        warn("fchmod");
+    }
+
+    rpm = fdopen(fd, "wb");
+
+    if (rpm == NULL) {
+        warn("fdopen");
+        close(fd);
+
+        if (unlink(*tmpname) == -1) {
+            warn("unlink");
+        }
+
+        free(*tmpname);
+        *tmpname = NULL;
+    }
+
+    return rpm;
+}
+
+/*
  * Return how many values a tag in a 'tags' array holds, which is zero
  * for a tag that is not there.
  */
@@ -2153,11 +2244,11 @@ int
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
 {
     int rc = 0;
-    bool isreg = false;
     FILE *rpm = NULL;
     int payloadfd = -1;
     uint32_t keptpayload = 0;
     struct stat sb;
+    char *tmpname = NULL;
     char *header_dir = NULL;
     char *payload_dir = NULL;
     const char *header_path = OUTPUT_HEADER;
@@ -2426,18 +2517,12 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* create an RPM for writing */
-    rpm = fopen(filename, "wb");
+    rpm = open_package(filename, &tmpname);
 
     if (rpm == NULL) {
-        warn("fopen");
         free(header_dir);
         free(payload_dir);
         return -1;
-    }
-
-    /* only a regular file is removed if the write fails */
-    if (fstat(fileno(rpm), &sb) == 0 && S_ISREG(sb.st_mode)) {
-        isreg = true;
     }
 
     /* write the lead to the RPM */
@@ -2480,10 +2565,17 @@ create_cleanup:
         rc = -1;
     }
 
-    /* do not leave a truncated RPM behind */
-    if (rc != 0 && isreg && unlink(filename) == -1) {
+    /* the package only takes its name once it is complete */
+    if (tmpname != NULL && rc == 0 && rename(tmpname, filename) == -1) {
+        warn("rename");
+        rc = -1;
+    }
+
+    if (tmpname != NULL && rc != 0 && unlink(tmpname) == -1) {
         warn("unlink");
     }
+
+    free(tmpname);
 
     /* back to the starting point and clean up */
     if (chdir(cwd) == -1) {
