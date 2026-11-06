@@ -162,6 +162,40 @@ generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 }
 
 /*
+ * Return the locales in Headeri18ntable as a JSON array, or NULL when
+ * the header has none.  read_header() has already checked the strings
+ * fit in the header data.  The caller has to put the array.
+ */
+static struct json_object *
+read_i18n_table(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
+{
+    uint32_t i = 0;
+    uint32_t j = 0;
+    uint32_t count = 0;
+    char *p = NULL;
+    struct json_object *table = NULL;
+
+    for (i = 0; i < hdr->nentries; i++) {
+        if (ntohl(hdrinfo->estart[i].tag) != HEADER_I18NTABLE || ntohl(hdrinfo->estart[i].type) != RPM_STRING_ARRAY_TYPE) {
+            continue;
+        }
+
+        table = json_object_new_array();
+        count = ntohl(hdrinfo->estart[i].count);
+        p = (char *) hdrinfo->datastart + ntohl(hdrinfo->estart[i].offset);
+
+        for (j = 0; j < count; j++) {
+            json_object_array_add(table, json_object_new_string(p));
+            p += strlen(p) + 1;
+        }
+
+        break;
+    }
+
+    return table;
+}
+
+/*
  * Generate a "signature" or "header" JSON array of entries for the
  * tags for output.
  */
@@ -176,6 +210,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     struct json_object *kvals = NULL;
     struct json_object *entry = NULL;
     struct json_object *jtrailer = NULL;
+    struct json_object *i18ntable = NULL;
     struct rpmhdrentry *hdrentry = NULL;
 
     if (hdr == NULL || hdrinfo == NULL) {
@@ -183,6 +218,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     }
 
     hdrentry = hdrinfo->estart;
+    i18ntable = read_i18n_table(hdr, hdrinfo);
 
     /* create a new array for these tags */
     kvals = json_object_new_array();
@@ -217,7 +253,15 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         /* add the entry to the array */
         add_entry_value(entry, tag, hdrinfo->datastart, offset, datatype, count, dest_dir, signature);
         json_object_array_add(kvals, entry);
+
+        if (datatype == RPM_I18NSTRING_TYPE && count > 1 && add_i18n_value(entry, tag, hdrinfo->datastart + offset, count, i18ntable, dest_dir) == -1) {
+            json_object_put(i18ntable);
+            json_object_put(kvals);
+            return NULL;
+        }
     }
+
+    json_object_put(i18ntable);
 
     /* sort the array in ascending order by tag number */
     if (signature) {

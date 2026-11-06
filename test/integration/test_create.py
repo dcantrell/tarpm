@@ -977,6 +977,242 @@ class CreateRejectsUnknownTagName(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+def query_locale(pkg, queryformat, language):
+    """Run rpm -qp over a package with LANGUAGE set and return what it printed"""
+    proc = subprocess.Popen(
+        ["rpm", "-qp", "--qf", queryformat, pkg],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=dict(os.environ, LANGUAGE=language),
+    )
+    out, err = proc.communicate()
+
+    return out.decode()
+
+
+class TranslatedTree(RequiresTarpm):
+    """Class for tests of the translations of an i18n string tag"""
+
+    def tree(self, name, tags, files={}):
+        """Write a tree holding tags and text files beside header.json"""
+        tree = write_minimal_tree(os.path.join(self.output_dir, name), tags)
+
+        for filename, text in files.items():
+            f = open(os.path.join(tree, filename), "w")
+            f.write(text)
+            f.close()
+
+        return tree
+
+    def tags(self, *extra):
+        """Return the minimal tags without Summary, plus the given ones"""
+        tags = [dict(t) for t in MINIMAL_TAGS if t["tag"] != "Summary"]
+
+        return tags + list(extra)
+
+
+LOCALES = {
+    "tag": "Headeri18ntable",
+    "type": "string array",
+    "value": ["C", "de", "fr"],
+}
+
+
+class CreateTranslatedStrings(TranslatedTree):
+    """Translations in header.json and in files reach the package"""
+
+    def runTest(self):
+        tags = self.tags(
+            LOCALES,
+            {
+                "tag": "Summary",
+                "type": "i18n string",
+                "value": {"C": "hello", "de": "hallo", "fr": "salut"},
+            },
+            {
+                "tag": "Description",
+                "type": "i18n string",
+                "file": {"C": "description.txt", "fr": "description.fr.txt"},
+            },
+        )
+        tree = self.tree(
+            "tree",
+            tags,
+            {"description.txt": "text", "description.fr.txt": "texte"},
+        )
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        for language, expect in [
+            ("C", "hello|text"),
+            ("de", "hallo|"),
+            ("fr", "salut|texte"),
+        ]:
+            self.assertEqual(
+                query_locale(pkg, "%{summary}|%{description}", language), expect
+            )
+
+        # the locale with no string stays a gap so fr lines up with the table
+        again = os.path.join(self.output_dir, "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(again, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        tags = dict((t["tag"], t) for t in header["tags"])
+        self.assertEqual(
+            tags["Summary"]["value"], {"C": "hello", "de": "hallo", "fr": "salut"}
+        )
+        self.assertEqual(
+            tags["Description"]["file"],
+            {
+                "C": "description.txt",
+                "de": "description.de.txt",
+                "fr": "description.fr.txt",
+            },
+        )
+
+        f = open(os.path.join(again, "description.fr.txt"))
+        self.assertEqual(f.read(), "texte")
+        f.close()
+
+        self.assertEqual(os.path.getsize(os.path.join(again, "description.de.txt")), 0)
+
+
+class CreateRejectsBadTranslations(TranslatedTree):
+    """Translations with no place in Headeri18ntable are turned away"""
+
+    def runTest(self):
+        cases = [
+            ([LOCALES], {"C": "a", "es": "b"}, 'names the locale "es"'),
+            ([], {"C": "a"}, "has no Headeri18ntable tag"),
+            ([LOCALES], {}, "has no strings"),
+            ([LOCALES], {"C": 7}, 'value for locale "C" that is not a string'),
+            ([LOCALES], {"C": None}, 'value for locale "C" that is not a string'),
+        ]
+
+        for i, (table, value, message) in enumerate(cases):
+            summary = {"tag": "Summary", "type": "i18n string", "value": value}
+            tree = self.tree("tree%d" % i, self.tags(*(table + [summary])))
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0)
+            self.assertIn(message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateRejectsTranslationOutsideTree(TranslatedTree):
+    """A translation file gets the same path checks as any other tag file"""
+
+    def runTest(self):
+        secret = os.path.join(self.output_dir, "secret")
+        f = open(secret, "w")
+        f.write("private\n")
+        f.close()
+
+        description = {
+            "tag": "Description",
+            "type": "i18n string",
+            "file": {"C": "description.txt", "de": "../secret"},
+        }
+        tree = self.tree(
+            "tree", self.tags(LOCALES, description), {"description.txt": "text"}
+        )
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("which is not a file below", err)
+        self.assertFalse(os.path.isfile(pkg))
+
+
+class ExtractRejectsUnsafeLocale(TranslatedTree):
+    """A locale that cannot be part of a file name stops the extract"""
+
+    def runTest(self):
+        table = {
+            "tag": "Headeri18ntable",
+            "type": "string array",
+            "value": ["C", "../../../evil"],
+        }
+        description = {
+            "tag": "Description",
+            "type": "i18n string",
+            "value": {"C": "text", "../../../evil": "bad"},
+        }
+        tree = self.tree("tree", self.tags(table, description))
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        before = set(os.listdir(self.output_dir))
+        again = os.path.join(self.output_dir, "deep", "er", "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("cannot be used in a file name", err)
+
+        for dirpath, dirnames, filenames in os.walk(self.output_dir):
+            self.assertFalse([f for f in filenames if f.endswith("evil.txt")])
+
+        self.assertLessEqual(set(os.listdir(self.output_dir)) - before, {"deep"})
+
+
+class ExtractWarnsAboutMissingLocaleTable(TranslatedTree):
+    """Translations with no Headeri18ntable keep the first string"""
+
+    def runTest(self):
+        summary = {
+            "tag": "Summary",
+            "type": "i18n string",
+            "value": {"C": "hello", "de": "hallo"},
+        }
+        tree = self.tree("tree", self.tags(LOCALES, summary))
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # turn the table in to a tag nothing reads
+        f = open(pkg, "rb")
+        data = bytearray(f.read())
+        f.close()
+
+        nentries, nbytes = struct.unpack_from(">II", data, 96 + 8)
+        hlen = 16 * nentries + nbytes
+        hdr = 96 + 16 + hlen + (8 - (hlen % 8)) % 8
+        nentries, nbytes = struct.unpack_from(">II", data, hdr + 8)
+        found = False
+
+        for i in range(nentries):
+            entry = hdr + 16 + 16 * i
+
+            if struct.unpack_from(">I", data, entry)[0] == 100:
+                struct.pack_into(">I", data, entry, 101)
+                found = True
+
+        self.assertTrue(found)
+
+        f = open(pkg, "wb")
+        f.write(data)
+        f.close()
+
+        again = os.path.join(self.output_dir, "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn("keeping the first string", err)
+
+        f = open(os.path.join(again, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        tags = dict((t["tag"], t.get("value")) for t in header["tags"])
+        self.assertEqual(tags["Summary"], "hello")
+
+
 class CreateRejectsUnknownCompressor(RequiresTarpm):
     """A Payloadcompressor tarpm does not know is turned away"""
 

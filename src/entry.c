@@ -73,15 +73,17 @@ get_tag_filename(rpmTagVal tag, const char *ending)
 
 /*
  * Handle entries that write their data to a file rather than
- * adding it directly to the JSON object.
+ * adding it directly to the JSON object.  A translation gets the
+ * locale in its file name.
  *
  * Returns the basename of the output file created.  Caller must free
  * this string when done.
  */
 static char *
-write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
+write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir, const char *locale)
 {
     char *tagname = NULL;
+    char *base = NULL;
     FILE *fp = NULL;
     char *path = NULL;
     size_t len = 0;
@@ -91,7 +93,13 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
     }
 
     /* build an output filename */
-    tagname = get_tag_filename(tag, OUTPUT_TXT_ENDING);
+    if (locale == NULL) {
+        tagname = get_tag_filename(tag, OUTPUT_TXT_ENDING);
+    } else {
+        base = get_tag_filename(tag, NULL);
+        xasprintf(&tagname, "%s.%s.%s", base, locale, OUTPUT_TXT_ENDING);
+        free(base);
+    }
 
     if (dest_dir) {
         xasprintf(&path, "%s/%s", dest_dir, tagname);
@@ -137,6 +145,90 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir)
 
     free(path);
     return tagname;
+}
+
+/*
+ * True if a locale is safe to put in a file name.  The name comes from
+ * the package, so we only take what a locale name is made of.
+ */
+static bool
+valid_locale(const char *locale)
+{
+    size_t i = 0;
+
+    if (locale == NULL || locale[0] == '\0' || locale[0] == '.') {
+        return false;
+    }
+
+    for (i = 0; locale[i] != '\0'; i++) {
+        if (!isalnum((unsigned char) locale[i]) && strchr("_-.@", locale[i]) == NULL) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * An i18n string tag holds one string per locale in the order of
+ * Headeri18ntable, and may stop short of the end of the table.  Replace
+ * the value add_entry_value() wrote for the first one with an object
+ * keyed by locale.  Without a locale for every string we warn and leave
+ * it alone.  Returns 0 on success, -1 for a locale we cannot use as a
+ * file name.
+ */
+int
+add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uint32_t count, struct json_object *i18ntable, const char *dest_dir)
+{
+    uint32_t i = 0;
+    uint8_t *p = data;
+    char *filename = NULL;
+    const char *locale = NULL;
+    struct json_object *values = NULL;
+
+    if (i18ntable == NULL || count > json_object_array_length(i18ntable)) {
+        warnx(_("*** the %s tag has translations with no locale in %s, keeping the first string"), rpmTagGetName(tag), rpmTagGetName(RPMTAG_HEADERI18NTABLE));
+        return 0;
+    }
+
+    values = json_object_new_object();
+
+    for (i = 0; i < count; i++) {
+        locale = json_object_get_string(json_object_array_get_idx(i18ntable, i));
+
+        if (!is_file_tag(tag)) {
+            json_object_object_add(values, locale, json_object_new_string((char *) p));
+        } else if (!valid_locale(locale)) {
+            warnx(_("*** the locale \"%s\" in %s cannot be used in a file name"), locale, rpmTagGetName(RPMTAG_HEADERI18NTABLE));
+            json_object_put(values);
+            return -1;
+        } else {
+            /* the first string goes where a single string goes */
+            if (i == 0) {
+                filename = write_entry_value_file(tag, p, dest_dir, NULL);
+            } else {
+                filename = write_entry_value_file(tag, p, dest_dir, locale);
+            }
+
+            if (filename == NULL) {
+                json_object_put(values);
+                return -1;
+            }
+
+            json_object_object_add(values, locale, json_object_new_string(filename));
+            free(filename);
+        }
+
+        p += strlen((char *) p) + 1;
+    }
+
+    if (is_file_tag(tag)) {
+        json_object_object_add(arrayentry, RPM_ENTRY_FILE_DESC, values);
+    } else {
+        json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, values);
+    }
+
+    return 0;
 }
 
 void
@@ -253,7 +345,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_STRING_TYPE || datatype == RPM_I18NSTRING_TYPE) {
         if (is_file_tag(tag)) {
             /* write this tag value to a metadata file rather than a string in the JSON data */
-            tagname = write_entry_value_file(tag, data, dest_dir);
+            tagname = write_entry_value_file(tag, data, dest_dir, NULL);
 
             /* add the JSON entry noting it's a file and not a direct value */
             if (tagname != NULL) {

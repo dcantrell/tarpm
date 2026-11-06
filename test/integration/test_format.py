@@ -478,6 +478,71 @@ class VerifyUncompressedPackageStaysUncompressed(TestUnpackRPM):
         self.assertEqual(one, two, "the package came out different")
 
 
+class VerifyTranslationsRoundTrip(TestUnpackRPM):
+    """Translations from rpmbuild come back the way they went in"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\nSummary(de): hallo\nSummary(fr): salut\n"
+        self.rpm.header += "Group(de): Gruppe\n"
+        self.rpm.basePackage.section_conflicts += (
+            "\n%description -l de\nBeschreibung\n"
+            "\n%description -l pt_BR\nDescricao\n"
+        )
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def query(self, pkg, language):
+        """Return the summary and description rpm shows for a language"""
+        proc = subprocess.Popen(
+            ["rpm", "-qp", "--qf", "%{summary}|%{description}", pkg],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=dict(os.environ, LANGUAGE=language),
+        )
+        out, err = proc.communicate()
+
+        return out.decode()
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        tags = dict((t["tag"], t) for t in json.load(f)["tags"])
+        f.close()
+
+        self.assertEqual(tags["Summary"]["value"]["de"], "hallo")
+        self.assertEqual(tags["Description"]["file"]["pt_BR"], "description.pt_BR.txt")
+
+        f = open(os.path.join(self.output_dir, "description.de.txt"))
+        self.assertEqual(f.read().strip(), "Beschreibung")
+        f.close()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        args = [self.tarpm, "-c", "-f", created]
+        args += RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        for language in ["C", "de", "fr", "pt_BR"]:
+            self.assertEqual(
+                self.query(created, language), self.query(original, language)
+            )
+
+        f = open(original, "rb")
+        one = f.read()
+        f.close()
+
+        f = open(created, "rb")
+        two = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+
+
 class VerifyMissingCompressorStaysGzip(TestUnpackRPM):
     """A compressed payload with no compressor tag is not called uncompressed"""
 

@@ -24,6 +24,7 @@
 struct tagfile {
     uint8_t *data;    /* file contents, always NUL terminated */
     size_t len;       /* byte length, not counting the trailing NUL */
+    uint32_t count;   /* how many strings data holds, one after another */
     bool present;     /* true once the file has been read */
 };
 
@@ -259,12 +260,195 @@ tag_file_below(const char *path, const char *base)
 }
 
 /*
+ * Return the key an entry keeps its value under.  A file backed tag
+ * names the file holding its value, but a hand written header.json
+ * can carry that value inline instead, so fall back to the value key.
+ * NOTE: Do not free() what this function returns.
+ */
+static const char *
+entry_value_key(struct json_object *entry, const rpmTagVal tag)
+{
+    if (is_file_tag(tag) && json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, NULL)) {
+        return RPM_ENTRY_FILE_DESC;
+    }
+
+    return RPM_ENTRY_VALUE_DESC;
+}
+
+/*
+ * Read the file a tag names.  A relative filename is taken from
+ * tagfile_dir, which is where header.json sits.  The file has to be
+ * below tagfile_dir or below payload_dir, which can be anywhere.
+ * Returns 0 on success, -1 if the file could not be read.
+ */
+static int
+read_named_tag_file(const rpmTagVal tag_number, const char *name, uint8_t **data, size_t *len, const char *tagfile_dir, const char *payload_dir)
+{
+    char *full = NULL;
+    char *path = NULL;
+
+    if (name[0] == '/') {
+        full = strdup(name);
+    } else if (tagfile_dir != NULL) {
+        full = joinpath(tagfile_dir, name, NULL);
+    }
+
+    /*
+     * We resolve ".." ourselves and open what that gives us, so a
+     * crafted header.json cannot pull in a file from anywhere but
+     * the two directories that belong to the package.
+     */
+    path = abspath(full);
+    free(full);
+
+    if (!tag_file_below(path, tagfile_dir) && !tag_file_below(path, payload_dir)) {
+        warnx(_("*** the %s tag names \"%s\", which is not a file below the directory holding %s or the payload directory"), rpmTagGetName(tag_number), name, OUTPUT_HEADER);
+        free(path);
+        return -1;
+    }
+
+    if (read_tag_file(path, data, len) == -1) {
+        warnx(_("*** unable to read the value of the %s tag"), rpmTagGetName(tag_number));
+        free(path);
+        return -1;
+    }
+
+    free(path);
+    return 0;
+}
+
+/* Return the Headeri18ntable array in the tags array, NULL if none */
+static struct json_object *
+i18n_table(struct json_object *tags)
+{
+    size_t i = 0;
+    struct json_object *entry = NULL;
+    struct json_object *value = NULL;
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (get_tag_number(entry, false) == HEADER_I18NTABLE && json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value) && json_object_get_type(value) == json_type_array) {
+            return value;
+        }
+    }
+
+    return NULL;
+}
+
+/* True if a locale is one the Headeri18ntable array holds at index */
+static bool
+i18n_table_has(struct json_object *table, const size_t index, const char *locale)
+{
+    struct json_object *element = NULL;
+
+    element = json_object_array_get_idx(table, index);
+
+    return json_object_get_type(element) == json_type_string && !strcmp(json_object_get_string(element), locale);
+}
+
+/*
+ * Gather the translations of an i18n string tag.  key is an object of
+ * locale to string, or to the name of a file holding the string.  The
+ * strings go in the order of Headeri18ntable, one after another, which
+ * is how they sit in the header.  A locale in the table with no string
+ * here gets an empty one if a later locale has a string.  Returns 0 on
+ * success, -1 on failure.
+ */
+static int
+read_i18n_strings(struct json_object *tags, const rpmTagVal tag_number, struct json_object *key, const bool from_files, struct tagfile *tagfile, const char *tagfile_dir, const char *payload_dir)
+{
+    size_t i = 0;
+    size_t len = 0;
+    size_t total = 0;
+    size_t count = 0;
+    bool found = false;
+    uint8_t *buf = NULL;
+    uint8_t *data = NULL;
+    const char *locale = NULL;
+    const char *name = NULL;
+    struct json_object *table = NULL;
+    struct json_object *string = NULL;
+
+    name = rpmTagGetName(tag_number);
+    table = i18n_table(tags);
+
+    if (table == NULL) {
+        warnx(_("*** the %s tag has translations but the header has no %s tag"), name, rpmTagGetName(RPMTAG_HEADERI18NTABLE));
+        return -1;
+    }
+
+    json_object_object_foreach(key, keyname, keyvalue) {
+        if (json_object_get_type(keyvalue) != json_type_string) {
+            warnx(_("*** the %s tag has a value for locale \"%s\" that is not a string"), name, keyname);
+            return -1;
+        }
+
+        found = false;
+
+        for (i = 0; i < json_object_array_length(table); i++) {
+            if (i18n_table_has(table, i, keyname)) {
+                found = true;
+
+                if (i + 1 > count) {
+                    count = i + 1;
+                }
+            }
+        }
+
+        if (!found) {
+            warnx(_("*** the %s tag names the locale \"%s\", which is not in %s"), name, keyname, rpmTagGetName(RPMTAG_HEADERI18NTABLE));
+            return -1;
+        }
+    }
+
+    if (count == 0) {
+        warnx(_("*** the %s tag has no strings"), name);
+        return -1;
+    }
+
+    for (i = 0; i < count; i++) {
+        data = NULL;
+        len = 0;
+        locale = json_object_get_string(json_object_array_get_idx(table, i));
+
+        if (json_object_get_type(json_object_array_get_idx(table, i)) == json_type_string && json_object_object_get_ex(key, locale, &string)) {
+            if (from_files) {
+                if (read_named_tag_file(tag_number, json_object_get_string(string), &data, &len, tagfile_dir, payload_dir) == -1) {
+                    free(buf);
+                    return -1;
+                }
+            } else {
+                data = (uint8_t *) strdup(json_object_get_string(string));
+                len = strlen((const char *) data);
+            }
+        }
+
+        buf = xrealloc(buf, total + len + 1);
+
+        if (len > 0) {
+            memcpy(buf + total, data, len);
+        }
+
+        buf[total + len] = '\0';
+        total += len + 1;
+        free(data);
+    }
+
+    tagfile->data = buf;
+    tagfile->len = total - 1;
+    tagfile->count = count;
+    tagfile->present = true;
+
+    return 0;
+}
+
+/*
  * Read every file named by a file-backed tag so the sizing pass and
- * the write pass work from the same bytes.  A relative filename is
- * taken from tagfile_dir, which is where header.json sits.  The file
- * has to be below tagfile_dir or below payload_dir, which can be
- * anywhere.  Results are indexed by position in the tags array.
- * Returns 0 on success, -1 if any named file could not be read.
+ * the write pass work from the same bytes.  The translations of an
+ * i18n string tag go through here too.  Results are indexed by
+ * position in the tags array.  Returns 0 on success, -1 if any named
+ * file could not be read.
  */
 static int
 read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *tagfile_dir, const char *payload_dir, bool is_signature)
@@ -274,8 +458,7 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
     struct json_object *key = NULL;
     rpmTagVal tag_number = 0;
     const char *name = NULL;
-    char *full = NULL;
-    char *path = NULL;
+    const char *field = NULL;
 
     if (tags == NULL || tagfiles == NULL) {
         return -1;
@@ -289,6 +472,15 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
         }
 
         tag_number = get_tag_number(entry, is_signature);
+        field = entry_value_key(entry, tag_number);
+
+        if (get_entry_type(entry) == RPM_I18NSTRING_TYPE && json_object_object_get_ex(entry, field, &key) && json_object_get_type(key) == json_type_object) {
+            if (read_i18n_strings(tags, tag_number, key, !strcmp(field, RPM_ENTRY_FILE_DESC), &tagfiles[i], tagfile_dir, payload_dir) == -1) {
+                return -1;
+            }
+
+            continue;
+        }
 
         if (!is_file_tag(tag_number)) {
             continue;
@@ -304,55 +496,15 @@ read_tag_files(struct json_object *tags, struct tagfile *tagfiles, const char *t
             continue;
         }
 
-        full = NULL;
-
-        if (name[0] == '/') {
-            full = strdup(name);
-        } else if (tagfile_dir != NULL) {
-            full = joinpath(tagfile_dir, name, NULL);
-        }
-
-        /*
-         * We resolve ".." ourselves and open what that gives us, so a
-         * crafted header.json cannot pull in a file from anywhere but
-         * the two directories that belong to the package.
-         */
-        path = abspath(full);
-        free(full);
-
-        if (!tag_file_below(path, tagfile_dir) && !tag_file_below(path, payload_dir)) {
-            warnx(_("*** the %s tag names \"%s\", which is not a file below the directory holding %s or the payload directory"), rpmTagGetName(tag_number), name, OUTPUT_HEADER);
-            free(path);
+        if (read_named_tag_file(tag_number, name, &tagfiles[i].data, &tagfiles[i].len, tagfile_dir, payload_dir) == -1) {
             return -1;
         }
 
-        if (read_tag_file(path, &tagfiles[i].data, &tagfiles[i].len) == -1) {
-            warnx(_("*** unable to read the value of the %s tag"), rpmTagGetName(tag_number));
-            free(path);
-            return -1;
-        }
-
-        free(path);
+        tagfiles[i].count = 1;
         tagfiles[i].present = true;
     }
 
     return 0;
-}
-
-/*
- * Return the key an entry keeps its value under.  A file backed tag
- * names the file holding its value, but a hand written header.json
- * can carry that value inline instead, so fall back to the value key.
- * NOTE: Do not free() what this function returns.
- */
-static const char *
-entry_value_key(struct json_object *entry, const rpmTagVal tag)
-{
-    if (is_file_tag(tag) && json_object_object_get_ex(entry, RPM_ENTRY_FILE_DESC, NULL)) {
-        return RPM_ENTRY_FILE_DESC;
-    }
-
-    return RPM_ENTRY_VALUE_DESC;
 }
 
 /* The name to report a tag by in the header we are building */
@@ -1055,6 +1207,11 @@ write_entry_value(struct data_writer *w, struct rpmhdrentry *entry, const struct
         entry->count = write_strings(w, key);
     } else {
         entry->count = 1;
+
+        if (tagfile->present) {
+            entry->count = tagfile->count;
+        }
+
         write_string(w, tagfile, key);
     }
 
@@ -1212,6 +1369,15 @@ read_header(const int fd, const char *dest_dir)
 
     /* dump all of the tags in the header block */
     jvals = generate_json_entries(rawhdr, hdrinfo, trailer, dest_dir, false);
+
+    if (jvals == NULL) {
+        json_object_put(header);
+        free(trailer);
+        free(buffer);
+        free(hdrinfo);
+        free(rawhdr);
+        return NULL;
+    }
 
     /* write the header to a file */
     json_object_object_add(header, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));

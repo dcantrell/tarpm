@@ -195,6 +195,7 @@ void reset_librpm(void);
 /* entry.c */
 bool is_file_tag(rpmTagVal tag);
 char *get_tag_filename(rpmTagVal tag, const char *ending);
+int add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uint32_t count, struct json_object *i18ntable, const char *dest_dir);
 void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature);
 
 /* xread.c */
