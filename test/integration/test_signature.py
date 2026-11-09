@@ -854,6 +854,40 @@ class VerifyCreateKeepSignaturesFormatSix(KeepSignaturesBase):
             self.assertIn("leaving %s out of the package" % tag, err)
 
 
+class VerifyCreateKeepSignaturesWarnsOnChangedHeader(KeepSignaturesBase):
+    """With -k a main header that changed gets a warning"""
+
+    def runTest(self):
+        super().runTest()
+
+        self.fake_signature(self.signature)
+        message = "the kept signatures will not verify"
+
+        # the same header gives no warning
+        created = os.path.join(self.output_dir, "same.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertNotIn(message, err)
+
+        header = os.path.join(self.output_dir, "header.json")
+        f = open(header)
+        data = json.load(f)
+        f.close()
+
+        for entry in data["tags"]:
+            if entry["tag"] == "Summary":
+                entry["value"] = "a changed summary"
+
+        f = open(header, "w")
+        json.dump(data, f)
+        f.close()
+
+        created = os.path.join(self.output_dir, "changed.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn(message, err)
+
+
 class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase):
     """With -k the signatures come out of the reserved space"""
 

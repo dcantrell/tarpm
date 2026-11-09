@@ -1836,6 +1836,59 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
 }
 
 /*
+ * Warn when -k keeps package signatures for a main header that is not
+ * the one they signed.  The signatures cover the main header, so we
+ * compare the Sha256 of the header we wrote with the one signature.json
+ * carries.  A signature.json with no Sha256 or no package signatures
+ * gets no warning.
+ */
+static void
+check_kept_signatures(struct json_object *kept, const char *sha256)
+{
+    size_t i = 0;
+    uint32_t tag = 0;
+    bool signed_package = false;
+    const char *value = NULL;
+    struct json_object *kepttags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *sig = NULL;
+
+    if (!keep_signatures || kept == NULL || sha256 == NULL) {
+        return;
+    }
+
+    if (json_object_object_get_ex(kept, RPM_ENTRY_TAGS_DESC, &kepttags) == 0 || json_object_get_type(kepttags) != json_type_array) {
+        return;
+    }
+
+    for (i = 0; i < json_object_array_length(kepttags); i++) {
+        entry = json_object_array_get_idx(kepttags, i);
+        tag = get_tag_number(entry, true);
+
+        if (!is_rpmsign_tag(tag) || is_file_signature_tag(tag)) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &sig) || sig == NULL) {
+            continue;
+        }
+
+        if ((json_object_get_type(sig) == json_type_array && json_object_array_length(sig) > 0) || (json_object_get_type(sig) == json_type_string && json_object_get_string_len(sig) > 0)) {
+            signed_package = true;
+            break;
+        }
+    }
+
+    value = get_tag_value(kepttags, sig_tag_name(RPMSIGTAG_SHA256));
+
+    if (signed_package && value != NULL && strcasecmp(value, sha256) != 0) {
+        warnx(_("*** the main header differs from the one signature.json was signed for, the kept signatures will not verify"));
+    }
+
+    return;
+}
+
+/*
  * Update the digests and sizes in the signature using the header and
  * payload data.  A digest kept carries goes in place of the computed
  * one.  Returns non-zero on failure.
@@ -2031,6 +2084,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         free(buf);
         return -1;
     }
+
+    check_kept_signatures(kept, buf);
 
     free(digest);
     free(buf);
