@@ -1601,10 +1601,39 @@ read_kept_signature(const struct json_paths *paths, struct json_object **kept)
 }
 
 /*
+ * Returns true if a digest from signature.json has the length rpm
+ * expects for the tag.  Md5 is base64 for 16 bytes, Sha1 is 40 hex
+ * digits, Sha256 and Sha3_256 are 64.  Any other length changes the
+ * size of the signature header and rpm reports it as BAD.
+ */
+static bool
+kept_digest_fits(const uint32_t tag, const char *value)
+{
+    bool r = false;
+    uint8_t *blob = NULL;
+    size_t blobsize = 0;
+
+    if (tag == RPMSIGTAG_MD5) {
+        if (rpmBase64Decode(value, (void **) &blob, &blobsize) == 0 && blobsize == MD5_DIGEST_LENGTH) {
+            r = true;
+        }
+
+        free(blob);
+    } else if (tag == RPMSIGTAG_SHA1) {
+        r = (strlen(value) == SHA_DIGEST_LENGTH * 2);
+    } else {
+        r = (strlen(value) == SHA256_DIGEST_LENGTH * 2);
+    }
+
+    return r;
+}
+
+/*
  * Replace the signature digests we computed with the ones signature.json
  * carries.  Only the digests the format put in the signature header
  * are replaced, so a v4 format Md5 does not land in a v6 format
- * signature.  Returns non-zero on failure.
+ * signature.  A kept digest of the wrong length is left out and we
+ * keep the computed one.  Returns non-zero on failure.
  */
 static int
 keep_signature_digests(struct json_object *tags, struct json_object *kept)
@@ -1635,6 +1664,11 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
         value = get_tag_value(kepttags, name);
 
         if (value == NULL || value[0] == '\0') {
+            continue;
+        }
+
+        if (!kept_digest_fits(digests[i], value)) {
+            warnx(_("*** %s in signature.json has the wrong length, computing it instead"), name);
             continue;
         }
 

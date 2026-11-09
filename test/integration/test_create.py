@@ -1922,6 +1922,53 @@ class CreateKeepsSignatureDigest(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(signature, "Sha256"), BAD_DIGEST)
 
 
+class CreateKeepDigestsComputesWrongLength(KeepAllDigestsBase):
+    """With -D a signature digest of the wrong length is computed"""
+
+    def runTest(self):
+        tree = self.extract_tree()
+        bad = {"Md5": "AAAA", "Sha1": "abc", "Sha256": "abc", "Sha3_256": "abc"}
+        names = {"4": ["Md5", "Sha1", "Sha256"], "6": ["Sha256", "Sha3_256"]}
+
+        for rpmformat in ["4", "6"]:
+            if rpmformat == "6" and not HAVE_RPM_FORMAT_SIX:
+                continue
+
+            # a tree of this format, so -D keeps digests that fit it
+            plain = os.path.join(self.output_dir, "plain%s.rpm" % rpmformat)
+            args = [self.tarpm, "-c", "-F", rpmformat, "-f", plain, tree]
+            rc, out, err = run_tarpm(args)
+            self.assertEqual(rc, 0, msg=err)
+
+            again = os.path.join(self.output_dir, "tree%s" % rpmformat)
+            rc, out, err = run_tarpm([self.tarpm, "-x", "-f", plain, "-O", again])
+            self.assertEqual(rc, 0, msg=err)
+
+            signature = self.read_signature(again)
+
+            for name, value in bad.items():
+                self.set_tag_value(signature, name, value)
+
+            self.write_signature(os.path.join(again, "signature.json"), signature)
+
+            pkg = os.path.join(self.output_dir, "kept%s.rpm" % rpmformat)
+            args = [self.tarpm, "-D", "-c", "-F", rpmformat, "-f", pkg, again]
+            rc, out, err = run_tarpm(args)
+            self.assertEqual(rc, 0, msg=err)
+
+            for name in names[rpmformat]:
+                self.assertIn("%s in signature.json has the wrong length" % name, err)
+
+            # every digest was computed, so we get the same package
+            f = open(pkg, "rb")
+            kept = f.read()
+            f.close()
+
+            f = open(plain, "rb")
+            self.assertEqual(kept, f.read())
+            f.close()
+
+
 class CreateRecomputesSignatureDigestWithoutFlag(KeepAllDigestsBase):
     """Without -D signature.json is not read and the digest is computed"""
 
