@@ -4,6 +4,7 @@
  */
 
 #include <malloc.h>
+#include <string.h>
 #include <CUnit/Basic.h>
 #include "tarpm.h"
 
@@ -124,6 +125,22 @@ test_xrealloc(void)
     return;
 }
 
+void
+test_xstrdup(void)
+{
+    char *s = NULL;
+
+    s = xstrdup("tarpm");
+    TARPM_ASSERT_STRING_EQUAL(s, "tarpm");
+    free(s);
+
+    s = xstrdup("");
+    TARPM_ASSERT_STRING_EQUAL(s, "");
+    free(s);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -139,7 +156,8 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test xcalloc()", test_xcalloc) == NULL ||
         CU_add_test(pSuite, "test xalloc()", test_xalloc) == NULL ||
-        CU_add_test(pSuite, "test xrealloc()", test_xrealloc) == NULL) {
+        CU_add_test(pSuite, "test xrealloc()", test_xrealloc) == NULL ||
+        CU_add_test(pSuite, "test xstrdup()", test_xstrdup) == NULL) {
         return NULL;
     }
 

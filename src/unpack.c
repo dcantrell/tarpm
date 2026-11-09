@@ -139,8 +139,9 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
 
     /* change to dest */
     if (getcwd(cwd, PATH_MAX) == NULL) {
+        warn("getcwd");
         archive_read_free(input);
-        err(EXIT_FAILURE, "getcwd");
+        return -1;
     }
 
     if (chdir(dest) != 0) {

@@ -5,6 +5,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 #include <CUnit/Basic.h>
 #include <json.h>
 #include <rpm/rpmbase64.h>
@@ -106,10 +108,46 @@ assert_read_only(struct json_object *signature)
     return;
 }
 
+/* Return the read end of a pipe holding len bytes of data */
+static int
+signature_pipe(const void *data, size_t len)
+{
+    int fds[2];
+
+    if (pipe(fds) == -1) {
+        return -1;
+    }
+
+    if (len > 0 && write(fds[1], data, len) != (ssize_t) len) {
+        close(fds[0]);
+        close(fds[1]);
+        return -1;
+    }
+
+    close(fds[1]);
+
+    return fds[0];
+}
+
 void
 test_read_signature(void)
 {
+    int fd = -1;
+    uint32_t intro[4] = { htonl(RPM_SIGNATURE_MAGIC), htonl(RPM_SIGNATURE_RESERVED), htonl(1), htonl(16) };
+
     TARPM_ASSERT_TRUE(read_signature(-47) == NULL);
+
+    /* an empty file returns NULL rather than exiting */
+    fd = signature_pipe(NULL, 0);
+    TARPM_ASSERT_TRUE(fd >= 0);
+    TARPM_ASSERT_PTR_NULL(read_signature(fd));
+    close(fd);
+
+    /* so does an intro with no entries after it */
+    fd = signature_pipe(intro, sizeof(intro));
+    TARPM_ASSERT_TRUE(fd >= 0);
+    TARPM_ASSERT_PTR_NULL(read_signature(fd));
+    close(fd);
 
     return;
 }

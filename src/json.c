@@ -251,7 +251,13 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
         }
 
         /* add the entry to the array */
-        add_entry_value(entry, tag, hdrinfo->datastart, offset, datatype, count, dest_dir, signature);
+        if (add_entry_value(entry, tag, hdrinfo->datastart, offset, datatype, count, dest_dir, signature) != 0) {
+            json_object_put(entry);
+            json_object_put(i18ntable);
+            json_object_put(kvals);
+            return NULL;
+        }
+
         json_object_array_add(kvals, entry);
 
         if (datatype == RPM_I18NSTRING_TYPE && count > 1 && add_i18n_value(entry, tag, hdrinfo->datastart + offset, count, i18ntable, dest_dir) == -1) {
@@ -302,9 +308,15 @@ keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const stru
         }
 
         entry = create_json_entry(&hdrentry[i], false);
-        add_entry_value(entry, tag, hdrinfo->datastart, ntohl(hdrentry[i].offset), ntohl(hdrentry[i].type), ntohl(hdrentry[i].count), dest_dir, false);
-        json_object_array_add(kvals, entry);
         found = true;
+
+        /* the caller fails the extract when we find any, so we only drop this one */
+        if (add_entry_value(entry, tag, hdrinfo->datastart, ntohl(hdrentry[i].offset), ntohl(hdrentry[i].type), ntohl(hdrentry[i].count), dest_dir, false) != 0) {
+            json_object_put(entry);
+            continue;
+        }
+
+        json_object_array_add(kvals, entry);
     }
 
     if (found) {
@@ -363,7 +375,8 @@ write_json_file(struct json_object *data, const char *path)
     js = json_object_to_json_string_ext(data, flags);
 
     if (js == NULL) {
-        errx(EXIT_FAILURE, "unable to turn JSON object in to string");
+        warnx(_("*** unable to turn JSON object in to string"));
+        return -1;
     }
 
     tostdout = !strcmp(path, OUTPUT_STDOUT);

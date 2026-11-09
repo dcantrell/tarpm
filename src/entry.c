@@ -231,7 +231,7 @@ add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uin
     return 0;
 }
 
-void
+int
 add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature)
 {
     uint32_t i = 0;
@@ -244,7 +244,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     char *tagname = NULL;
 
     if (arrayentry == NULL || buffer == NULL) {
-        return;
+        return -1;
     }
 
     /* move to the position of this entry's data */
@@ -362,7 +362,8 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
         free(blob);
 
         if (s == NULL) {
-            err(EXIT_FAILURE, "rpmBase64Encode");
+            warnx(_("*** unable to encode the %s value"), rpmTagGetName(tag));
+            return -1;
         }
 
         json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
@@ -381,5 +382,5 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
         json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string("(unknown)"));
     }
 
-    return;
+    return 0;
 }

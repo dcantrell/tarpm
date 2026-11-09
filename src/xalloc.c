@@ -5,6 +5,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <err.h>
 
 /* Always 0-initialized, unless the compiler disagrees. */
@@ -42,6 +43,21 @@ xrealloc(void *p, size_t s)
 
     if (ret == NULL) {
         err(EXIT_FAILURE, "realloc");
+    }
+
+    return ret;
+}
+
+/* strdup() that exits when memory runs out */
+char *
+xstrdup(const char *s)
+{
+    char *ret = NULL;
+
+    ret = strdup(s);
+
+    if (ret == NULL) {
+        err(EXIT_FAILURE, "strdup");
     }
 
     return ret;

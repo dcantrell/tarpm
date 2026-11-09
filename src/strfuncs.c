@@ -25,11 +25,7 @@ strappend(char *dest, ...)
 
     while ((s = va_arg(sl, const char *)) != NULL) {
         if (dest == NULL) {
-            dest = strdup(s);
-
-            if (dest == NULL) {
-                err(EXIT_FAILURE, "strdup");
-            }
+            dest = xstrdup(s);
         } else {
             dest = xrealloc(dest, strlen(dest) + strlen(s) + 1);
             dest = strcat(dest, s);
@@ -63,12 +59,8 @@ str_list_t *strsplit(const char *s, const char *delim)
         return list;
     }
 
-    walk = strdup(s);
+    walk = xstrdup(s);
     walkp = walk;
-
-    if (walk == NULL) {
-        err(EXIT_FAILURE, "strdup");
-    }
 
     /* split the string and build the list */
     while ((token = strsep(&walk, delim)) != NULL) {

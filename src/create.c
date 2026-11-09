@@ -1087,10 +1087,14 @@ create_payload(struct json_object *header, const char *payload_dir)
 
     if (stripped) {
         if (archive_write_set_format_raw(payload) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_format_raw: %s", archive_error_string(payload));
+            warnx("archive_write_set_format_raw: %s", archive_error_string(payload));
+            failed = true;
+            goto close_payload;
         }
     } else if (archive_write_set_format_cpio_newc(payload) != ARCHIVE_OK) {
-        errx(EXIT_FAILURE, "archive_write_set_format_cpio_newc: %s", archive_error_string(payload));
+        warnx("archive_write_set_format_cpio_newc: %s", archive_error_string(payload));
+        failed = true;
+        goto close_payload;
     }
 
     /* get the compression algorithm type and level */
@@ -1111,7 +1115,9 @@ create_payload(struct json_object *header, const char *payload_dir)
          * not let libarchive pad out the final block.
          */
         if (archive_write_set_bytes_in_last_block(payload, 1) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+            warnx("archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+            failed = true;
+            goto close_payload;
         }
 
         /* get the compression level */
@@ -1137,7 +1143,9 @@ create_payload(struct json_object *header, const char *payload_dir)
         archive_write_add_filter_none(payload);
 
         if (archive_write_set_bytes_in_last_block(payload, 1) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+            warnx("archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
+            failed = true;
+            goto close_payload;
         }
     } else if (!strcmp(tag, "gzip")) {
         archive_write_add_filter_gzip(payload);
@@ -1148,7 +1156,9 @@ create_payload(struct json_object *header, const char *payload_dir)
          * there unless we turn off the timestamp option.
          */
         if (archive_write_set_filter_option(payload, "gzip", "timestamp", NULL) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_set_filter_option: %s", archive_error_string(payload));
+            warnx("archive_write_set_filter_option: %s", archive_error_string(payload));
+            failed = true;
+            goto close_payload;
         }
     } else if (!strcmp(tag, "bzip2")) {
         archive_write_add_filter_bzip2(payload);
@@ -1218,7 +1228,9 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     if (archive_write_open_fd(payload, tmp_payloadfd) != ARCHIVE_OK) {
-        errx(EXIT_FAILURE, "archive_write_open_fd: %s", archive_error_string(payload));
+        warnx("archive_write_open_fd: %s", archive_error_string(payload));
+        failed = true;
+        goto close_payload;
     }
 
     /* the raw format holds one regular file, which is our cpio stream */
@@ -1228,7 +1240,10 @@ create_payload(struct json_object *header, const char *payload_dir)
         archive_entry_set_filetype(entry, AE_IFREG);
 
         if (archive_write_header(payload, entry) != ARCHIVE_OK) {
-            errx(EXIT_FAILURE, "archive_write_header: %s", archive_error_string(payload));
+            warnx("archive_write_header: %s", archive_error_string(payload));
+            archive_entry_free(entry);
+            failed = true;
+            goto close_payload;
         }
 
         archive_entry_free(entry);
@@ -1314,6 +1329,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* close the payload so data can be flushed */
+close_payload:
     if (archive_write_close(payload) != ARCHIVE_OK) {
         warnx("archive_write_close: %s", archive_error_string(payload));
         failed = true;
@@ -1332,7 +1348,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     free(order);
 
     /* when using zstd, close pipe and wait for compression child */
-    if (zstd.used) {
+    if (zstd.used && zstd.pid > 0) {
         /* closing the pipe tells child EOF */
         if (close(tmp_payloadfd) == -1) {
             warn("close");
@@ -1343,7 +1359,8 @@ create_payload(struct json_object *header, const char *payload_dir)
             warn("waitpid");
             failed = true;
         } else if (!WIFEXITED(zstd.status) || WEXITSTATUS(zstd.status) != 0) {
-            errx(EXIT_FAILURE, "zstd compression child failed");
+            warnx(_("*** zstd compression child failed"));
+            failed = true;
         }
     }
 

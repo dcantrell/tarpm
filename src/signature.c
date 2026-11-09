@@ -38,16 +38,23 @@ read_signature(const int fd)
     rawhdr = read_header_signature(fd);
 
     if (rawhdr == NULL) {
-        err(EXIT_FAILURE, "read_header_signature");
+        warnx(_("*** unable to read the signature header"));
+        return NULL;
     }
 
     /* computed from header values */
     hdrinfo = mkhdrinfo(rawhdr, true);
 
+    if (hdrinfo == NULL) {
+        free(rawhdr);
+        return NULL;
+    }
+
     /* read in the entries */
     buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);
 
     if (buffer == NULL) {
+        warnx(_("*** the signature header is cut short"));
         free(hdrinfo);
         free(rawhdr);
         return NULL;

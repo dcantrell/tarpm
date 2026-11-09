@@ -33,11 +33,7 @@ list_to_string(const str_list_t *list, const char *delimiter)
         return NULL;
     }
 
-    s = strdup("");
-
-    if (s == NULL) {
-        err(EXIT_FAILURE, "strdup");
-    }
+    s = xstrdup("");
 
     TAILQ_FOREACH(entry, list, items) {
         if (pos > 0 && delimiter != NULL) {

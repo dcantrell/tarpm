@@ -5,6 +5,7 @@
 
 #include <CUnit/Basic.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <rpm/rpmtag.h>
 #include <json.h>
 #include "tarpm.h"
@@ -23,13 +24,48 @@ clean_test_header(void)
     return 0;
 }
 
+/* Return the read end of a pipe holding len bytes of data */
+static int
+header_pipe(const void *data, size_t len)
+{
+    int fds[2];
+
+    if (pipe(fds) == -1) {
+        return -1;
+    }
+
+    if (len > 0 && write(fds[1], data, len) != (ssize_t) len) {
+        close(fds[0]);
+        close(fds[1]);
+        return -1;
+    }
+
+    close(fds[1]);
+
+    return fds[0];
+}
+
 void
 test_read_header(void)
 {
+    int fd = -1;
     bool raw_tags = false;
+    uint32_t intro[4] = { htonl(RPM_SIGNATURE_MAGIC), htonl(RPM_SIGNATURE_RESERVED), htonl(1), htonl(16) };
 
     /* check that invalid input returns an error */
     TARPM_ASSERT_TRUE(read_header(-47, NULL, &raw_tags) == NULL);
+
+    /* an empty file returns NULL rather than exiting */
+    fd = header_pipe(NULL, 0);
+    TARPM_ASSERT_TRUE(fd >= 0);
+    TARPM_ASSERT_PTR_NULL(read_header(fd, NULL, &raw_tags));
+    close(fd);
+
+    /* so does an intro with no entries after it */
+    fd = header_pipe(intro, sizeof(intro));
+    TARPM_ASSERT_TRUE(fd >= 0);
+    TARPM_ASSERT_PTR_NULL(read_header(fd, NULL, &raw_tags));
+    close(fd);
 
     return;
 }

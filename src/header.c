@@ -1339,17 +1339,26 @@ read_header(const int fd, const char *dest_dir, bool *raw_tags)
     rawhdr = read_header_signature(fd);
 
     if (rawhdr == NULL) {
-        err(EXIT_FAILURE, "read_header_signature");
+        warnx(_("*** unable to read the main header"));
+        return NULL;
     }
 
     /* computed from header values */
     hdrinfo = mkhdrinfo(rawhdr, false);
 
+    if (hdrinfo == NULL) {
+        free(rawhdr);
+        return NULL;
+    }
+
     /* read in the entries */
     buffer = read_header_entries(fd, rawhdr, hdrinfo->hlen);
 
     if (buffer == NULL) {
-        err(EXIT_FAILURE, "read_header_entries");
+        warnx(_("*** the main header is cut short"));
+        free(hdrinfo);
+        free(rawhdr);
+        return NULL;
     }
 
     hdrinfo->estart = (struct rpmhdrentry *) &(buffer[2]);

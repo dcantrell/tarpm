@@ -56,6 +56,7 @@ uint64_entry_t *next_uint64(uint64_entry_t *entry);
 void *xcalloc(size_t n, size_t s);
 void *xalloc(size_t s);
 void *xrealloc(void *p, size_t s);
+char *xstrdup(const char *s);
 
 /* mkdirp.c */
 int mkdirp(const char *path, mode_t mode);
@@ -197,7 +198,7 @@ void reset_librpm(void);
 bool is_file_tag(rpmTagVal tag);
 char *get_tag_filename(rpmTagVal tag, const char *ending);
 int add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uint32_t count, struct json_object *i18ntable, const char *dest_dir);
-void add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature);
+int add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, uint32_t offset, rpmTagType datatype, uint32_t count, const char *dest_dir, const bool signature);
 
 /* xread.c */
 bool xread(int fd, void *buf, size_t count);
