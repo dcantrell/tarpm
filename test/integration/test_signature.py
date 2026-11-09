@@ -689,6 +689,12 @@ PACKAGE_SIGNATURE_TAGS = {
     "Pgp5": "binary blob",
 }
 
+# what -k keeps in a package of the format these tests write
+if RPMBUILD_FORMAT_ARGS:
+    KEPT_SIGNATURE_TAGS = ["Dsa", "Rsa", "Openpgp"]
+else:
+    KEPT_SIGNATURE_TAGS = list(PACKAGE_SIGNATURE_TAGS)
+
 # a value that looks like base64 but is no real signature
 FAKE_SIGNATURE = "bm90IGEgc2lnbmF0dXJl"
 
@@ -759,7 +765,7 @@ class VerifyCreateKeepsSignatures(KeepSignaturesBase):
 
         tags = self.created_signature(created)
 
-        for tag, tagtype in PACKAGE_SIGNATURE_TAGS.items():
+        for tag in KEPT_SIGNATURE_TAGS:
             self.assertTrue(tag in tags, msg="%s is missing" % tag)
             value = tags[tag]
 
@@ -771,6 +777,81 @@ class VerifyCreateKeepsSignatures(KeepSignaturesBase):
         # the header digest still matches the header we wrote
         digest = hashlib.sha256(main_header_bytes(created)).hexdigest()
         self.assertEqual(tags["Sha256"], digest)
+
+
+class VerifyCreateKeepSignaturesDropsDuplicate(KeepSignaturesBase):
+    """With -k a tag that appears twice keeps the first value"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.signature)
+        signature = json.load(f)
+        f.close()
+
+        second = "c2Vjb25kIHNpZ25hdHVyZQ=="
+        rsa = {"tag": "Rsa", "type": "binary blob"}
+        signature["tags"].append(dict(rsa, value=FAKE_SIGNATURE))
+        signature["tags"].append(dict(rsa, value=second))
+
+        f = open(self.signature, "w")
+        json.dump(signature, f)
+        f.close()
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        rc, err = self.create(created, ["-k"])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn("more than one Rsa, keeping the first", err)
+
+        entries = signature_header(created)
+        self.assertEqual(tag_numbers(entries).count(268), 1)
+        self.assertEqual(self.created_signature(created)["Rsa"].strip(), FAKE_SIGNATURE)
+
+
+class VerifyCreateKeepSignaturesFormatFour(KeepSignaturesBase):
+    """With -k a v4 format package takes every package signature"""
+
+    def runTest(self):
+        super().runTest()
+
+        self.fake_signature(self.signature)
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        args = [self.tarpm, "-c", "-F", "4", "-k", "-f", created, self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+        self.assertNotIn("leaving", err)
+
+        tags = self.created_signature(created)
+
+        for tag in PACKAGE_SIGNATURE_TAGS:
+            self.assertIn(tag, tags)
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyCreateKeepSignaturesFormatSix(KeepSignaturesBase):
+    """With -k a v6 format package leaves out what rpm does not read there"""
+
+    def runTest(self):
+        super().runTest()
+
+        self.fake_signature(self.signature)
+
+        created = os.path.join(self.output_dir, "created.rpm")
+        args = [self.tarpm, "-c", "-F", "6", "-k", "-f", created, self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+
+        tags = self.created_signature(created)
+
+        for tag in ["Rsa", "Dsa", "Openpgp"]:
+            self.assertIn(tag, tags)
+
+        for tag in ["Pgp", "Gpg", "Pgp5"]:
+            self.assertNotIn(tag, tags)
+            self.assertIn("leaving %s out of the package" % tag, err)
 
 
 class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase):
@@ -953,7 +1034,7 @@ class VerifyCreateKeepSignaturesFromPath(KeepSignaturesBase):
 
         tags = self.created_signature(created)
 
-        for tag in PACKAGE_SIGNATURE_TAGS:
+        for tag in KEPT_SIGNATURE_TAGS:
             self.assertTrue(tag in tags, msg="%s is missing" % tag)
 
 

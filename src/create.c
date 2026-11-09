@@ -1698,13 +1698,28 @@ kept_signature_entry(const uint32_t tag, struct json_object *value)
 }
 
 /*
+ * Returns true if rpm reads a package signature tag in the format.
+ * rpm reads Rsa and Dsa in a v6 format package and rpmsign(1) writes
+ * Rsa there too.  Pgp, Gpg and Pgp5 are ignored in that format.
+ */
+static bool
+format_reads_signature(const uint32_t tag, const int format)
+{
+    if (format == RPM_FORMAT_V6 && (tag == RPMSIGTAG_PGP || tag == RPMSIGTAG_GPG || tag == RPMSIGTAG_PGP5)) {
+        return false;
+    }
+
+    return true;
+}
+
+/*
  * Copy the package signatures signature.json carries in to the
  * signature header for -k.  These are the rpmsign(1) tags other than
  * the file and verity signatures, which come from header.json.  An
- * entry with no value is left out.  Each entry is rebuilt with the
- * type rpm uses for the tag.  The room they take comes out of
- * the reserved space, the way rpmsign(1) adds them.  Returns non-zero
- * on failure.
+ * entry with no value is left out, as is a tag we already have and
+ * one the format does not read.  Each entry is rebuilt with the type
+ * rpm uses for the tag.  The room they take comes out of the reserved
+ * space, the way rpmsign(1) adds them.  Returns non-zero on failure.
  */
 static int
 keep_package_signatures(struct json_object *signature, struct json_object *kept, const int format)
@@ -1753,6 +1768,16 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
                 continue;
             }
         } else if (json_object_get_type(value) == json_type_string && json_object_get_string_len(value) == 0) {
+            continue;
+        }
+
+        if (!format_reads_signature(tag, format)) {
+            warnx(_("*** leaving %s out of the package, rpm does not read it in the v%d format"), sig_tag_name(tag), format);
+            continue;
+        }
+
+        if (has_tag(tags, sig_tag_name(tag))) {
+            warnx(_("*** signature.json has more than one %s, keeping the first"), sig_tag_name(tag));
             continue;
         }
 
