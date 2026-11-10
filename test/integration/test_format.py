@@ -440,6 +440,45 @@ def query_compressor(pkg):
     return out.decode()
 
 
+class VerifyXzPackageRoundTrip(TestUnpackRPM):
+    """An xz rpmbuild package comes back the same, SHA-256 check and all"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\n%global _binary_payload w2.xzdio\n"
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        args = [self.tarpm, "-c", "-f"]
+        created = os.path.join(self.output_dir, "created.rpm")
+        args += [created] + RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+
+        self.assertEqual(query_compressor(created), "xz|2")
+
+        f = open(created, "rb")
+        two = f.read()
+        f.close()
+
+        # the payload is the first xz stream after the signature header
+        start = two.find(b"\xfd7zXZ\x00", 96 + signature_size(created))
+        self.assertNotEqual(start, -1)
+
+        # the stream flags name the check, 0x0a is SHA-256
+        self.assertEqual(two[start + 7], 0x0A)
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        one = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+
+
 class VerifyUncompressedPackageStaysUncompressed(TestUnpackRPM):
     """An uncompressed rpmbuild package comes back uncompressed"""
 

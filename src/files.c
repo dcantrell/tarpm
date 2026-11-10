@@ -2107,7 +2107,7 @@ add_tag_array(struct json_object *tags, const rpmTagVal tagnum, const rpmTagType
     struct json_object *tag = NULL;
 
     tag = json_object_new_object();
-    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(tagnum)));
+    json_object_object_add(tag, RPM_ENTRY_TAG_DESC, json_object_new_string(header_tag_name(tagnum)));
     json_object_object_add(tag, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
     json_object_object_add(tag, RPM_ENTRY_VALUE_DESC, value);
     json_object_array_add(tags, tag);

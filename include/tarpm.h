@@ -182,6 +182,7 @@ char *strbuildtime(uint32_t buildtime);
 uint32_t buildtime_value(const char *timestamp);
 rpmTagType tag_type(struct json_object *tag);
 const char *sig_tag_name(uint32_t tag);
+const char *header_tag_name(const rpmTagVal tag);
 bool is_rpmsign_tag(uint32_t tag);
 bool is_file_signature_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);

@@ -151,7 +151,7 @@ retag(struct json_object *tags, const rpmTagVal from, const rpmTagVal to, const 
     }
 
     entry = json_object_array_get_idx(tags, idx);
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(to)));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(header_tag_name(to)));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(type)));
 
     return;

@@ -2065,13 +2065,13 @@ test_add_file_list_tags_mime(void)
 
     /* a header.json from before tarpm knew about MIME types carries the tags */
     entry = json_object_new_object();
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE)));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(header_tag_name(RPMTAG_FILEMIMEINDEX_VALUE)));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("int32"));
     json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_int(7));
     json_object_array_add(tags, entry);
 
     entry = json_object_new_object();
-    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_MIMEDICT_VALUE)));
+    json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(header_tag_name(RPMTAG_MIMEDICT_VALUE)));
     json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string("string array"));
     json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string("stale/type"));
     json_object_array_add(tags, entry);
@@ -2090,11 +2090,11 @@ test_add_file_list_tags_mime(void)
     add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_V6);
 
     /* the old tags gave way to the ones built from the file list */
-    TARPM_ASSERT_EQUAL(count_tag(tags, rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE)), 1);
-    TARPM_ASSERT_EQUAL(count_tag(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE)), 1);
+    TARPM_ASSERT_EQUAL(count_tag(tags, header_tag_name(RPMTAG_FILEMIMEINDEX_VALUE)), 1);
+    TARPM_ASSERT_EQUAL(count_tag(tags, header_tag_name(RPMTAG_MIMEDICT_VALUE)), 1);
 
     /* the MIME dictionary holds each unique type once, in order of first appearance */
-    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    values = get_tag_values(tags, header_tag_name(RPMTAG_MIMEDICT_VALUE));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "application/x-pie-executable");
@@ -2102,7 +2102,7 @@ test_add_file_list_tags_mime(void)
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 2)), "");
 
     /* each file indexes in to the MIME dictionary */
-    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEMIMEINDEX_VALUE));
+    values = get_tag_values(tags, header_tag_name(RPMTAG_FILEMIMEINDEX_VALUE));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_EQUAL(json_object_array_length(values), 4);
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 0)), 0);
@@ -2156,7 +2156,7 @@ test_add_file_list_tags_mime_from_payload(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V6);
 
-    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    values = get_tag_values(tags, header_tag_name(RPMTAG_MIMEDICT_VALUE));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_EQUAL(json_object_array_length(values), 3);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "inode/directory");
@@ -2178,7 +2178,7 @@ test_add_file_list_tags_mime_from_payload(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V6);
 
-    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    values = get_tag_values(tags, header_tag_name(RPMTAG_MIMEDICT_VALUE));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "text/x-kept");
 
@@ -2193,7 +2193,7 @@ test_add_file_list_tags_mime_from_payload(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V4);
 
-    values = get_tag_values(tags, rpmTagGetName(RPMTAG_MIMEDICT_VALUE));
+    values = get_tag_values(tags, header_tag_name(RPMTAG_MIMEDICT_VALUE));
     TARPM_ASSERT_PTR_NOT_NULL(values);
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 0)), "");
 

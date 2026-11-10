@@ -378,14 +378,14 @@ class CreateReadsTagFileInSeparatePayload(TestUnpackRPM):
         # relative to header.json and absolute both reach the payload directory
         for name in ["../pl/description.txt", os.path.join(pl, "description.txt")]:
             edit_header(header, lambda h: set_description_file(h, name))
-            proc = subprocess.run(args, capture_output=True)
+            proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.assertEqual(proc.returncode, 0, msg=proc.stderr.decode("utf-8"))
             self.assertTrue(os.path.isfile(rpm))
             os.unlink(rpm)
 
         # the directory above both is neither of them
         edit_header(header, lambda h: set_description_file(h, "../lead.json"))
-        proc = subprocess.run(args, capture_output=True)
+        proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(proc.returncode, 1)
         self.assertIn(
             'names "../lead.json", which is not a file below',
@@ -1459,6 +1459,14 @@ class CreatePayloadflags(RequiresTarpm):
         rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
         self.assertNotEqual(rc, 0)
         self.assertIn("archive_write_set_options", err)
+        self.assertFalse(os.path.exists(pkg))
+
+        # we compress xz ourselves, so its levels get the same check
+        tree = self.tree_with("xzrange", "xz", "10")
+        pkg = os.path.join(self.output_dir, "xzrange.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
+        self.assertNotEqual(rc, 0)
+        self.assertIn('Payloadflags "10" is not a compression level', err)
         self.assertFalse(os.path.exists(pkg))
 
 

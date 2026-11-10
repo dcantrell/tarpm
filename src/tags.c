@@ -4,6 +4,7 @@
  */
 
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -425,6 +426,29 @@ is_file_signature_tag(uint32_t tag)
 }
 
 /*
+ * Return the name we write in a "tags" entry for a main header tag.
+ * A tag the librpm we are linked to has no name for, such as
+ * Sourcenevr before rpm 6.0.0, gets the "#XXXX" form so
+ * get_tag_number() reads it back.  The string is good until the next
+ * call.  Do not free it.
+ */
+const char *
+header_tag_name(const rpmTagVal tag)
+{
+    static char numeric[16];
+    const char *name = NULL;
+
+    name = rpmTagGetName(tag);
+
+    if (name != NULL && strcmp(name, "(unknown)")) {
+        return name;
+    }
+
+    snprintf(numeric, sizeof(numeric), "#%d", tag);
+    return numeric;
+}
+
+/*
  * Return the number in a tag name of the "#XXXX" form we write for
  * tags rpm has no name for, or 0 if the name is not of that form.
  */
@@ -566,7 +590,8 @@ get_tag_number(struct json_object *entry, bool signature)
     /*
      * The signature tag names are not main header tags.  Only the
      * numeric form and the signature region tag, which librpm has no
-     * name for, carry over so check_region_tags() can report it.
+     * name for, carry over so check_region_tags() can report it.  The
+     * verity tags carry over so drop_verity_tags() can find them.
      */
     if (!signature) {
         sigtag = numeric_tag_number(tagname);
@@ -577,6 +602,15 @@ get_tag_number(struct json_object *entry, bool signature)
 
         if (tagname != NULL && !strcmp(tagname, "Headersignatures")) {
             return HEADER_SIGNATURES;
+        }
+
+        /* rpm before 4.17 has no names for the verity tags header.json carries */
+        if (tagname != NULL && !strcasecmp(tagname, "Veritysignatures")) {
+            return RPMSIGTAG_VERITYSIGNATURES_VALUE;
+        }
+
+        if (tagname != NULL && !strcasecmp(tagname, "Veritysignaturealgo")) {
+            return RPMSIGTAG_VERITYSIGNATUREALGO_VALUE;
         }
     }
 

@@ -16,3 +16,4 @@ python3-sphinx
 python3-sphinx_rtd_theme
 rpm-build
 rpm-devel
+xz-devel

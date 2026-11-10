@@ -58,6 +58,7 @@ endif
 jsonc = dependency('json-c', required : true)
 libarchive = dependency('libarchive', version : '>= 3.3.3', required : true)
 libzstd = dependency('libzstd', required : true)
+liblzma = dependency('liblzma', required : true)
 
 # libmagic
 if not cc.has_function('magic_open', args : ['-lmagic'])

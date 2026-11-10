@@ -112,6 +112,27 @@ test_strtagtype(void)
 }
 
 void
+test_header_tag_name(void)
+{
+    struct json_object *entry = NULL;
+
+    /* a tag librpm knows comes back by its name */
+    TARPM_ASSERT_STRING_EQUAL(header_tag_name(RPMTAG_NAME), "Name");
+    TARPM_ASSERT_STRING_EQUAL(header_tag_name(RPMTAG_BUILDHOST), "Buildhost");
+
+    /* a tag librpm has no name for gets the numeric form */
+    TARPM_ASSERT_STRING_EQUAL(header_tag_name(5999), "#5999");
+
+    /* and get_tag_number() reads that name back either way */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string(header_tag_name(RPMTAG_SOURCENEVR_VALUE)));
+    TARPM_ASSERT_EQUAL(get_tag_number(entry, false), RPMTAG_SOURCENEVR_VALUE);
+    json_object_put(entry);
+
+    return;
+}
+
+void
 test_sig_tag_name(void)
 {
     TARPM_ASSERT_TRUE(strcmp(sig_tag_name(HEADER_SIGNATURES), "Headersignatures") == 0);
@@ -358,6 +379,17 @@ test_get_tag_number(void)
     entry = json_object_new_object();
     json_object_object_add(entry, "tag", json_object_new_string("Headersignatures"));
     TARPM_ASSERT_TRUE(get_tag_number(entry, false) == HEADER_SIGNATURES);
+    json_object_put(entry);
+
+    /* the verity tags header.json carries have names on any rpm */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Veritysignaturealgo"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMSIGTAG_VERITYSIGNATUREALGO_VALUE);
+    json_object_put(entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Veritysignatures"));
+    TARPM_ASSERT_TRUE(get_tag_number(entry, false) == RPMSIGTAG_VERITYSIGNATURES_VALUE);
     json_object_put(entry);
 
     /* test with entry missing tag field */
@@ -697,6 +729,7 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strtagtype()", test_strtagtype) == NULL ||
+        CU_add_test(pSuite, "test header_tag_name()", test_header_tag_name) == NULL ||
         CU_add_test(pSuite, "test sig_tag_name()", test_sig_tag_name) == NULL ||
         CU_add_test(pSuite, "test is_rpmsign_tag()", test_is_rpmsign_tag) == NULL ||
         CU_add_test(pSuite, "test is_file_signature_tag()", test_is_file_signature_tag) == NULL ||

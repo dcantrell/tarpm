@@ -138,12 +138,13 @@ struct hardlink_groups {
 };
 
 /*
- * What we need to compress the payload with zstd on our own.  We
- * write the cpio stream to the pipe and a child process compresses it
- * in to the payload file.
+ * What we need to compress the payload with zstd or xz on our own.
+ * We write the cpio stream to the pipe and a child process compresses
+ * it in to the payload file.  xz picks xz over zstd.
  */
 struct zstd_payload {
     bool used;
+    bool xz;
     int level;
     int pipefd[2];
     pid_t pid;

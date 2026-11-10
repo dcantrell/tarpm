@@ -29,6 +29,7 @@
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <zstd.h>
+#include <lzma.h>
 
 #include "tarpm.h"
 
@@ -612,6 +613,141 @@ cleanup:
 }
 
 /*
+ * Compress a cpio archive with xz and a SHA-256 check.  xzdio in
+ * rpmio/rpmio.c in the rpm source does the same through
+ * lzma_easy_encoder().  libarchive always uses a CRC64 check, which
+ * gives a payload rpmbuild would not write.
+ *
+ * Reads from uncompressed_fd and writes to compressed_fd.  Returns 0
+ * on success, -1 on failure.
+ */
+static int
+compress_with_xz_sha256(int uncompressed_fd, int compressed_fd, uint32_t level)
+{
+    lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_action action = LZMA_RUN;
+    lzma_ret ret = LZMA_OK;
+    uint8_t *ibuf = NULL;
+    uint8_t *obuf = NULL;
+    size_t n = 0;
+    int rc = 0;
+    int infd = -1;
+    int outfd = -1;
+    FILE *in = NULL;
+    FILE *out = NULL;
+
+    ret = lzma_easy_encoder(&strm, level, LZMA_CHECK_SHA256);
+
+    if (ret != LZMA_OK) {
+        warnx("lzma_easy_encoder: %d", (int) ret);
+        return -1;
+    }
+
+    ibuf = xalloc(BUFSIZ);
+    obuf = xalloc(BUFSIZ);
+
+    /* open file descriptors, a dup() that does not become a FILE * is closed below */
+    infd = dup(uncompressed_fd);
+    outfd = dup(compressed_fd);
+
+    if (infd == -1 || outfd == -1) {
+        warn("dup");
+        rc = -1;
+        goto cleanup;
+    }
+
+    in = fdopen(infd, "rb");
+
+    if (in != NULL) {
+        infd = -1;
+    }
+
+    out = fdopen(outfd, "wb");
+
+    if (out != NULL) {
+        outfd = -1;
+    }
+
+    if (in == NULL || out == NULL) {
+        warn("fdopen");
+        rc = -1;
+        goto cleanup;
+    }
+
+    strm.next_out = obuf;
+    strm.avail_out = BUFSIZ;
+
+    while (ret != LZMA_STREAM_END) {
+        /* refill the input until the cpio stream ends */
+        if (strm.avail_in == 0 && action == LZMA_RUN) {
+            n = fread(ibuf, 1, BUFSIZ, in);
+
+            /* fread() returns 0 on a read error as well as at the end */
+            if (ferror(in)) {
+                warnx(_("*** unable to read the uncompressed payload"));
+                rc = -1;
+                goto cleanup;
+            }
+
+            if (n == 0) {
+                action = LZMA_FINISH;
+            }
+
+            strm.next_in = ibuf;
+            strm.avail_in = n;
+        }
+
+        ret = lzma_code(&strm, action);
+
+        if (ret != LZMA_OK && ret != LZMA_STREAM_END) {
+            warnx("lzma_code: %d", (int) ret);
+            rc = -1;
+            goto cleanup;
+        }
+
+        /* write out a full buffer and whatever is left at the end */
+        if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+            n = BUFSIZ - strm.avail_out;
+
+            if (n > 0 && fwrite(obuf, 1, n, out) != n) {
+                warn("fwrite");
+                rc = -1;
+                goto cleanup;
+            }
+
+            strm.next_out = obuf;
+            strm.avail_out = BUFSIZ;
+        }
+    }
+
+cleanup:
+    lzma_end(&strm);
+
+    if (in) {
+        fclose(in);
+    }
+
+    /* the final flush of the compressed payload can fail too */
+    if (out && fclose(out) != 0) {
+        warn("fclose");
+        rc = -1;
+    }
+
+    if (infd != -1) {
+        close(infd);
+    }
+
+    if (outfd != -1) {
+        close(outfd);
+    }
+
+    free(ibuf);
+    free(obuf);
+
+    return rc;
+}
+
+/*
  * A %ghost file is carried in the file list of the header, but
  * rpmbuild never writes it in to the payload.  Returns true if the
  * file at the given index is a ghost.
@@ -1138,16 +1274,23 @@ create_payload(struct json_object *header, const char *payload_dir)
     /*
      * For zstd we compress by hand with no checksum.  The rpm cpio
      * reader cannot handle zstd frames with XXH64 checksums and
-     * libarchive always adds them.  So we write a plain cpio first
-     * and compress it ourselves after.
+     * libarchive always adds them.  For xz we compress by hand with
+     * the SHA-256 check rpm uses where libarchive writes CRC64.  So we
+     * write a plain cpio first and compress it ourselves after.
      */
-    if (tag != NULL && !strcmp(tag, "zstd")) {
+    if (tag != NULL && (!strcmp(tag, "zstd") || !strcmp(tag, "xz"))) {
         zstd.used = true;
         archive_write_add_filter_none(payload);
 
+        /* liblzma reads level 6 as its default level */
+        if (!strcmp(tag, "xz")) {
+            zstd.xz = true;
+            zstd.level = 6;
+        }
+
         /*
-         * The cpio stream handed to zstd is not block padded, so do
-         * not let libarchive pad out the final block.
+         * The cpio stream handed to zstd or xz is not block padded, so
+         * do not let libarchive pad out the final block.
          */
         if (archive_write_set_bytes_in_last_block(payload, 1) != ARCHIVE_OK) {
             warnx("archive_write_set_bytes_in_last_block: %s", archive_error_string(payload));
@@ -1159,7 +1302,8 @@ create_payload(struct json_object *header, const char *payload_dir)
         level = get_tag_value(tags, RPMTAG_PAYLOADFLAGS, false);
 
         if (level != NULL) {
-            if (parse_payload_flags(level, &flags_level) != 0) {
+            /* xz levels stop at 9, the same as libarchive takes */
+            if (parse_payload_flags(level, &flags_level) != 0 || (zstd.xz && flags_level > 9)) {
                 warnx_escaped(_("*** %s \"%s\" is not a compression level"), rpmTagGetName(RPMTAG_PAYLOADFLAGS), level);
                 failed = true;
                 goto close_payload;
@@ -1196,8 +1340,6 @@ create_payload(struct json_object *header, const char *payload_dir)
         }
     } else if (!strcmp(tag, "bzip2")) {
         archive_write_add_filter_bzip2(payload);
-    } else if (!strcmp(tag, "xz")) {
-        archive_write_add_filter_xz(payload);
     } else if (!strcmp(tag, "lzma")) {
         archive_write_add_filter_lzma(payload);
     }
@@ -1226,7 +1368,7 @@ create_payload(struct json_object *header, const char *payload_dir)
         }
     }
 
-    /* open the payload for writing - use pipe for zstd to avoid single-segment mode */
+    /* open the payload for writing - use pipe for zstd and xz to avoid single-segment mode */
     if (zstd.used) {
         if (pipe(zstd.pipefd) == -1) {
             warn("pipe");
@@ -1258,7 +1400,11 @@ create_payload(struct json_object *header, const char *payload_dir)
                 warn("close");
             }
 
-            if (compress_with_zstd_no_checksum(zstd.pipefd[0], payloadfd, zstd.level) != 0) {
+            if (zstd.xz) {
+                if (compress_with_xz_sha256(zstd.pipefd[0], payloadfd, (uint32_t) zstd.level) != 0) {
+                    _exit(1);
+                }
+            } else if (compress_with_zstd_no_checksum(zstd.pipefd[0], payloadfd, zstd.level) != 0) {
                 _exit(1);
             }
 
@@ -1384,7 +1530,7 @@ close_payload:
     free_hardlink_groups(&hl);
     free(order);
 
-    /* when using zstd, close pipe and wait for compression child */
+    /* when using zstd or xz, close pipe and wait for compression child */
     if (zstd.used && zstd.pid > 0) {
         /* closing the pipe tells child EOF */
         if (close(tmp_payloadfd) == -1) {
@@ -1396,7 +1542,7 @@ close_payload:
             warn("waitpid");
             failed = true;
         } else if (!WIFEXITED(zstd.status) || WEXITSTATUS(zstd.status) != 0) {
-            warnx(_("*** zstd compression child failed"));
+            warnx(_("*** payload compression child failed"));
             failed = true;
         }
     }

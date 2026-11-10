@@ -534,7 +534,7 @@ if cunit.found()
           xread_src,
         ],
         include_directories : inc,
-        dependencies : [ cunit, rpm, jsonc, libarchive, libzstd, openssl, magic ],
+        dependencies : [ cunit, rpm, jsonc, libarchive, libzstd, liblzma, openssl, magic ],
         c_args : '-D_BUILDDIR_="@0@"'.format(meson.current_build_dir()),
     )
 
