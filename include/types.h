@@ -116,8 +116,6 @@ struct hdr_file_lists {
     struct json_object *dirindexes;
     struct json_object *filesizes;
     struct json_object *filemodes;
-    struct json_object *fileuids;
-    struct json_object *filegids;
     struct json_object *filerdevs;
     struct json_object *filemtimes;
     struct json_object *filelinktos;

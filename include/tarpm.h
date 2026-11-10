@@ -168,7 +168,7 @@ bool path_beneath(const char *base, const char *path, const bool allow_last_link
 
 /* json.c */
 struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature);
-struct json_object *generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *svals);
+struct json_object *generate_json(const struct rpmhdr *hdr);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 bool keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const char *dest_dir, bool (*is_member)(rpmTagVal));
 struct json_object *read_json_file(const char *input_file);

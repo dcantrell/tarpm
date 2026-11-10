@@ -138,6 +138,7 @@ source_nevr(struct json_object *tags)
 {
     size_t len = 0;
     size_t endlen = 0;
+    char *r = NULL;
     const char *srpm = NULL;
 
     srpm = get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCERPM));
@@ -154,7 +155,8 @@ source_nevr(struct json_object *tags)
         return NULL;
     }
 
-    return strndup(srpm, len - endlen);
+    xasprintf(&r, "%.*s", (int) (len - endlen), srpm);
+    return r;
 }
 
 /*

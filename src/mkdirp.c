@@ -115,7 +115,7 @@ mkdirp(const char *path, mode_t mode)
 
     /* handle relative vs. explicit paths, we want explicit */
     if (*path == '/') {
-        start = p = strdup(path);
+        start = p = xstrdup(path);
     } else {
         if ((cwd = getcwd(NULL, 0)) == NULL) {
             warn("*** getcwd");

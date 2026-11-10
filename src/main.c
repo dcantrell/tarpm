@@ -127,7 +127,6 @@ main(int argc, char **argv)
     char *cwd = NULL;
     char *input_dir = NULL;
     char *output_dir = NULL;
-    int flags = R_OK;
     char *opt = NULL;
     char *first = NULL;
     struct json_paths paths;
@@ -197,7 +196,6 @@ main(int argc, char **argv)
                 }
 
                 t_flag = true;
-                flags = R_OK;
                 break;
             case 'x':
                 if (t_flag || c_flag) {
@@ -205,7 +203,6 @@ main(int argc, char **argv)
                 }
 
                 x_flag = true;
-                flags = R_OK;
                 break;
             case 'c':
                 if (t_flag || x_flag) {
@@ -213,7 +210,6 @@ main(int argc, char **argv)
                 }
 
                 c_flag = true;
-                flags = W_OK;
                 break;
             case 'v':
                 v_flag = true;
@@ -390,7 +386,7 @@ main(int argc, char **argv)
 
         /* pick up the 'f' filename if we don't have one */
         if (havefilename && optind < argc) {
-            if ((t_flag || x_flag) && !access(argv[optind + 1], flags)) {
+            if ((t_flag || x_flag) && !access(argv[optind + 1], R_OK)) {
                 /* for -t and -x, the filename specified needs to exist */
                 filename = realpath(argv[optind + 1], NULL);
 

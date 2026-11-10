@@ -5,11 +5,9 @@
  */
 
 #include <string.h>
-#include <assert.h>
 #include <errno.h>
 #include <err.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include "tarpm.h"
 
@@ -20,13 +18,13 @@
 void *
 read_file_bytes(const char *path, off_t *len)
 {
-    int r = 0;
     int fd = 0;
     void *data = NULL;
-    void *buf = NULL;
     struct stat sb;
 
-    assert(path != NULL);
+    if (path == NULL || len == NULL) {
+        return NULL;
+    }
 
     /* unreadable files can be ignored */
     if (stat(path, &sb) == -1) {
@@ -48,36 +46,32 @@ read_file_bytes(const char *path, off_t *len)
     /* find the file length */
     *len = lseek(fd, 0, SEEK_END);
 
-    if (*len == -1) {
+    if (*len == -1 || lseek(fd, 0, SEEK_SET) == -1) {
         warn(_("*** unable to find end of %s"), path);
-        r = close(fd);
-        assert(r != -1);
+
+        if (close(fd) == -1) {
+            warn(_("*** unable to close %s"), path);
+        }
+
         return NULL;
     }
 
-    /* map the contents of the file */
-    buf = mmap(NULL, *len, PROT_READ, MAP_PRIVATE, fd, 0);
+    /*
+     * We read() rather than mmap() so a file truncated under us is a
+     * short read and not a SIGBUS
+     */
+    data = xalloc(*len + 1);
 
-    if (buf == MAP_FAILED) {
-        warn(_("*** unable to read %s"), path);
-        r = close(fd);
-        assert(r != -1);
-        return NULL;
+    if (!xread(fd, data, *len)) {
+        warnx(_("*** unable to read %s"), path);
+        free(data);
+        data = NULL;
     }
 
     /* the actual file close we care about */
     if (close(fd) == -1) {
         warn(_("*** unable to close %s"), path);
     }
-
-    /* copy the data in to a buffer for the caller */
-    data = xalloc(*len + 1);
-    data = memcpy(data, buf, *len);
-    assert(data != NULL);
-
-    /* unmap */
-    r = munmap(buf, *len);
-    assert(r == 0);
 
     return data;
 }

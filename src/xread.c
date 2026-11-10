@@ -32,12 +32,8 @@ xread(int fd, void *buf, size_t count)
         }
 
         if (n == 0) {
-            /* EOF */
-            if (total < c) {
-                return false;
-            } else {
-                return true;
-            }
+            /* EOF before count bytes, the loop only runs while total < c */
+            return false;
         }
 
         total += n;

@@ -32,7 +32,7 @@ DATA_BYTES = b"\x00" * 1024
 @unittest.skipUnless(
     HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
 )
-class TestFileMime(TestUnpackRPM):
+class TestFileMime(object):
     # the format rpmbuild writes and the one we recreate the package as
     build_format = "6"
     create_format = "6"
@@ -131,7 +131,7 @@ class TestFileMime(TestUnpackRPM):
         return ""
 
 
-class TestFileMimeUnchanged(TestFileMime):
+class TestFileMimeUnchanged(TestFileMime, TestUnpackRPM):
     """A payload nobody touched keeps the MIME types rpmbuild wrote"""
 
     def setUp(self):
@@ -170,7 +170,7 @@ class TestFileMimeUnchanged(TestFileMime):
         self.assertEqual(before["/usr/include/%s/foo.h" % NAME], "text/x-c")
 
 
-class TestFileMimeChangesWithContent(TestFileMime):
+class TestFileMimeChangesWithContent(TestFileMime, TestUnpackRPM):
     """Writing new bytes over a payload file works the MIME type out again"""
 
     def setUp(self):
@@ -207,7 +207,7 @@ class TestFileMimeChangesWithContent(TestFileMime):
         self.assertEqual(after[untouched], before[untouched])
 
 
-class TestFileMimeOnNewPayloadFiles(TestFileMime):
+class TestFileMimeOnNewPayloadFiles(TestFileMime, TestUnpackRPM):
     """A file added to the payload tree picks up a MIME type of its own"""
 
     def setUp(self):
@@ -251,7 +251,7 @@ class TestFileMimeOnNewPayloadFiles(TestFileMime):
         self.assertEqual(after[docdir + "/new.h"], "text/x-c")
 
 
-class TestFileMimeChangesWithType(TestFileMime):
+class TestFileMimeChangesWithType(TestFileMime, TestUnpackRPM):
     """Swapping a file for another kind of thing works the MIME type out again"""
 
     def setUp(self):
@@ -278,7 +278,7 @@ class TestFileMimeChangesWithType(TestFileMime):
         self.assertEqual(self.mimes(self.recreated_rpm)[changed], "inode/symlink")
 
 
-class TestFileMimeInJSON(TestFileMime):
+class TestFileMimeInJSON(TestFileMime, TestUnpackRPM):
     """The MIME type in header.json is the one that ends up in the RPM"""
 
     def setUp(self):
@@ -318,7 +318,7 @@ class TestFileMimeInJSON(TestFileMime):
         self.assertEqual(self.mimes(self.recreated_rpm)[text], "text/x-made-up")
 
 
-class TestFileMimeFromFormatFour(TestFileMime):
+class TestFileMimeFromFormatFour(TestFileMime, TestUnpackRPM):
     """A v4 format package written as v6 format picks up MIME types"""
 
     build_format = "4"
@@ -346,7 +346,7 @@ class TestFileMimeFromFormatFour(TestFileMime):
         self.assertEqual(after["/usr/bin/%s-run" % NAME], "text/x-shellscript")
 
 
-class TestFileClassFromFormatSix(TestFileMime):
+class TestFileClassFromFormatSix(TestFileMime, TestUnpackRPM):
     """A v6 format package written as v4 format picks up classes"""
 
     build_format = "6"

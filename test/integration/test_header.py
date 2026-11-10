@@ -4,11 +4,13 @@
 #
 
 import calendar
+import hashlib
 import json
 import socket
 import os
 import platform
 import rpm
+import stat
 import time
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 from baseclass import PAYLOAD_DIGEST, PAYLOAD_DIGEST_ALGO, PAYLOAD_DIGEST_ALT
@@ -154,71 +156,21 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.assertTrue(tag["type"] == "string")
                         # source RPMs should not have the system arch as the 'arch'
                         self.assertNotEqual(tag["value"], platform.uname()[4])
-                    elif t == "Filesizes":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 359)
                     elif t == "Longsize":
                         self.assertTrue(tag["type"] == "int64")
                         self.assertTrue(int(tag["value"]) > 0)
-                    elif t == "Longfilesizes":
-                        self.assertTrue(tag["type"] == "int64")
-                        self.assertTrue(int(tag["value"]) == 359)
-                    elif t == "Filemodes":
-                        self.assertTrue(tag["type"] == "int16")
-                        self.assertTrue(int(tag["value"]) == 33188)
-                    elif t == "Filemtimes":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) > 0)
-                    elif t == "Filedigests":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(len(tag["value"][0]) == 64)
-                    elif t == "Filelinktos":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "")
-                    elif t == "Fileflags":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 32)
                     elif t == "Sourcerpm":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "vaporware-0.1-1.src.rpm")
-                    elif t == "Fileverifyflags":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(tag["value"] == -1)
                     elif t == "Rpmversion":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.__version__)
-                    elif t == "Changelogtime":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) > 0)
-                    elif t == "Changelogname":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"]
-                        )
-                    elif t == "Changelogtext":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["- Initial version"])
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"].startswith(build_host()))
-                    elif t == "Fileinodes":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 1)
-                    elif t == "Filelangs":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "")
                     elif t == "Sourcepackage":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 1)
-                    elif t == "Dirindexes":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) == 0)
-                    elif t == "Basenames":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "vaporware.spec")
-                    elif t == "Dirnames":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"][0] == "")
                     elif t == "Payloadformat":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "cpio")
@@ -279,6 +231,51 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                         self.fail(msg=m)
 
         check_rpmformat(self, header)
+
+        # the file list tags go to the files array
+        self.assertEqual(len(header["files"]), 1)
+        entry = header["files"][0]
+
+        spec_path = os.path.join(self.output_dir, "payload", "vaporware.spec")
+        f = open(spec_path, "rb")
+        content = f.read()
+        f.close()
+
+        self.assertEqual(entry["path"], "vaporware.spec")
+        self.assertEqual(entry["type"], "file")
+        self.assertEqual(entry["size"], len(content))
+        self.assertEqual(entry["digest"], hashlib.sha256(content).hexdigest())
+        self.assertEqual(
+            entry["mode"], "%04o" % stat.S_IMODE(os.stat(spec_path).st_mode)
+        )
+        self.assertTrue(
+            calendar.timegm(time.strptime(entry["mtime"], "%Y-%m-%dT%H:%M:%SZ")) > 0
+        )
+        self.assertEqual(entry["inode"], 1)
+        self.assertEqual(entry["flags"], ["specfile"])
+        self.assertEqual(
+            entry["verifyflags"],
+            [
+                "filedigest",
+                "filesize",
+                "linkto",
+                "user",
+                "group",
+                "mtime",
+                "mode",
+                "rdev",
+                "caps",
+            ],
+        )
+        self.assertFalse("linkto" in entry)
+        self.assertFalse("lang" in entry)
+
+        # the changelog tags go to the changelog array
+        self.assertEqual(len(header["changelog"]), 1)
+        self.assertEqual(
+            header["changelog"][0]["name"], "John Doe <jdoe@example.com> - 0.1-1"
+        )
+        self.assertEqual(header["changelog"][0]["text"], ["- Initial version"])
 
         # Check changelog array if present
         if "changelog" in header.keys():
@@ -464,17 +461,6 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Rpmversion":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.__version__)
-                    elif t == "Changelogtime":
-                        self.assertTrue(tag["type"] == "int32")
-                        self.assertTrue(int(tag["value"]) > 0)
-                    elif t == "Changelogname":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(
-                            tag["value"] == ["John Doe <jdoe@example.com> - 0.1-1"]
-                        )
-                    elif t == "Changelogtext":
-                        self.assertTrue(tag["type"] == "string array")
-                        self.assertTrue(tag["value"] == ["- Initial version"])
                     elif t == "Cookie":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"].startswith(build_host()))
@@ -533,6 +519,13 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.fail(msg=m)
 
         check_rpmformat(self, header)
+
+        # the changelog tags go to the changelog array
+        self.assertEqual(len(header["changelog"]), 1)
+        self.assertEqual(
+            header["changelog"][0]["name"], "John Doe <jdoe@example.com> - 0.1-1"
+        )
+        self.assertEqual(header["changelog"][0]["text"], ["- Initial version"])
 
         # Check changelog array if present
         if "changelog" in header.keys():

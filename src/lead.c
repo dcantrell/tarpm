@@ -42,6 +42,11 @@ read_lead(const int fd)
         return NULL;
     }
 
+    if (memcmp(rawlead.magic, lead_magic, sizeof(lead_magic))) {
+        warnx(_("*** the lead does not start with the RPM lead magic"));
+        return NULL;
+    }
+
     /* NUL terminate the name */
     rawlead.name[sizeof(rawlead.name) - 1] = '\0';
 
@@ -54,7 +59,7 @@ read_lead(const int fd)
     /* generate a JSON structure for the lead */
     lead = json_object_new_object();
 
-    xasprintf(&s, "0x%hhX%hhX%hhX%hhX", rawlead.magic[0], rawlead.magic[1], rawlead.magic[2], rawlead.magic[3]);
+    xasprintf(&s, "0x%02hhX%02hhX%02hhX%02hhX", rawlead.magic[0], rawlead.magic[1], rawlead.magic[2], rawlead.magic[3]);
     json_object_object_add(lead, RPM_LEAD_MAGIC, json_object_new_string(s));
     free(s);
 

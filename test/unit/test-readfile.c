@@ -33,6 +33,10 @@ test_read_file_bytes(void)
     char tmpfile2[] = "/tmp/tarpm-test-XXXXXX";
     char *expected = "test content\n";
 
+    /* NULL arguments */
+    TARPM_ASSERT_TRUE(read_file_bytes(NULL, &len) == NULL);
+    TARPM_ASSERT_TRUE(read_file_bytes("/nonexistent/file/path", NULL) == NULL);
+
     /* test non-existent file */
     data = read_file_bytes("/nonexistent/file/path", &len);
     TARPM_ASSERT_TRUE(data == NULL);
@@ -48,6 +52,7 @@ test_read_file_bytes(void)
     TARPM_ASSERT_TRUE(data != NULL);
     TARPM_ASSERT_TRUE(len == (off_t)strlen(expected));
     TARPM_ASSERT_TRUE(memcmp(data, expected, len) == 0);
+    TARPM_ASSERT_TRUE(((char *) data)[len] == '\0');
     free(data);
 
     /* clean up */

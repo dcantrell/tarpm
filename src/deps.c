@@ -48,15 +48,15 @@ comparison_to_str(uint32_t flags)
 
     /* Handle combinations */
     if ((flags & RPMSENSE_LESS) && (flags & RPMSENSE_EQUAL)) {
-        r = strdup(COMPARISON_LE);
+        r = xstrdup(COMPARISON_LE);
     } else if ((flags & RPMSENSE_GREATER) && (flags & RPMSENSE_EQUAL)) {
-        r = strdup(COMPARISON_GE);
+        r = xstrdup(COMPARISON_GE);
     } else if (flags & RPMSENSE_LESS) {
-        r = strdup(COMPARISON_LT);
+        r = xstrdup(COMPARISON_LT);
     } else if (flags & RPMSENSE_GREATER) {
-        r = strdup(COMPARISON_GT);
+        r = xstrdup(COMPARISON_GT);
     } else if (flags & RPMSENSE_EQUAL) {
-        r = strdup(COMPARISON_EQ);
+        r = xstrdup(COMPARISON_EQ);
     }
 
     return r;
@@ -368,10 +368,6 @@ dependency_entry_flags(struct json_object *entry)
         }
     }
 
-    if (flags == 0) {
-        flags = RPMSENSE_ANY;
-    }
-
     return flags;
 }
 
@@ -596,7 +592,7 @@ collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, c
             p = data;
 
             for (j = 0; j < count; j++) {
-                da->names[j] = strdup((char *) p);
+                da->names[j] = xstrdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == dep->flags && datatype == RPM_INT32_TYPE && da->flags == NULL) {
@@ -615,7 +611,7 @@ collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, c
             p = data;
 
             for (j = 0; j < count; j++) {
-                da->versions[j] = strdup((char *) p);
+                da->versions[j] = xstrdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
         }

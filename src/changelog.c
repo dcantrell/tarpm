@@ -133,7 +133,7 @@ changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
         saved_tz = getenv("TZ");
 
         if (saved_tz != NULL) {
-            saved_tz = strdup(saved_tz);
+            saved_tz = xstrdup(saved_tz);
         }
 
         if (tz_name[0] != '\0') {
@@ -243,13 +243,13 @@ join_changelog_text(struct json_object *lines)
     const char *ls = NULL;
 
     if (lines == NULL || json_object_get_type(lines) != json_type_array) {
-        return strdup("");
+        return xstrdup("");
     }
 
     len = json_object_array_length(lines);
 
     if (len == 0) {
-        return strdup("");
+        return xstrdup("");
     }
 
     /* Calculate total length needed */
@@ -369,7 +369,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             p = data;
 
             for (j = 0; j < count; j++) {
-                names[j] = strdup((char *) p);
+                names[j] = xstrdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
         } else if (tag == RPMTAG_CHANGELOGTEXT && datatype == RPM_STRING_ARRAY_TYPE && texts == NULL) {
@@ -378,7 +378,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
             p = data;
 
             for (j = 0; j < count; j++) {
-                texts[j] = strdup((char *) p);
+                texts[j] = xstrdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
         }

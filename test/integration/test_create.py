@@ -984,6 +984,70 @@ class CreateRejectsWrongValueType(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsUnwritableTypes(RequiresTarpm):
+    """A tag type tarpm cannot write is turned away and not written as type 0"""
+
+    def runTest(self):
+        cases = [
+            ("(null)", "(null)", "has no type tarpm can write"),
+            ("(unknown)", "(unknown)", "has no type tarpm can write"),
+            ("strng", "linux", "has no type tarpm can write"),
+            ("char", "", "has a char type but its value is not a string"),
+            ("char", 7, "has a char type but its value is not a string"),
+        ]
+
+        for i, (tagtype, value, message) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": "Platform", "type": tagtype, "value": value})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0, msg=tagtype)
+            self.assertIn("the Platform tag %s" % message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateCharTagRoundTrip(RequiresTarpm):
+    """A char tag keeps every character it carries"""
+
+    def runTest(self):
+        # rpm wants a known tag to have its own type, so we use a number
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "#5999", "type": "char", "value": "abc"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        again = os.path.join(self.output_dir, "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(again, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        chars = [t for t in header["tags"] if t["tag"] == "#5999"]
+        self.assertEqual(len(chars), 1)
+        self.assertEqual(chars[0]["type"], "char")
+        self.assertEqual(chars[0]["value"], "abc")
+
+
+class CreateLongName(RequiresTarpm):
+    """A Name too long for a memfd_create() name still makes a package"""
+
+    def runTest(self):
+        name = "x" * 300
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags[0]["value"] = name
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "long.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(query_rpm(pkg, "%{name}"), name)
+
+
 class CreateRejectsUnknownTagName(RequiresTarpm):
     """A tag name tarpm does not know is turned away and not written as tag 0"""
 
@@ -1283,7 +1347,13 @@ class CreatePayloadflags(RequiresTarpm):
 
     def runTest(self):
         # what rpmbuild writes, with and without a thread count
-        good = [("xz", "3T"), ("xz", "2T16"), ("gzip", "9"), ("zstd", "19T8")]
+        good = [
+            ("xz", "3T"),
+            ("xz", "2T16"),
+            ("gzip", "9"),
+            ("zstd", "19T8"),
+            ("zstd", "0"),
+        ]
 
         for i, (compressor, flags) in enumerate(good):
             tree = self.tree_with("good%d" % i, compressor, flags)
@@ -1943,7 +2013,7 @@ class CreateWithEmptiedPayload(TestUnpackRPM):
 BAD_DIGEST = "dead" + ("0" * 60)
 
 
-class KeepDigestsBase(TestUnpackRPM):
+class KeepDigestsBase(object):
     """Shared setup that builds a package with one regular file in it"""
 
     def setUp(self):
@@ -2002,7 +2072,7 @@ class KeepDigestsBase(TestUnpackRPM):
         return None
 
 
-class CreateKeepsHeaderDigest(KeepDigestsBase):
+class CreateKeepsHeaderDigest(KeepDigestsBase, TestUnpackRPM):
     """With -D a hand edited digest reaches the package unchecked"""
 
     def runTest(self):
@@ -2025,7 +2095,7 @@ class CreateKeepsHeaderDigest(KeepDigestsBase):
         self.assertEqual(self.file_digest(pkg), BAD_DIGEST)
 
 
-class CreateRecomputesDigestWithoutFlag(KeepDigestsBase):
+class CreateRecomputesDigestWithoutFlag(KeepDigestsBase, TestUnpackRPM):
     """Without -D a hand edited digest is recomputed from the payload"""
 
     def runTest(self):
@@ -2050,7 +2120,7 @@ class CreateRecomputesDigestWithoutFlag(KeepDigestsBase):
         self.assertNotEqual(self.file_digest(pkg), BAD_DIGEST)
 
 
-class CreateKeepDigestsStillComputesMissing(KeepDigestsBase):
+class CreateKeepDigestsStillComputesMissing(KeepDigestsBase, TestUnpackRPM):
     """With -D a file missing its digest still gets one computed"""
 
     def runTest(self):
@@ -2161,7 +2231,7 @@ class KeepAllDigestsBase(KeepDigestsBase):
         return tree
 
 
-class CreateKeepsSignatureDigest(KeepAllDigestsBase):
+class CreateKeepsSignatureDigest(KeepAllDigestsBase, TestUnpackRPM):
     """With -D a hand edited signature digest reaches the package"""
 
     def runTest(self):
@@ -2178,7 +2248,7 @@ class CreateKeepsSignatureDigest(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(signature, "Sha256"), BAD_DIGEST)
 
 
-class CreateKeepDigestsComputesWrongLength(KeepAllDigestsBase):
+class CreateKeepDigestsComputesWrongLength(KeepAllDigestsBase, TestUnpackRPM):
     """With -D a signature digest of the wrong length is computed"""
 
     def runTest(self):
@@ -2225,7 +2295,7 @@ class CreateKeepDigestsComputesWrongLength(KeepAllDigestsBase):
             f.close()
 
 
-class CreateRecomputesSignatureDigestWithoutFlag(KeepAllDigestsBase):
+class CreateRecomputesSignatureDigestWithoutFlag(KeepAllDigestsBase, TestUnpackRPM):
     """Without -D signature.json is not read and the digest is computed"""
 
     def runTest(self):
@@ -2242,7 +2312,7 @@ class CreateRecomputesSignatureDigestWithoutFlag(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(signature, "Sha256"), header_sha256(pkg))
 
 
-class CreateKeepsSignatureDigestFromPath(KeepAllDigestsBase):
+class CreateKeepsSignatureDigestFromPath(KeepAllDigestsBase, TestUnpackRPM):
     """With -D and -S the signature digests come from the named file"""
 
     def runTest(self):
@@ -2265,7 +2335,7 @@ class CreateKeepsSignatureDigestFromPath(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(signature, "Sha256"), BAD_DIGEST)
 
 
-class CreateKeepDigestsMissingSignatureFile(KeepAllDigestsBase):
+class CreateKeepDigestsMissingSignatureFile(KeepAllDigestsBase, TestUnpackRPM):
     """With -D and -S naming a missing file tarpm fails"""
 
     def runTest(self):
@@ -2280,7 +2350,7 @@ class CreateKeepDigestsMissingSignatureFile(KeepAllDigestsBase):
         self.assertFalse(os.path.exists(pkg))
 
 
-class CreateKeepDigestsComputesSignature(KeepAllDigestsBase):
+class CreateKeepDigestsComputesSignature(KeepAllDigestsBase, TestUnpackRPM):
     """With -D and no signature.json the signature digests are computed"""
 
     def runTest(self):
@@ -2295,7 +2365,7 @@ class CreateKeepDigestsComputesSignature(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(signature, "Sha256"), header_sha256(pkg))
 
 
-class CreateKeepsPayloadDigest(KeepAllDigestsBase):
+class CreateKeepsPayloadDigest(KeepAllDigestsBase, TestUnpackRPM):
     """With -D a hand edited payload digest in header.json reaches the package"""
 
     def runTest(self):
@@ -2312,7 +2382,7 @@ class CreateKeepsPayloadDigest(KeepAllDigestsBase):
         self.assertEqual(self.tag_value(header, PAYLOAD_DIGEST), BAD_DIGEST)
 
 
-class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
+class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase, TestUnpackRPM):
     """Without -D a hand edited payload digest is recomputed"""
 
     def runTest(self):
@@ -2332,7 +2402,7 @@ class CreateRecomputesPayloadDigestWithoutFlag(KeepAllDigestsBase):
         self.assertEqual(rc, 0, msg=err)
 
 
-class CreateKeepDigestsComputesMissingPayloadDigest(KeepAllDigestsBase):
+class CreateKeepDigestsComputesMissingPayloadDigest(KeepAllDigestsBase, TestUnpackRPM):
     """With -D a payload digest missing from header.json is computed"""
 
     def runTest(self):

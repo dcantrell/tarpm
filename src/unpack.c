@@ -152,11 +152,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
 
     /* archive reader */
     input = archive_read_new();
-#if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_read_support_compression_all(input);
-#else
     archive_read_support_filter_all(input);
-#endif
     archive_read_support_format_all(input);
     r = archive_read_open_filename(input, archive, BUFSIZ);
 
@@ -237,11 +233,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
         warnx_escaped("archive_write_close: %s", archive_error_string(output));
     }
 
-#if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_write_finish(output);
-#else
     archive_write_free(output);
-#endif
 
     /* change back to original directory */
     if (chdir(cwd) != 0) {

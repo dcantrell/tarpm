@@ -379,6 +379,7 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
     unsigned int digest_sz = 0;
     unsigned char buf[BUFSIZ];
     unsigned char digest[EVP_MAX_MD_SIZE];
+    const EVP_MD *md = NULL;
     EVP_MD_CTX *ctx = NULL;
 
     /* parameter validation */
@@ -406,12 +407,14 @@ mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *h
     }
 
     /* initialize with the specified digest type */
-    if (digest_algorithm(type) == NULL) {
+    md = digest_algorithm(type);
+
+    if (md == NULL) {
         warnx("*** unsupported digest type: %d", type);
         goto cleanup_mksigdigest;
     }
 
-    if (EVP_DigestInit(ctx, digest_algorithm(type)) == 0) {
+    if (EVP_DigestInit(ctx, md) == 0) {
         warn("EVP_DigestInit");
         goto cleanup_mksigdigest;
     }

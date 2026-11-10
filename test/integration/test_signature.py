@@ -699,7 +699,7 @@ else:
 FAKE_SIGNATURE = "bm90IGEgc2lnbmF0dXJl"
 
 
-class KeepSignaturesBase(TestUnpackRPM):
+class KeepSignaturesBase(object):
     """Shared setup that extracts a package and adds package signatures"""
 
     def setUp(self):
@@ -751,7 +751,7 @@ class KeepSignaturesBase(TestUnpackRPM):
         return dict([(t["tag"], t.get("value")) for t in signature["tags"]])
 
 
-class VerifyCreateKeepsSignatures(KeepSignaturesBase):
+class VerifyCreateKeepsSignatures(KeepSignaturesBase, TestUnpackRPM):
     """With -k the package signatures in signature.json reach the package"""
 
     def runTest(self):
@@ -779,7 +779,7 @@ class VerifyCreateKeepsSignatures(KeepSignaturesBase):
         self.assertEqual(tags["Sha256"], digest)
 
 
-class VerifyCreateKeepSignaturesDropsDuplicate(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesDropsDuplicate(KeepSignaturesBase, TestUnpackRPM):
     """With -k a tag that appears twice keeps the first value"""
 
     def runTest(self):
@@ -808,7 +808,7 @@ class VerifyCreateKeepSignaturesDropsDuplicate(KeepSignaturesBase):
         self.assertEqual(self.created_signature(created)["Rsa"].strip(), FAKE_SIGNATURE)
 
 
-class VerifyCreateKeepSignaturesFormatFour(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesFormatFour(KeepSignaturesBase, TestUnpackRPM):
     """With -k a v4 format package takes every package signature"""
 
     def runTest(self):
@@ -831,7 +831,7 @@ class VerifyCreateKeepSignaturesFormatFour(KeepSignaturesBase):
 @unittest.skipUnless(
     HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
 )
-class VerifyCreateKeepSignaturesFormatSix(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesFormatSix(KeepSignaturesBase, TestUnpackRPM):
     """With -k a v6 format package leaves out what rpm does not read there"""
 
     def runTest(self):
@@ -854,7 +854,7 @@ class VerifyCreateKeepSignaturesFormatSix(KeepSignaturesBase):
             self.assertIn("leaving %s out of the package" % tag, err)
 
 
-class VerifyCreateKeepSignaturesWarnsOnChangedHeader(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesWarnsOnChangedHeader(KeepSignaturesBase, TestUnpackRPM):
     """With -k a main header that changed gets a warning"""
 
     def runTest(self):
@@ -888,7 +888,7 @@ class VerifyCreateKeepSignaturesWarnsOnChangedHeader(KeepSignaturesBase):
         self.assertIn(message, err)
 
 
-class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase, TestUnpackRPM):
     """With -k the signatures come out of the reserved space"""
 
     def runTest(self):
@@ -907,7 +907,7 @@ class VerifyCreateKeepSignaturesSameSize(KeepSignaturesBase):
         self.assertEqual(os.path.getsize(plain), os.path.getsize(kept))
 
 
-class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase, TestUnpackRPM):
     """With -k a package signature with no value is left out"""
 
     def runTest(self):
@@ -933,7 +933,7 @@ class VerifyCreateKeepSignaturesSkipsEmpty(KeepSignaturesBase):
         self.assertFalse("Dsa" in tags)
 
 
-class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase, TestUnpackRPM):
     """With -k an Openpgp value that is not an array of strings is turned away"""
 
     def runTest(self):
@@ -964,7 +964,7 @@ class VerifyCreateKeepSignaturesRejectsBadOpenpgp(KeepSignaturesBase):
             self.assertNotIn("Assertion", err)
 
 
-class VerifyCreateKeepSignaturesRejectsBadRsa(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesRejectsBadRsa(KeepSignaturesBase, TestUnpackRPM):
     """With -k an Rsa value that is not base64 data is turned away"""
 
     def runTest(self):
@@ -989,7 +989,7 @@ class VerifyCreateKeepSignaturesRejectsBadRsa(KeepSignaturesBase):
             self.assertNotIn("Assertion", err)
 
 
-class VerifyCreateKeepSignaturesUsesRpmType(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesUsesRpmType(KeepSignaturesBase, TestUnpackRPM):
     """With -k a kept entry takes the rpm type and only its value is copied"""
 
     def runTest(self):
@@ -1033,7 +1033,7 @@ class VerifyCreateKeepSignaturesUsesRpmType(KeepSignaturesBase):
         self.assertFalse("trailer" in rsa[0])
 
 
-class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase, TestUnpackRPM):
     """With -k and no signature.json the package comes out unsigned"""
 
     def runTest(self):
@@ -1051,7 +1051,7 @@ class VerifyCreateKeepSignaturesWithoutSignatureJson(KeepSignaturesBase):
             self.assertFalse(tag in tags, msg="%s is in the new signature" % tag)
 
 
-class VerifyCreateKeepSignaturesFromPath(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesFromPath(KeepSignaturesBase, TestUnpackRPM):
     """With -k and -S the package signatures come from the named file"""
 
     def runTest(self):
@@ -1072,7 +1072,7 @@ class VerifyCreateKeepSignaturesFromPath(KeepSignaturesBase):
             self.assertTrue(tag in tags, msg="%s is missing" % tag)
 
 
-class VerifyCreateKeepSignaturesLeavesDigests(KeepSignaturesBase):
+class VerifyCreateKeepSignaturesLeavesDigests(KeepSignaturesBase, TestUnpackRPM):
     """-k without -D does not keep the digests in signature.json"""
 
     def runTest(self):

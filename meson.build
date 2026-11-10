@@ -56,7 +56,7 @@ endif
 
 # Dependencies
 jsonc = dependency('json-c', required : true)
-libarchive = dependency('libarchive', required : true)
+libarchive = dependency('libarchive', version : '>= 3.3.3', required : true)
 libzstd = dependency('libzstd', required : true)
 
 # libmagic

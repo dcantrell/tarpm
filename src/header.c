@@ -288,7 +288,7 @@ read_named_tag_file(const rpmTagVal tag_number, const char *name, uint8_t **data
     char *path = NULL;
 
     if (name[0] == '/') {
-        full = strdup(name);
+        full = xstrdup(name);
     } else if (tagfile_dir != NULL) {
         full = joinpath(tagfile_dir, name, NULL);
     }
@@ -419,7 +419,7 @@ read_i18n_strings(struct json_object *tags, const rpmTagVal tag_number, struct j
                     return -1;
                 }
             } else {
-                data = (uint8_t *) strdup(json_object_get_string(string));
+                data = (uint8_t *) xstrdup(json_object_get_string(string));
                 len = strlen((const char *) data);
             }
         }
@@ -632,7 +632,10 @@ valid_binary_value(struct json_object *value)
  * needs before we size and write the header.  A string is a JSON
  * string and a string array is an array of them.  A number type is a
  * number or an array of numbers.  A binary blob is a base64 string.
- * The region tags have their own check in check_region_tags().
+ * A char is a string of at least one character.  tag_type() gives
+ * RPM_NULL_TYPE for "(null)", "(unknown)" and any name it does not
+ * know, and we refuse those.  The region tags have their own check in
+ * check_region_tags().
  *
  * Returns 0 on success, -1 if any value has the wrong type.
  */
@@ -691,6 +694,14 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
                 warnx(_("*** the %s tag has a binary blob type but its value is not base64 data"), name);
                 r = -1;
             }
+        } else if (entry_type == RPM_CHAR_TYPE) {
+            if (json_object_get_type(key) != json_type_string || json_object_get_string_len(key) == 0) {
+                warnx(_("*** the %s tag has a char type but its value is not a string of one or more characters"), name);
+                r = -1;
+            }
+        } else {
+            warnx(_("*** the %s tag has no type tarpm can write"), name);
+            r = -1;
         }
     }
 
@@ -930,6 +941,9 @@ get_item_size(size_t index, struct json_object *entry, const struct tagfile *tag
         } else {
             item_size = sizeof(uint64_t);
         }
+    } else if (entry_type == RPM_CHAR_TYPE) {
+        /* one byte per character and no NUL */
+        item_size = strlen(json_object_get_string(key));
     } else if (entry_type == RPM_STRING_ARRAY_TYPE) {
         /* string array: sum of all string lengths + NULs */
         len = json_object_array_length(key);
@@ -1138,6 +1152,23 @@ write_strings(struct data_writer *w, struct json_object *key)
 }
 
 /*
+ * Write the characters of a char tag without a NUL and give back how
+ * many went in.
+ */
+static uint32_t
+write_chars(struct data_writer *w, struct json_object *key)
+{
+    size_t len = 0;
+
+    len = strlen(json_object_get_string(key));
+    memcpy(w->datapos, json_object_get_string(key), len);
+    w->datapos += len;
+    w->offset += len;
+
+    return (uint32_t) len;
+}
+
+/*
  * Write the single string a tag carries.  A file backed tag gets the
  * bytes we read before the header was sized, which is what
  * get_item_size() counted.  Everything else writes the value the
@@ -1206,6 +1237,8 @@ write_entry_value(struct data_writer *w, struct rpmhdrentry *entry, const struct
         entry->count = write_numbers(w, entry->type, entry->tag, key);
     } else if (entry->type == RPM_STRING_ARRAY_TYPE) {
         entry->count = write_strings(w, key);
+    } else if (entry->type == RPM_CHAR_TYPE) {
+        entry->count = write_chars(w, key);
     } else {
         entry->count = 1;
 
@@ -1377,7 +1410,7 @@ read_header(const int fd, const char *dest_dir, bool *raw_tags)
     trailer = read_header_trailer(rawhdr, hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
-    header = generate_json(rawhdr, hdrinfo);
+    header = generate_json(rawhdr);
 
     /* dump all of the tags in the header block */
     jvals = generate_json_entries(rawhdr, hdrinfo, trailer, dest_dir, false);
@@ -1529,7 +1562,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     size_t totalsize = 0;
     int32_t trailer_index = -1;
     size_t trailer_size = 0;
-    bool need_free_tags = false;
     size_t i = 0;
 
     if (data == NULL || hdr == NULL || hdrinfo == NULL) {
@@ -1575,7 +1607,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     tags = tags_copy;
-    need_free_tags = true;
 
     /* Check if there's a changelog array that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_CHANGELOG_DESC, &changelog)) {
@@ -1658,10 +1689,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     /* walk the header tags and add them to the values structure */
     r = add_header_tags(tags, tagfiles, v, totalsize, trailer_index, trailer_size, is_signature);
 
-    /* cleanup temporary tags array if we created one */
-    if (need_free_tags) {
-        json_object_put(tags);
-    }
+    /* free our copy of the tags array */
+    json_object_put(tags);
 
     free_tag_files(tagfiles, ntags);
 

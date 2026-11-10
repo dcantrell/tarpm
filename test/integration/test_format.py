@@ -1054,6 +1054,32 @@ class VerifyCreateFileSignaturesTooLarge(FileSignatures, TestUnpackRPM):
             self.assertEqual(entry_count(signature_header(signed), tag), RESERVED_SIZE)
 
 
+@unittest.skipUnless(HAVE_VERITY, "rpm is older than 4.17.0 and has no verity tags")
+class VerifyCreateBadVerityAlgo(FileSignatures, TestUnpackRPM):
+    """A Veritysignaturealgo that is not a number gets the rpmsign(1) default"""
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        header = json.load(f)
+        f.close()
+
+        for tag in header["tags"]:
+            if tag["tag"] == "Veritysignaturealgo":
+                tag["value"] = "abc"
+
+        f = open(self.header, "w")
+        json.dump(header, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "bad.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.output_dir])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn('Veritysignaturealgo "abc" is not a number, writing 1', err)
+        self.assertEqual(query(pkg, "%{VERITYSIGNATUREALGO}"), "1")
+
+
 class VerifyCreateFormatFourMainHeaderFileSignatures(FileSignatures, TestUnpackRPM):
     """
     An older rpmsign(1) left the file signatures in the main header of

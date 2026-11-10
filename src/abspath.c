@@ -48,8 +48,7 @@ char *abspath(const char *path)
         workpath = joinpath(cwd, path, NULL);
         free(cwd);
     } else {
-        workpath = strdup(path);
-        assert(workpath != NULL);
+        workpath = xstrdup(path);
     }
 
     /* split path in to tokens */
@@ -112,10 +111,8 @@ char *xdirname(const char *path)
         return NULL;
     }
 
-    tmp = strdup(path);
-    assert(tmp != NULL);
-    r = strdup(dirname(tmp));
-    assert(r != NULL);
+    tmp = xstrdup(path);
+    r = xstrdup(dirname(tmp));
     free(tmp);
 
     return r;

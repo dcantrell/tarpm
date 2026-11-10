@@ -1273,10 +1273,10 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
 
 /*
  * Compute the digest of a file in the package payload tree the same
- * way RPM does.  Use the digest algorithm defined in
- * RPMTAG_FILEDIGESTALGO, but fall back to MD5 like rpm does.  Returns
- * NULL if the file cannot be read or if the algorithm is not one
- * OpenSSL provides.  Caller must free the string returned.
+ * way RPM does, with the algorithm the caller gives us.
+ * file_digest_algo() picks it and falls back to MD5 like rpm does.
+ * Returns NULL if the file cannot be read or if the algorithm is not
+ * one OpenSSL provides.  Caller must free the string returned.
  */
 static char *
 mkfiledigest(const char *path, const uint32_t algo)
@@ -1531,6 +1531,47 @@ set_file_mime(struct json_object *file, const char *path, const char *file_path,
 }
 
 /*
+ * Read the target of a symlink.  Some file systems report a symlink
+ * size of 0, so we grow the buffer until readlink() leaves room for
+ * the NUL.  Returns NULL if readlink() fails.  The caller has to free
+ * the string.
+ */
+static char *
+read_link_target(const char *path, const struct stat *sb)
+{
+    size_t size = 0;
+    ssize_t len = 0;
+    char *buf = NULL;
+    char *target = NULL;
+
+    if (path == NULL || sb == NULL) {
+        return NULL;
+    }
+
+    size = (size_t) sb->st_size + 1;
+
+    while (target == NULL) {
+        buf = xrealloc(buf, size);
+        len = readlink(path, buf, size);
+
+        if (len < 0) {
+            warn("readlink");
+            free(buf);
+            return NULL;
+        }
+
+        if ((size_t) len < size) {
+            buf[len] = '\0';
+            target = buf;
+        } else {
+            size *= 2;
+        }
+    }
+
+    return target;
+}
+
+/*
  * Build the "files" array entry for a file in the payload tree.  The
  * keys are the ones generate_files() writes for a file of this type so
  * an added file reads back the same way an unpacked one does.  The
@@ -1560,15 +1601,13 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
 
     /* a symlink carries its target and the length of it */
     if (S_ISLNK(sb->st_mode)) {
-        target = xalloc(sb->st_size + 1);
-        len = readlink(file_path, target, sb->st_size);
+        target = read_link_target(file_path, sb);
 
-        if (len < 0) {
-            warn("readlink");
-            len = 0;
+        if (target == NULL) {
+            target = xalloc(1);
         }
 
-        target[len] = '\0';
+        len = (ssize_t) strlen(target);
         json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
         json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
         free(target);
@@ -1656,7 +1695,7 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
 
         /* source RPMs keep bare filenames, binary ones full paths */
         if (scan->source_package && prefix[0] == '\0') {
-            path = strdup(entries[i]->d_name);
+            path = xstrdup(entries[i]->d_name);
         } else {
             xasprintf(&path, "%s/%s", prefix, entries[i]->d_name);
         }
@@ -1686,6 +1725,24 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
 }
 
 /*
+ * Give back the digest algorithm the header names.  rpm falls back to
+ * MD5 when RPMTAG_FILEDIGESTALGO is missing, so we do too.
+ */
+static uint32_t
+file_digest_algo(struct json_object *tags)
+{
+    const char *str = NULL;
+
+    str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+
+    if (str == NULL) {
+        return PGPHASHALGO_MD5;
+    }
+
+    return digest_algo(str);
+}
+
+/*
  * Add entries to the "files" array for the files and directories added
  * to the payload tree.  Done when creating an RPM so a file put in the
  * payload lands in the file list of the new package.
@@ -1693,7 +1750,6 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
 void
 add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir)
 {
-    const char *algo = NULL;
     struct payload_scan scan = { 0 };
     struct stat sb;
 
@@ -1709,17 +1765,8 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
         return;
     }
 
-    /*
-     * The digests of the added files are computed with the algorithm
-     * the header names, which rpm defaults to MD5.
-     */
-    algo = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
-
-    if (algo == NULL) {
-        scan.digestalgo = PGPHASHALGO_MD5;
-    } else {
-        scan.digestalgo = digest_algo(algo);
-    }
+    /* the added files get the digest algorithm the header names */
+    scan.digestalgo = file_digest_algo(tags);
 
     scan.files = files;
     scan.source_package = false;
@@ -1791,15 +1838,13 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
 
     /* a symlink carries its target and the length of it */
     if (S_ISLNK(sb->st_mode)) {
-        target = xalloc(sb->st_size + 1);
-        len = readlink(file_path, target, sb->st_size);
+        target = read_link_target(file_path, sb);
 
-        if (len < 0) {
-            warn("readlink");
-            len = 0;
+        if (target == NULL) {
+            target = xalloc(1);
         }
 
-        target[len] = '\0';
+        len = (ssize_t) strlen(target);
         json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) len));
         json_object_object_add(file, RPM_FILE_LINKTO_DESC, json_object_new_string(target));
         free(target);
@@ -1877,15 +1922,13 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
 
     /* a symlink carries its target and the length of it */
     if (S_ISLNK(sb->st_mode) && (!json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL) || !json_object_object_get_ex(file, RPM_FILE_LINKTO_DESC, NULL))) {
-        target = xalloc(sb->st_size + 1);
-        len = readlink(file_path, target, sb->st_size);
+        target = read_link_target(file_path, sb);
 
-        if (len < 0) {
-            warn("readlink");
-            len = 0;
+        if (target == NULL) {
+            target = xalloc(1);
         }
 
-        target[len] = '\0';
+        len = (ssize_t) strlen(target);
 
         if (!json_object_object_get_ex(file, RPM_FILE_SIZE_DESC, NULL)) {
             report_missing(path, RPM_FILE_SIZE_DESC, true);
@@ -2047,7 +2090,7 @@ dict_index(char **strings, size_t *count, struct json_object *lookup, const char
         return json_object_get_int(idx);
     }
 
-    strings[*count] = strdup(str);
+    strings[*count] = xstrdup(str);
     json_object_object_add(lookup, str, json_object_new_int((int) *count));
     *count += 1;
 
@@ -2200,7 +2243,7 @@ add_file_path(struct file_list_tags *out, const char *path)
 
     if (separator == NULL) {
         basename = path;
-        dirname = strdup("");
+        dirname = xstrdup("");
     } else {
         basename = separator + 1;
 
@@ -2282,13 +2325,10 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
 
     /* a symlink carries its target and the length of it */
     if ((payload_overrides & PAYLOAD_OVERRIDE_LINKTO) && S_ISLNK(sb->st_mode)) {
-        target = xalloc(sb->st_size + 1);
-        len = readlink(file_path, target, sb->st_size);
+        target = read_link_target(file_path, sb);
 
-        if (len < 0) {
-            warn("readlink");
-        } else {
-            target[len] = '\0';
+        if (target != NULL) {
+            len = (ssize_t) strlen(target);
 
             if (strcmp(target, key_string(file, RPM_FILE_LINKTO_DESC, ""))) {
                 report_override(path, RPM_FILE_LINKTO_DESC);
@@ -2424,7 +2464,7 @@ file_digest_value(struct json_object *file, const char *file_path, const struct 
      * a regular file gets a computed one.
      */
     if (keep_digests && str[0] != '\0') {
-        return strdup(str);
+        return xstrdup(str);
     }
 
     /* the file is there, so a digest we cannot compute is an error */
@@ -2438,7 +2478,7 @@ file_digest_value(struct json_object *file, const char *file_path, const struct 
         return digest;
     }
 
-    return strdup(str);
+    return xstrdup(str);
 }
 
 /*
@@ -2458,7 +2498,7 @@ file_langs_value(struct json_object *file)
     value = key_object(file, RPM_FILE_LANGS_DESC);
 
     if (value == NULL || json_object_get_type(value) != json_type_array) {
-        return strdup("");
+        return xstrdup("");
     }
 
     nlangs = json_object_array_length(value);
@@ -2471,7 +2511,7 @@ file_langs_value(struct json_object *file)
     list_free(langs, free);
 
     if (joined == NULL) {
-        return strdup("");
+        return xstrdup("");
     } else {
         return joined;
     }
@@ -2729,7 +2769,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
          * can write a new one over it and we need the old one below to
          * see whether the payload file changed.
          */
-        olddigest = strdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
+        olddigest = xstrdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
 
         fix_type_mismatch(file, path, file_path, psb, build->digestalgo);
         add_missing_metadata(file, path, file_path, psb, build->digestalgo);
@@ -2761,7 +2801,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
 
     if (str == NULL) {
         build->failed = true;
-        str = strdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
+        str = xstrdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
     }
 
     /*
@@ -2852,24 +2892,6 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     build->nkept++;
 
     return;
-}
-
-/*
- * Give back the digest algorithm the header names.  rpm falls back to
- * MD5 when RPMTAG_FILEDIGESTALGO is missing, so we do too.
- */
-static uint32_t
-file_digest_algo(struct json_object *tags)
-{
-    const char *str = NULL;
-
-    str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
-
-    if (str == NULL) {
-        return PGPHASHALGO_MD5;
-    }
-
-    return digest_algo(str);
 }
 
 /*
@@ -3283,6 +3305,8 @@ add_file_signature_tags(struct json_object *signature, struct json_object *heade
     bool have_verity = false;
     const char *path = NULL;
     const char *str = NULL;
+    char *end = NULL;
+    unsigned long value = 0;
     uint32_t algo = RPM_VERITY_ALGO_DEFAULT;
     struct json_object *sigtags = NULL;
     struct json_object *tags = NULL;
@@ -3361,7 +3385,14 @@ add_file_signature_tags(struct json_object *signature, struct json_object *heade
         str = get_tag_value(tags, sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE));
 
         if (str != NULL) {
-            algo = strtoul(str, NULL, 10);
+            errno = 0;
+            value = strtoul(str, &end, 10);
+
+            if (errno != 0 || end == str || *end != '\0' || value > UINT32_MAX) {
+                warnx_escaped(_("*** %s \"%s\" is not a number, writing %d"), sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE), str, RPM_VERITY_ALGO_DEFAULT);
+            } else {
+                algo = (uint32_t) value;
+            }
         }
 
         json_object_array_add(sigtags, new_signature_entry(RPMSIGTAG_VERITYSIGNATURES_VALUE, RPM_STRING_ARRAY_TYPE, verity));

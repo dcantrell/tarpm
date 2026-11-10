@@ -139,12 +139,12 @@ create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature)
  * Generate a "signature" or "header" JSON structure for output.
  */
 struct json_object *
-generate_json(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
+generate_json(const struct rpmhdr *hdr)
 {
     struct json_object *out = NULL;
     char *s = NULL;
 
-    if (hdr == NULL || hdrinfo == NULL) {
+    if (hdr == NULL) {
         return NULL;
     }
 

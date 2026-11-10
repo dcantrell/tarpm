@@ -101,12 +101,6 @@ char *joinpath(const char *path, ...)
             /* for the trailing NUL */
             needsep = false;
 
-            /* trim any extra trailing slashes */
-            while (*tail == '/') {
-                *tail = '\0';
-                tail--;
-            }
-
             /*
              * This loop trims multiple leading slashes down to just
              * one.  If 'i' is 1, it will preserve 1 leading slash.

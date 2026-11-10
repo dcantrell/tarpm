@@ -29,7 +29,7 @@ clean_test_json(void)
 void
 test_generate_json(void)
 {
-    TARPM_ASSERT_TRUE(generate_json(NULL, NULL) == NULL);
+    TARPM_ASSERT_TRUE(generate_json(NULL) == NULL);
 
     return;
 }

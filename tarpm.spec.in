@@ -11,7 +11,7 @@ BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  gcc
 BuildRequires:  rpm-devel
-BuildRequires:  libarchive-devel
+BuildRequires:  libarchive-devel >= 3.3.3
 BuildRequires:  json-c-devel
 BuildRequires:  CUnit-devel
 BuildRequires:  python3-devel

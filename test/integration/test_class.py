@@ -31,7 +31,7 @@ DATA_BYTES = b"\x00" * 1024
 # Only a v4 format package carries classes, so we have rpmbuild write
 # one whatever %_rpmformat says.  test_mime.py covers the MIME types a
 # v6 format package carries in their place.
-class TestFileClass(TestUnpackRPM):
+class TestFileClass(object):
     def setUp(self):
         super().setUp()
         self.extract_dir = None
@@ -140,7 +140,7 @@ class TestFileClass(TestUnpackRPM):
         return r
 
 
-class TestFileClassUnchanged(TestFileClass):
+class TestFileClassUnchanged(TestFileClass, TestUnpackRPM):
     """A payload nobody touched keeps the classes rpmbuild wrote"""
 
     def setUp(self):
@@ -184,7 +184,7 @@ class TestFileClassUnchanged(TestFileClass):
             self.assertNotEqual(before["/usr/include/%s/foo.h" % NAME], "")
 
 
-class TestFileClassChangesWithContent(TestFileClass):
+class TestFileClassChangesWithContent(TestFileClass, TestUnpackRPM):
     """Writing new bytes over a payload file works the class out again"""
 
     def setUp(self):
@@ -222,7 +222,7 @@ class TestFileClassChangesWithContent(TestFileClass):
         self.assertEqual(after[untouched], before[untouched])
 
 
-class TestFileClassGoesAwayWithContent(TestFileClass):
+class TestFileClassGoesAwayWithContent(TestFileClass, TestUnpackRPM):
     """A file whose new bytes have no class rpm keeps loses its class"""
 
     def setUp(self):
@@ -249,7 +249,7 @@ class TestFileClassGoesAwayWithContent(TestFileClass):
         self.assertEqual(self.classes(self.recreated_rpm)[changed], "")
 
 
-class TestFileClassOnNewPayloadFiles(TestFileClass):
+class TestFileClassOnNewPayloadFiles(TestFileClass, TestUnpackRPM):
     """A file added to the payload tree picks up a class of its own"""
 
     def setUp(self):
@@ -295,7 +295,7 @@ class TestFileClassOnNewPayloadFiles(TestFileClass):
         self.assertEqual(after[docdir + "/new.bin"], "")
 
 
-class TestFileClassChangesWithType(TestFileClass):
+class TestFileClassChangesWithType(TestFileClass, TestUnpackRPM):
     """Swapping a file for another kind of thing works the class out again"""
 
     def setUp(self):
@@ -328,7 +328,7 @@ class TestFileClassChangesWithType(TestFileClass):
         )
 
 
-class TestFileClassInJSON(TestFileClass):
+class TestFileClassInJSON(TestFileClass, TestUnpackRPM):
     """The class in header.json is the one that ends up in the RPM"""
 
     def setUp(self):

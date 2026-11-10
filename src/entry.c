@@ -59,10 +59,8 @@ get_tag_filename(rpmTagVal tag, const char *ending)
     if (ending) {
         xasprintf(&r, "%s.%s", rpmTagGetName(tag), ending);
     } else {
-        r = strdup(rpmTagGetName(tag));
+        r = xstrdup(rpmTagGetName(tag));
     }
-
-    assert(r != NULL);
 
     for (i = 0; r[i] != '\0'; i++) {
         r[i] = tolower(r[i]);
@@ -97,14 +95,23 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir, const
         tagname = get_tag_filename(tag, OUTPUT_TXT_ENDING);
     } else {
         base = get_tag_filename(tag, NULL);
-        xasprintf(&tagname, "%s.%s.%s", base, locale, OUTPUT_TXT_ENDING);
-        free(base);
+
+        if (base != NULL) {
+            xasprintf(&tagname, "%s.%s.%s", base, locale, OUTPUT_TXT_ENDING);
+            free(base);
+        }
+    }
+
+    /* only the tags is_file_tag() names go to a file */
+    if (tagname == NULL) {
+        warnx(_("*** %s does not go to a file"), rpmTagGetName(tag));
+        return NULL;
     }
 
     if (dest_dir) {
         xasprintf(&path, "%s/%s", dest_dir, tagname);
     } else {
-        path = strdup(tagname);
+        path = xstrdup(tagname);
     }
 
     /* create output directory if needed */
@@ -253,8 +260,8 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     if (datatype == RPM_NULL_TYPE) {
         json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string("(null)"));
     } else if (datatype == RPM_CHAR_TYPE) {
-        memcpy(&dt.c, data, sizeof(dt.c));
-        xasprintf(&s, "%c", dt.c);
+        /* count characters with no NUL after them */
+        xasprintf(&s, "%.*s", (int) count, (char *) data);
         json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string(s));
         free(s);
     } else if (datatype == RPM_INT8_TYPE) {

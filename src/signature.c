@@ -83,7 +83,7 @@ read_signature(const int fd)
     trailer = read_header_trailer(rawhdr, hdrinfo->estart, hdrinfo->datastart);
 
     /* generate a JSON structure for the signature */
-    signature = generate_json(rawhdr, hdrinfo);
+    signature = generate_json(rawhdr);
 
     /* dump all of the tags in the signature */
     jvals = generate_json_entries(rawhdr, hdrinfo, trailer, NULL, true);

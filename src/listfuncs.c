@@ -119,11 +119,7 @@ list_add(str_list_t *list, const char *s)
     }
 
     entry = xalloc(sizeof(*entry));
-    entry->str = strdup(s);
-
-    if (entry->str == NULL) {
-        warn("strdup");
-    }
+    entry->str = xstrdup(s);
 
     TAILQ_INSERT_TAIL(list, entry, items);
 

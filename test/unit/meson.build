@@ -332,6 +332,7 @@ if cunit.found()
           'test-main.c',
           readfile_src,
           xalloc_src,
+          xread_src,
         ],
         include_directories : inc,
         dependencies : [ cunit, jsonc ],

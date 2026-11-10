@@ -40,24 +40,12 @@ static size_t payload_offset = 0;
 static void
 free_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo)
 {
-    if (hdr) {
-        free(hdr);
-        hdr = NULL;
-    }
+    free(hdr);
 
     if (hdrinfo) {
-        if (hdrinfo->estart) {
-            free(hdrinfo->estart);
-            hdrinfo->estart = NULL;
-        }
-
-        if (hdrinfo->datastart) {
-            free(hdrinfo->datastart);
-            hdrinfo->datastart = NULL;
-        }
-
+        free(hdrinfo->estart);
+        free(hdrinfo->datastart);
         free(hdrinfo);
-        hdrinfo = NULL;
     }
 
     return;
@@ -78,7 +66,7 @@ write_header(FILE *rpm, struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, bool is_
     int r = 0;
 
     if (rpm == NULL || hdr == NULL || hdrinfo == NULL) {
-        return 0;
+        return -1;
     }
 
     if (fwrite(hdr, sizeof(*hdr), 1, rpm) != 1) {
@@ -168,7 +156,7 @@ payload_path(const char *dirname, const char *basename)
     }
 
     if (dirname[0] == '\0') {
-        path = strdup(basename);
+        path = xstrdup(basename);
     } else if (dirname[0] == '/') {
         xasprintf(&path, ".%s%s", dirname, basename);
     } else {
@@ -506,12 +494,6 @@ compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level
     ibuf = xalloc(isize);
     obuf = xalloc(osize);
 
-    if (ibuf == NULL || obuf == NULL) {
-        warn("xalloc");
-        rc = -1;
-        goto cleanup;
-    }
-
     /* open file descriptors, a dup() that does not become a FILE * is closed below */
     infd = dup(uncompressed_fd);
     outfd = dup(compressed_fd);
@@ -708,10 +690,6 @@ collect_file_list_tags(struct json_object *tags, struct hdr_file_lists *hfl)
                     hfl->filesizes = value;
                 } else if (tagnum == RPMTAG_FILEMODES) {
                     hfl->filemodes = value;
-                } else if (tagnum == RPMTAG_FILEUIDS) {
-                    hfl->fileuids = value;
-                } else if (tagnum == RPMTAG_FILEGIDS) {
-                    hfl->filegids = value;
                 } else if (tagnum == RPMTAG_FILERDEVS) {
                     hfl->filerdevs = value;
                 } else if (tagnum == RPMTAG_FILEMTIMES) {
@@ -1053,7 +1031,6 @@ create_payload(struct json_object *header, const char *payload_dir)
     size_t numfiles = 0;
     size_t ordered = 0;
     size_t *order = NULL;
-    char *template = NULL;
     char *opts = NULL;
     char *current_path = NULL;
     const char *tag = NULL;
@@ -1109,25 +1086,17 @@ create_payload(struct json_object *header, const char *payload_dir)
         return -1;
     }
 
-    /* get the package name and create a temporary payload file */
-    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
-
-    if (tag == NULL) {
-        warnx("*** unable to get RPMTAG_NAME");
-        tag = "rpm";
-    }
-
-    xasprintf(&template, "%s-payload.%d", tag, getpid());
-    payloadfd = memfd_create(template, MFD_CLOEXEC);
+    /*
+     * The payload goes in an anonymous file.  memfd_create() refuses a
+     * name over 249 bytes, so it gets a fixed one and not the Name.
+     */
+    payloadfd = memfd_create("tarpm-payload", MFD_CLOEXEC);
 
     if (payloadfd == -1) {
         warn("memfd_create");
-        free(template);
 
         return -1;
     }
-
-    free(template);
 
     /* create a new payload writer */
     payload = archive_write_new();
@@ -1138,9 +1107,8 @@ create_payload(struct json_object *header, const char *payload_dir)
      * and a v4 format package has them when a file is too big for
      * Filesizes.  libarchive cannot write this modified cpio format,
      * so we construct it manually and use libarchive's raw format to
-     * still get compression via libarchive.  through the raw format
-     * to get the compression.  Everything else is in the newc cpio
-     * format.
+     * still get compression via libarchive.  Everything else is in the
+     * newc cpio format.
      */
     stripped = (rpmformat == RPM_FORMAT_V6);
 
@@ -1197,9 +1165,8 @@ create_payload(struct json_object *header, const char *payload_dir)
                 goto close_payload;
             }
 
-            if (flags_level < 1) {
-                zstd.level = 1;
-            } else if (flags_level > 22) {
+            /* zstd reads level 0 as its default level */
+            if (flags_level > 22) {
                 zstd.level = 22;
             } else {
                 zstd.level = (int) flags_level;
@@ -1350,17 +1317,9 @@ create_payload(struct json_object *header, const char *payload_dir)
         params.mtime = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.filemtimes, i));
         params.linkto = json_object_get_string(json_object_array_get_idx(hfl.filelinktos, i));
 
-        /* we may not have fileuids or filegids, so default to 0 and then try */
+        /* the header names owners but has no ids, so every entry gets 0 */
         params.uid = 0;
         params.gid = 0;
-
-        if (hfl.fileuids) {
-            params.uid = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.fileuids, i));
-        }
-
-        if (hfl.filegids) {
-            params.gid = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.filegids, i));
-        }
 
         /*
          * every payload entry carries the inode number from the
@@ -1414,16 +1373,12 @@ close_payload:
         failed = true;
     }
 
-#if ARCHIVE_VERSION_NUMBER < 3000000
-    archive_write_finish(payload);
-#else
     /* the error string goes with the archive, so there is none to print */
     if (archive_write_free(payload) != ARCHIVE_OK) {
         warnx("archive_write_free");
     }
 
     payload = NULL;
-#endif
 
     /* clean up hardlink tracking */
     free_hardlink_groups(&hl);
@@ -1479,7 +1434,12 @@ write_payload(FILE *rpm, int fd)
     size_t s = 0;
 
     if (rpm == NULL) {
-        return 0;
+        /* the payload file goes away on failure too */
+        if (fd >= 0) {
+            close(fd);
+        }
+
+        return -1;
     }
 
     /* bring the payload back to the beginning */
@@ -2526,8 +2486,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     /*
      * Build the signature header ourselves.  Everything in it is
-     * recalculated from the header and the payload.  Only -D reads
-     * signature.json, for the digests it carries.
+     * recalculated from the header and the payload.  Only -D and -k
+     * read signature.json, for the digests and signatures it carries.
      */
     signature = make_signature(rpmformat);
 
