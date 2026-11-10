@@ -194,8 +194,10 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
         if (r != ARCHIVE_OK) {
             warnx_escaped("archive_read_next_header: %s", archive_error_string(input));
 
-            if (r < ARCHIVE_WARN) {
+            /* the entry is not usable, so skip it and try the next one */
+            if (r < ARCHIVE_WARN || r == ARCHIVE_RETRY) {
                 ret = -1;
+                continue;
             }
         }
 
@@ -203,7 +205,10 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
             p = archive_entry_pathname(entry);
 
             if (p != NULL) {
-                while (*p == '.' || *p == '/') {
+                /* take off one leading "./" or "/" so a dotfile keeps its dot */
+                if (!strncmp(p, "./", 2)) {
+                    p += 2;
+                } else if (*p == '/') {
                     p++;
                 }
 

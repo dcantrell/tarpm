@@ -98,6 +98,8 @@ str_to_comparison(const char *s)
 static struct json_object *
 generate_sense_flags(uint32_t flags)
 {
+    uint32_t known = 0;
+    char *rest = NULL;
     struct json_object *sense_flags = NULL;
 
     /* Exclude comparison flags - they go in the comparison field */
@@ -203,6 +205,26 @@ generate_sense_flags(uint32_t flags)
         json_object_array_add(sense_flags, json_object_new_string(SENSE_FLAG_KEYRING));
     }
 
+    /* bits with no name go in as one decimal number so a round trip keeps them */
+    known = RPMSENSE_SCRIPT_PRE | RPMSENSE_SCRIPT_POST | RPMSENSE_SCRIPT_PREUN | RPMSENSE_SCRIPT_POSTUN;
+    known |= RPMSENSE_SCRIPT_VERIFY | RPMSENSE_INTERP | RPMSENSE_RPMLIB;
+    known |= RPMSENSE_FIND_REQUIRES | RPMSENSE_FIND_PROVIDES | RPMSENSE_PREREQ;
+    known |= RPMSENSE_PRETRANS | RPMSENSE_POSTTRANS | RPMSENSE_CONFIG | RPMSENSE_MISSINGOK;
+    known |= RPMSENSE_TRIGGERIN | RPMSENSE_TRIGGERUN | RPMSENSE_TRIGGERPOSTUN;
+    known |= RPMSENSE_TRIGGERPREIN | RPMSENSE_KEYRING;
+#ifdef _HAS_UNTRANS_TAG
+    known |= RPMSENSE_PREUNTRANS | RPMSENSE_POSTUNTRANS;
+#endif
+#ifdef _HAS_META_TAG
+    known |= RPMSENSE_META;
+#endif
+
+    if ((flags & ~known) != 0) {
+        xasprintf(&rest, "%u", flags & ~known);
+        json_object_array_add(sense_flags, json_object_new_string(rest));
+        free(rest);
+    }
+
     return sense_flags;
 }
 
@@ -216,6 +238,8 @@ read_sense_flags(struct json_object *sense_flags)
     uint32_t flags = 0;
     size_t i = 0;
     const char *s = NULL;
+    char *end = NULL;
+    unsigned long value = 0;
     struct json_object *entry = NULL;
 
     if (sense_flags == NULL || json_object_get_type(sense_flags) != json_type_array) {
@@ -283,6 +307,17 @@ read_sense_flags(struct json_object *sense_flags)
             flags |= RPMSENSE_TRIGGERPREIN;
         } else if (!strcmp(s, SENSE_FLAG_KEYRING)) {
             flags |= RPMSENSE_KEYRING;
+        } else {
+            /* the bits generate_sense_flags() had no name for */
+            errno = 0;
+            value = strtoul(s, &end, 10);
+
+            if (errno != 0 || end == s || *end != '\0') {
+                warnx_escaped(_("*** unknown dependency sense flag: %s"), s);
+                continue;
+            }
+
+            flags |= (uint32_t) value;
         }
     }
 

@@ -534,7 +534,7 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
             json_object_array_add(names, json_object_new_string(name));
             json_object_array_add(texts, json_object_new_string(changelog_text));
         } else {
-            warnx(_("*** invalid changelog entry at index %lu"), i);
+            warnx(_("*** invalid changelog entry at index %zu"), i);
         }
 
         free(changelog_text);

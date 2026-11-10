@@ -1363,6 +1363,66 @@ class CreateWarnsAboutUnknownDependencyType(RequiresTarpm):
         self.assertNotIn("typo", query_rpm(pkg, "[%{requirename}\n]"))
 
 
+class CreateRefusesWideRdev(RequiresTarpm):
+    """A device number that does not fit in Filerdevs is an error"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        files = [
+            {"path": "/dev/wide", "type": "chardev", "rdev": 70000, "flags": ["ghost"]}
+        ]
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "files": files}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("/dev/wide has device number 70000", err)
+        self.assertFalse(os.path.exists(pkg))
+
+
+class CreateKeepsWideInodesApart(RequiresTarpm):
+    """Inode keys that only differ above 32 bits are not hard links"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        sharedir = os.path.join(tree, "payload", "usr", "share")
+        os.makedirs(sharedir)
+
+        for name in ["one", "two"]:
+            f = open(os.path.join(sharedir, name), "w")
+            f.write("%s\n" % name)
+            f.close()
+
+        files = [
+            {"path": "/usr/share/one", "type": "file", "inode": 1},
+            {"path": "/usr/share/two", "type": "file", "inode": (1 << 32) + 1},
+        ]
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "files": files}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        inodes = query_rpm(pkg, "[%{fileinodes}\n]").split()
+        self.assertEqual(len(set(inodes)), 2, inodes)
+
+        # both files keep their own bytes in the payload
+        again = os.path.join(self.output_dir, "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        for name in ["one", "two"]:
+            f = open(os.path.join(again, "payload", "usr", "share", name))
+            self.assertEqual(f.read(), "%s\n" % name)
+            f.close()
+
+
 class CreateSurvivesNullStrings(RequiresTarpm):
     """A JSON null where header.json wants a string does not crash create"""
 

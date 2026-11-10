@@ -3,9 +3,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+import os
 import subprocess
 
 from baseclass import RequiresTarpm
+from baseclass import TestUnpackRPM
+
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
 
 
 # Verify --help gives help output
@@ -193,3 +200,59 @@ class TarpmNoPayloadHelp(RequiresTarpm):
         self.assertEqual(p.returncode, 0)
 
         self.assertNotEqual(out.decode("utf-8").find("--no-payload"), -1)
+
+
+# Verify an unknown letter in the tar style options is an error
+class TarpmUnknownShortLetter(RequiresTarpm):
+    def runTest(self):
+        p = subprocess.Popen(
+            [self.tarpm, "tqf", self.tarpm],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 1)
+        s = "unknown option letter 'q' in \"tqf\""
+        self.assertNotEqual(err.decode("utf-8").find(s), -1)
+
+
+# Verify an empty -O or -P name is an error rather than /
+class TarpmEmptyOutputName(RequiresTarpm):
+    def runTest(self):
+        for opt in ["-O", "-P"]:
+            p = subprocess.Popen(
+                [self.tarpm, "-x", opt, "", "-f", self.tarpm],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = p.communicate()
+            self.assertEqual(p.returncode, 1)
+            s = "unable to canonicalize"
+            self.assertNotEqual(err.decode("utf-8").find(s), -1, opt)
+
+
+# Verify a later argument is not read as tar style option letters
+class TarpmShortLettersOnlyFirst(TestUnpackRPM):
+    def runTest(self):
+        self.rpm.do_make()
+        pkg = self.rpm.get_built_rpm(get_expected_arch())
+
+        # "cx" would ask for two modes if it were read as letters
+        p = subprocess.Popen(
+            [self.tarpm, "-t", "-f", pkg, "cx", "extra"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 0, err.decode("utf-8"))
+
+        # the bundled form still works as the first argument
+        dest = os.path.join(self.output_dir, "out")
+        p = subprocess.Popen(
+            [self.tarpm, "xnf", pkg, "-O", dest],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = p.communicate()
+        self.assertEqual(p.returncode, 0, err.decode("utf-8"))
+        self.assertTrue(os.path.isfile(os.path.join(dest, "header.json")))

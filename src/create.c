@@ -803,7 +803,7 @@ find_hardlink_groups(const struct hdr_file_lists *hfl, const size_t numfiles, st
     hl->nlinks = xcalloc(numfiles, sizeof(uint32_t));
 
     for (i = 0; i < numfiles; i++) {
-        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+        inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
         mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
 
         /* only regular files can be hardlinks */
@@ -898,7 +898,7 @@ order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, con
             continue;
         }
 
-        inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+        inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
         mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
         found = false;
 
@@ -926,7 +926,7 @@ order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, con
                 continue;
             }
 
-            inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl->fileinodes, i));
+            inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
             mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
 
             if (S_ISREG(mode) && inode == hl->inodes[j]) {
@@ -1348,7 +1348,7 @@ create_payload(struct json_object *header, const char *payload_dir)
         params.size = json_object_get_int64(json_object_array_get_idx(hfl.filesizes, i));
         params.mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filemodes, i));
         params.rdev = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl.filerdevs, i));
-        params.mtime = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filemtimes, i));
+        params.mtime = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.filemtimes, i));
         params.linkto = json_object_get_string(json_object_array_get_idx(hfl.filelinktos, i));
 
         /* we may not have fileuids or filegids, so default to 0 and then try */
@@ -1356,18 +1356,18 @@ create_payload(struct json_object *header, const char *payload_dir)
         params.gid = 0;
 
         if (hfl.fileuids) {
-            params.uid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileuids, i));
+            params.uid = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.fileuids, i));
         }
 
         if (hfl.filegids) {
-            params.gid = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.filegids, i));
+            params.gid = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.filegids, i));
         }
 
         /*
          * every payload entry carries the inode number from the
          * header, but only regular files can be hardlinks
          */
-        params.inode = (uint32_t) json_object_get_int(json_object_array_get_idx(hfl.fileinodes, i));
+        params.inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl.fileinodes, i));
         params.nlink = 1;
         params.hardlink = NULL;
         params.index = i;
@@ -2102,7 +2102,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         }
 
         /* update the size tag (header + payload) */
-        xasprintf(&buf, "%lu", totalsize);
+        xasprintf(&buf, "%" PRIu64, totalsize);
 
         if (set_tag_value(tags, sizetag, buf) != 0) {
             warnx(_("*** failed to update %s in signature"), sizetag);
@@ -2113,7 +2113,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         free(buf);
 
         /* update the payload size tag */
-        xasprintf(&buf, "%lu", archivesize);
+        xasprintf(&buf, "%" PRIu64, archivesize);
 
         if (set_tag_value(tags, payloadtag, buf) != 0) {
             warnx(_("*** failed to update %s in signature"), payloadtag);

@@ -129,6 +129,7 @@ main(int argc, char **argv)
     char *output_dir = NULL;
     int flags = R_OK;
     char *opt = NULL;
+    char *first = NULL;
     struct json_paths paths;
     char *short_opts = "txcvf:O:L:S:H:P:F:muglaDknV?";
     struct option long_opts[] = {
@@ -174,6 +175,11 @@ main(int argc, char **argv)
 
     if (cwd == NULL) {
         err(EXIT_FAILURE, "getcwd");
+    }
+
+    /* getopt_long() moves the arguments around, so remember the first one */
+    if (argc > 1) {
+        first = argv[1];
     }
 
     /* Parse command line options */
@@ -238,6 +244,12 @@ main(int argc, char **argv)
                 }
 
                 output_dir = abspath(optarg);
+
+                /* an empty name would put the output in / */
+                if (output_dir == NULL || *output_dir == '\0') {
+                    errx(EXIT_FAILURE, _("*** unable to canonicalize \"%s\""), optarg);
+                }
+
                 break;
             case 'L':
                 if (paths.lead) {
@@ -267,7 +279,7 @@ main(int argc, char **argv)
 
                 paths.payload = abspath(optarg);
 
-                if (paths.payload == NULL) {
+                if (paths.payload == NULL || *paths.payload == '\0') {
                     errx(EXIT_FAILURE, _("*** unable to canonicalize %s"), optarg);
                 }
 
@@ -332,8 +344,8 @@ main(int argc, char **argv)
      *     tar xvf FILENAME.tar
      *     tar cvf FILENAME.tar
      */
-    if ((optind + 1) != argc) {
-        /* process common short syntax options that may exist */
+    if ((optind + 1) != argc && optind < argc && argv[optind] == first && *first != '-') {
+        /* like tar(1), only the first argument holds bundled letters */
         opt = argv[optind];
 
         while (opt && *opt != '\0') {
@@ -369,6 +381,8 @@ main(int argc, char **argv)
 
                 havefilename = true;
                 break;
+            } else {
+                errx(EXIT_FAILURE, _("*** unknown option letter '%c' in \"%s\""), *opt, argv[optind]);
             }
 
             opt++;

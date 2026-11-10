@@ -146,7 +146,7 @@ struct file_list_tags {
     size_t nmimes;
 
     /* what each hard link group carried and the number rpm gives it */
-    int *inodes;
+    int64_t *inodes;
     int *mapped;
     size_t ninodes;
 
@@ -2033,7 +2033,7 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
     out->dirs = xcalloc(count, sizeof(char *));
     out->classes = xcalloc(count, sizeof(char *));
     out->mimes = xcalloc(count, sizeof(char *));
-    out->inodes = xcalloc(count, sizeof(int));
+    out->inodes = xcalloc(count, sizeof(*out->inodes));
     out->mapped = xcalloc(count, sizeof(int));
     out->devs = xcalloc(count, sizeof(dev_t));
     out->inos = xcalloc(count, sizeof(ino_t));
@@ -2495,7 +2495,7 @@ file_inode_value(struct file_list_tags *out, struct json_object *file, const str
 {
     size_t i = 0;
     ssize_t slot = 0;
-    int inode = 0;
+    int64_t inode = 0;
     int number = next;
 
     *shared = false;
@@ -2511,7 +2511,7 @@ file_inode_value(struct file_list_tags *out, struct json_object *file, const str
         return next;
     }
 
-    inode = (int) key_number(file, RPM_FILE_INODE_DESC);
+    inode = key_number(file, RPM_FILE_INODE_DESC);
 
     for (i = 0; i < out->ninodes; i++) {
         if (out->inodes[i] == inode) {
@@ -2622,6 +2622,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     size_t ndepends = 0;
     size_t dependsstart = 0;
     int64_t size = 0;
+    int64_t rdev = 0;
     uint32_t verify = 0;
     char *file_path = NULL;
     const char *relpath = NULL;
@@ -2689,7 +2690,16 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     json_object_array_add(out->filemtimes, json_object_new_int64(file_mtime_value(file)));
     json_object_array_add(out->fileusernames, json_object_new_string(key_string(file, RPM_FILE_USER_DESC, RPM_FILE_DEFAULT_USER)));
     json_object_array_add(out->filegroupnames, json_object_new_string(key_string(file, RPM_FILE_GROUP_DESC, RPM_FILE_DEFAULT_GROUP)));
-    json_object_array_add(out->filerdevs, json_object_new_int((int) key_number(file, RPM_FILE_RDEV_DESC)));
+    rdev = key_number(file, RPM_FILE_RDEV_DESC);
+
+    /* rpm stores the device number in 16 bits */
+    if (rdev < 0 || rdev > UINT16_MAX) {
+        warnx_escaped(_("*** %s has device number %" PRId64 ", which does not fit in %s"), path, rdev, rpmTagGetName(RPMTAG_FILERDEVS));
+        build->failed = true;
+        rdev = 0;
+    }
+
+    json_object_array_add(out->filerdevs, json_object_new_int((int) rdev));
     json_object_array_add(out->filedevices, json_object_new_int64(key_number(file, RPM_FILE_DEVICE_DESC)));
 
     str = file_digest_value(file, file_path, psb, build->digestalgo);

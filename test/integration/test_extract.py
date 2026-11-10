@@ -698,6 +698,24 @@ class VerifyOutputFilesDoNotFollowSymlinks(TestUnpackRPM):
             f.close()
 
 
+class VerifyVerboseKeepsDotfiles(TestUnpackRPM):
+    """Test -v prints a dotfile with its leading dot"""
+
+    def setUp(self):
+        super().setUp()
+        # at the top of the payload so the path starts "./."
+        self.rpm.add_installed_file(
+            "/.hidden", rpmfluff.SourceFile(".hidden", b"hidden\n")
+        )
+        self.opts = ["-v"]
+
+    def runTest(self):
+        super().runTest()
+        lines = self.out.decode("utf-8").splitlines()
+        self.assertIn("./.hidden", lines)
+        self.assertNotIn("./hidden", lines)
+
+
 class VerifyNevraCannotLeaveWorkingDir(TestUnpackRPM):
     """Test a Name with "../" does not move the extraction out of cwd"""
 

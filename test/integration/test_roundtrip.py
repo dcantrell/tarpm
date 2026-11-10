@@ -2821,3 +2821,54 @@ class TestControlCharactersEscaped(RoundTrip, TestUnpackRPM):
         self.assertTrue("bad\\033[2Jname" in out, out)
         self.assertFalse("\x1b" in out, out)
         self.assertTrue(os.path.isfile(self.payload_path(dest, name)))
+
+
+class TestRoundTripWideValues(RoundTrip, TestUnpackRPM):
+    """A mtime after 2038 and dependency flags with no name survive"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/late.txt" % NAME,
+            rpmfluff.SourceFile("late.txt", b"late\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+        extract_dir = self.extract(original)
+        header = read_header(extract_dir)
+
+        # past the point where a signed 32 bit number runs out
+        late = utc_seconds(2040, 1, 1)
+        path = "/usr/share/%s/late.txt" % NAME
+
+        for entry in header["files"]:
+            if entry["path"] == path:
+                entry["mtime"] = "2040-01-01T12:00:00Z"
+
+        # bits 22 and 27 have no name in rpm
+        bits = (1 << 22) | (1 << 27)
+        header["dependencies"]["requires"].append(
+            {"name": "wide-flags", "sense_flags": ["%d" % bits]}
+        )
+        write_header(extract_dir, header)
+
+        recreated = self.create(extract_dir)
+        self.assertIn((path, late), mtime_list(recreated))
+
+        flags = query_rpm(recreated, "[%{requirename} %{requireflags}\\n]")
+        self.assertIn("wide-flags %d" % bits, flags)
+
+        # the payload carries the same time as the header
+        again = self.extract(recreated, subdir="again")
+        self.assertEqual(int(os.stat(self.payload_path(again, path)).st_mtime), late)
+
+        # and the flags come back out the way they went in
+        for entry in read_header(again)["dependencies"]["requires"]:
+            if entry["name"] == "wide-flags":
+                self.assertEqual(entry["sense_flags"], ["%d" % bits])
+                break
+        else:
+            self.fail("wide-flags is missing from the requires")
