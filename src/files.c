@@ -1733,7 +1733,7 @@ file_digest_algo(struct json_object *tags)
 {
     const char *str = NULL;
 
-    str = get_tag_value(tags, rpmTagGetName(RPMTAG_FILEDIGESTALGO));
+    str = get_tag_value(tags, RPMTAG_FILEDIGESTALGO, false);
 
     if (str == NULL) {
         return PGPHASHALGO_MD5;
@@ -1771,7 +1771,7 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
     scan.files = files;
     scan.source_package = false;
 
-    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+    if (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL) {
         scan.source_package = true;
     }
 
@@ -3024,15 +3024,15 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
      * header has gets the new number.
      */
     snprintf(sizebuf, sizeof(sizebuf), "%" PRId64, build.totalsize);
-    set_tag_value(tags, rpmTagGetName(RPMTAG_SIZE), sizebuf);
-    set_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE), sizebuf);
+    set_tag_value(tags, RPMTAG_SIZE, false, sizebuf);
+    set_tag_value(tags, RPMTAG_LONGSIZE, false, sizebuf);
 
     /*
      * rpmbuild always writes one of the two, so a header with neither
      * gets the one the total fits in.  filter_format_tags() moves Size
      * to Longsize later when the total outgrew it.
      */
-    if (!has_tag(tags, rpmTagGetName(RPMTAG_SIZE)) && !has_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE))) {
+    if (!has_tag(tags, RPMTAG_SIZE, false) && !has_tag(tags, RPMTAG_LONGSIZE, false)) {
         entry = json_object_new_object();
 
         if (build.totalsize < (int64_t) UINT32_MAX) {
@@ -3084,7 +3084,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
      * rpmbuild only classifies the files of binary packages, so a
      * source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags.
      */
-    source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
+    source_package = (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL);
 
     if (source_package) {
         json_object_put(out.fileclass);
@@ -3332,7 +3332,7 @@ add_file_signature_tags(struct json_object *signature, struct json_object *heade
     }
 
     /* rpmsign(1) does not sign the files of a source package */
-    if (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+    if (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL) {
         return;
     }
 
@@ -3369,7 +3369,7 @@ add_file_signature_tags(struct json_object *signature, struct json_object *heade
      * both headers, so the main header ones win.  filter_format_tags()
      * takes them out of a v6 format package.
      */
-    if (have_signatures && format == RPM_FORMAT_V4 && has_tag(tags, rpmTagGetName(RPMTAG_FILESIGNATURES))) {
+    if (have_signatures && format == RPM_FORMAT_V4 && has_tag(tags, RPMTAG_FILESIGNATURES, false)) {
         warnx(_("*** the main header carries %s, leaving the file signatures out of the signature header"), rpmTagGetName(RPMTAG_FILESIGNATURES));
         have_signatures = false;
     }
@@ -3382,7 +3382,7 @@ add_file_signature_tags(struct json_object *signature, struct json_object *heade
     }
 
     if (have_verity) {
-        str = get_tag_value(tags, sig_tag_name(RPMSIGTAG_VERITYSIGNATUREALGO_VALUE));
+        str = get_tag_value(tags, RPMSIGTAG_VERITYSIGNATUREALGO_VALUE, false);
 
         if (str != NULL) {
             errno = 0;

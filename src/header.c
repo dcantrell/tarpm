@@ -674,6 +674,13 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
 
         name = report_tag_name(tag_number, is_signature);
 
+        /* rpm turns away a tag with a count of zero */
+        if (json_object_get_type(key) == json_type_array && json_object_array_length(key) == 0) {
+            warnx(_("*** the %s tag has an empty array as its value, rpm needs at least one value"), name);
+            r = -1;
+            continue;
+        }
+
         if (entry_type == RPM_STRING_TYPE || entry_type == RPM_I18NSTRING_TYPE) {
             if (json_object_get_type(key) != json_type_string) {
                 warnx(_("*** the %s tag has a string type but its value is not a string"), name);

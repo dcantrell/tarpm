@@ -1069,6 +1069,80 @@ class CreateRejectsUnknownTagName(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsEmptyArray(RequiresTarpm):
+    """A tag holding an empty array is turned away and not written with a count of 0"""
+
+    def runTest(self):
+        cases = [
+            ("Excludearch", "string array"),
+            ("Epoch", "int32"),
+            ("#5999", "int16"),
+        ]
+
+        for i, (name, tagtype) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": name, "type": tagtype, "value": []})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0, msg=name)
+            self.assertIn("tag has an empty array as its value", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateReadsTagNameInAnyCase(RequiresTarpm):
+    """A tag named in another case is the tag the defaults and the payload look for"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "PAYLOADCOMPRESSOR", "type": "string", "value": "xz"})
+        tags.append({"tag": "buildhost", "type": "string", "value": "example"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertNotIn("more than once", err)
+
+        self.assertEqual(query_rpm(pkg, "%{payloadcompressor}"), "xz")
+        self.assertEqual(query_rpm(pkg, "%{buildhost}"), "example")
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)
+
+        # the defaults did not add a second copy of either tag
+        again = os.path.join(self.output_dir, "again")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", again])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(again, "header.json"))
+        header = json.load(f)
+        f.close()
+
+        names = [t["tag"] for t in header["tags"]]
+        self.assertEqual(names.count("Payloadcompressor"), 1)
+        self.assertEqual(names.count("Buildhost"), 1)
+
+
+class CreateWarnsAboutDuplicateTag(RequiresTarpm):
+    """A tag header.json carries twice gets one warning and still makes a package"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "Url", "type": "string", "value": "https://a.example"})
+        tags.append({"tag": "URL", "type": "string", "value": "https://b.example"})
+        tags.append({"tag": "#1020", "type": "string", "value": "https://c.example"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(
+            err.count("Url is in the tags in header.json more than once"), 1, msg=err
+        )
+        self.assertTrue(os.path.isfile(pkg))
+
+
 def query_locale(pkg, queryformat, language):
     """Run rpm -qp over a package with LANGUAGE set and return what it printed"""
     proc = subprocess.Popen(

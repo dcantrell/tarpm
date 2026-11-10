@@ -130,7 +130,7 @@ create_lead(struct json_object *header)
      * rpmLeadFromHeader() in lib/rpmlead.cc in the rpm source goes by
      * whether the header carries RPMTAG_RPMFORMAT, so we do the same.
      */
-    if (get_tag_value(obj, rpmTagGetName(RPMTAG_RPMFORMAT_VALUE)) != NULL) {
+    if (get_tag_value(obj, RPMTAG_RPMFORMAT_VALUE, false) != NULL) {
         lead->major = RPM_LEAD_MAJOR_V6;
     } else {
         lead->major = RPM_LEAD_MAJOR_V4;
@@ -163,7 +163,7 @@ create_lead(struct json_object *header)
      * are looking at a source package which is type 1 in the lead,
      * otherwise binary packages are type 0.
      */
-    if (get_tag_value(obj, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL) {
+    if (get_tag_value(obj, RPMTAG_SOURCEPACKAGE, false) != NULL) {
         lead->type = htons(1);
     } else {
         lead->type = htons(0);
@@ -171,16 +171,16 @@ create_lead(struct json_object *header)
 
     /* construct the NEVR string */
 
-    n = get_tag_value(obj, "Name");
-    v = get_tag_value(obj, "Version");
-    r = get_tag_value(obj, "Release");
+    n = get_tag_value(obj, RPMTAG_NAME, false);
+    v = get_tag_value(obj, RPMTAG_VERSION, false);
+    r = get_tag_value(obj, RPMTAG_RELEASE, false);
 
     if (n == NULL || v == NULL || r == NULL) {
         free(lead);
         return NULL;
     }
 
-    e = get_tag_value(obj, "Epoch");
+    e = get_tag_value(obj, RPMTAG_EPOCH, false);
 
     /* only write the epoch value to the nevr string if it is >0 */
     if (e && strcmp(e, "0")) {

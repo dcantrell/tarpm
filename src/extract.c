@@ -169,7 +169,7 @@ mark_uncompressed_payload(const int fd, struct json_object *header)
         return;
     }
 
-    if (has_tag(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR))) {
+    if (has_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, false)) {
         return;
     }
 

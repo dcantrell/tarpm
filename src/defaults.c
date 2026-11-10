@@ -35,7 +35,7 @@ add_default_tag(struct json_object *tags, const rpmTagVal tag, const rpmTagType 
 
     name = rpmTagGetName(tag);
 
-    if (value == NULL || has_tag(tags, name)) {
+    if (value == NULL || has_tag(tags, tag, false)) {
         return;
     }
 
@@ -59,7 +59,7 @@ has_file_list(struct json_object *header, struct json_object *tags)
 {
     struct json_object *files = NULL;
 
-    if (has_tag(tags, rpmTagGetName(RPMTAG_FILEDIGESTS))) {
+    if (has_tag(tags, RPMTAG_FILEDIGESTS, false)) {
         return true;
     }
 
@@ -92,7 +92,7 @@ add_region_trailer(struct json_object *tags)
 
     name = rpmTagGetName(RPMTAG_HEADERIMMUTABLE);
 
-    if (has_tag(tags, name)) {
+    if (has_tag(tags, RPMTAG_HEADERIMMUTABLE, false)) {
         return 0;
     }
 
@@ -141,7 +141,7 @@ source_nevr(struct json_object *tags)
     char *r = NULL;
     const char *srpm = NULL;
 
-    srpm = get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCERPM));
+    srpm = get_tag_value(tags, RPMTAG_SOURCERPM, false);
 
     if (srpm == NULL || !strcmp(srpm, RPM_DEFAULT_SOURCERPM)) {
         return NULL;
@@ -172,9 +172,9 @@ package_evr(struct json_object *tags)
     const char *v = NULL;
     const char *r = NULL;
 
-    e = get_tag_value(tags, rpmTagGetName(RPMTAG_EPOCH));
-    v = get_tag_value(tags, rpmTagGetName(RPMTAG_VERSION));
-    r = get_tag_value(tags, rpmTagGetName(RPMTAG_RELEASE));
+    e = get_tag_value(tags, RPMTAG_EPOCH, false);
+    v = get_tag_value(tags, RPMTAG_VERSION, false);
+    r = get_tag_value(tags, RPMTAG_RELEASE, false);
 
     if (e != NULL && strcmp(e, "0")) {
         xasprintf(&evr, "%s:%s-%s", e, v, r);
@@ -203,7 +203,7 @@ add_self_provide(struct json_object *header, struct json_object *tags)
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    name = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
+    name = get_tag_value(tags, RPMTAG_NAME, false);
 
     if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {
         dependencies = json_object_new_object();
@@ -279,19 +279,19 @@ apply_header_defaults(struct json_object *header, const int format)
         return -1;
     }
 
-    name = get_tag_value(tags, rpmTagGetName(RPMTAG_NAME));
+    name = get_tag_value(tags, RPMTAG_NAME, false);
 
-    if (name == NULL || get_tag_value(tags, rpmTagGetName(RPMTAG_VERSION)) == NULL || get_tag_value(tags, rpmTagGetName(RPMTAG_RELEASE)) == NULL) {
+    if (name == NULL || get_tag_value(tags, RPMTAG_VERSION, false) == NULL || get_tag_value(tags, RPMTAG_RELEASE, false) == NULL) {
         warnx(_("*** missing %s, %s, or %s in header data"), rpmTagGetName(RPMTAG_NAME), rpmTagGetName(RPMTAG_VERSION), rpmTagGetName(RPMTAG_RELEASE));
         return -1;
     }
 
     /* inventing a license string is worse than an empty field */
-    if (!has_tag(tags, rpmTagGetName(RPMTAG_LICENSE))) {
+    if (!has_tag(tags, RPMTAG_LICENSE, false)) {
         warnx(_("*** missing %s in header data, continuing without it"), rpmTagGetName(RPMTAG_LICENSE));
     }
 
-    source_package = (get_tag_value(tags, rpmTagGetName(RPMTAG_SOURCEPACKAGE)) != NULL);
+    source_package = (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL);
 
     /* addTE() in lib/rpmte.cc turns away a package with no os or arch */
     add_default_tag(tags, RPMTAG_OS, RPM_STRING_TYPE, RPM_DEFAULT_OS);
@@ -315,7 +315,7 @@ apply_header_defaults(struct json_object *header, const int format)
      * and it never reaches the header.  Otherwise match rpm when the
      * metadata names no compressor.
      */
-    compressor = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+    compressor = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
 
     if (compressor != NULL && !strcmp(compressor, PAYLOADCOMPRESSOR_NONE)) {
         drop_tag(tags, RPMTAG_PAYLOADCOMPRESSOR);
@@ -325,7 +325,7 @@ apply_header_defaults(struct json_object *header, const int format)
         add_default_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR);
 
         /* level 19 is for zstd, the other compressors stop at 9 */
-        compressor = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+        compressor = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
 
         if (compressor != NULL && !strcmp(compressor, RPMFORMAT_V6_COMPRESSOR)) {
             add_default_tag(tags, RPMTAG_PAYLOADFLAGS, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR_LEVEL);

@@ -918,9 +918,9 @@ test_add_file_list_tags_adds_size(void)
     json_object_object_add(file, "size", json_object_new_int64(1024));
     add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_V4);
 
-    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "1024");
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_SIZE, false), "1024");
     TARPM_ASSERT_STRING_EQUAL(get_tag_type(tags, rpmTagGetName(RPMTAG_SIZE)), "int32");
-    TARPM_ASSERT_FALSE(has_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE)));
+    TARPM_ASSERT_FALSE(has_tag(tags, RPMTAG_LONGSIZE, false));
     json_object_put(tags);
     json_object_put(files);
 
@@ -931,9 +931,9 @@ test_add_file_list_tags_adds_size(void)
     json_object_object_add(file, "size", json_object_new_int64(5000000000LL));
     add_file_list_tags(tags, files, NULL, NULL, RPM_FORMAT_V4);
 
-    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "5000000000");
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_LONGSIZE, false), "5000000000");
     TARPM_ASSERT_STRING_EQUAL(get_tag_type(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "int64");
-    TARPM_ASSERT_FALSE(has_tag(tags, rpmTagGetName(RPMTAG_SIZE)));
+    TARPM_ASSERT_FALSE(has_tag(tags, RPMTAG_SIZE, false));
     json_object_put(tags);
     json_object_put(files);
 
@@ -1495,7 +1495,7 @@ test_add_file_list_tags_total_size(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "4279"));
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "4279"));
 
     json_object_put(tags);
 
@@ -1505,7 +1505,7 @@ test_add_file_list_tags_total_size(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)), "4279"));
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_LONGSIZE, false), "4279"));
 
     json_object_put(tags);
 
@@ -1514,8 +1514,8 @@ test_add_file_list_tags_total_size(void)
 
     add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_DEFAULT);
 
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "4279"));
-    TARPM_ASSERT_TRUE(get_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE)) == NULL);
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "4279"));
+    TARPM_ASSERT_TRUE(get_tag_value(tags, RPMTAG_LONGSIZE, false) == NULL);
 
     json_object_put(tags);
     json_object_put(files);
@@ -1588,7 +1588,7 @@ test_add_file_list_tags_payload_hardlinks(void)
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 2)), 2);
 
     /* one and the hard link group each count once */
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "110"));
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "110"));
 
     /* the payload inode numbers are not written back to the entries */
     TARPM_ASSERT_FALSE(json_object_object_get_ex(json_object_array_get_idx(files, 1), "inode", NULL));
@@ -1692,7 +1692,7 @@ test_add_file_list_tags_keyed_hardlinks(void)
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 5)), 6);
 
     /* each of the first two groups counts once, e and f count apart */
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, rpmTagGetName(RPMTAG_SIZE)), "2110"));
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "2110"));
 
     /* a second pass over the same entries gives the same numbers */
     json_object_put(tags);

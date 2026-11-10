@@ -66,7 +66,7 @@ tag_value(struct json_object *header, const rpmTagVal tag)
         return NULL;
     }
 
-    return get_tag_value(tags, rpmTagGetName(tag));
+    return get_tag_value(tags, tag, false);
 }
 
 /* Return the provides array of the header, NULL if it is not there */

@@ -1054,7 +1054,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* an unknown name would get an uncompressed payload */
-    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+    tag = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
 
     if (tag != NULL && !known_compressor(tag)) {
         warnx(_("*** unknown Payloadcompressor \"%s\", use gzip, bzip2, xz, lzma, zstd, or none"), tag);
@@ -1133,7 +1133,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* get the compression algorithm type and level */
-    tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADCOMPRESSOR));
+    tag = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
 
     /*
      * For zstd we compress by hand with no checksum.  The rpm cpio
@@ -1156,7 +1156,7 @@ create_payload(struct json_object *header, const char *payload_dir)
         }
 
         /* get the compression level */
-        level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+        level = get_tag_value(tags, RPMTAG_PAYLOADFLAGS, false);
 
         if (level != NULL) {
             if (parse_payload_flags(level, &flags_level) != 0) {
@@ -1204,7 +1204,7 @@ create_payload(struct json_object *header, const char *payload_dir)
 
     /* set the compression level for non-zstd compressors */
     if (!zstd.used && tag != NULL) {
-        level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+        level = get_tag_value(tags, RPMTAG_PAYLOADFLAGS, false);
 
         if (level != NULL) {
             if (parse_payload_flags(level, &flags_level) != 0) {
@@ -1532,17 +1532,17 @@ signature_size(struct json_object *signature)
 }
 
 /*
- * Return the name of the reserved space tag in the signature header
- * given an RPM format version.  Do not free the returned string.
+ * Return the reserved space tag in the signature header given an RPM
+ * format version.
  */
-static const char *
+static uint32_t
 reserved_space_tag(const int format)
 {
     if (format == RPM_FORMAT_V6) {
-        return sig_tag_name(RPMSIGTAG_RESERVED_VALUE);
+        return RPMSIGTAG_RESERVED_VALUE;
     }
 
-    return sig_tag_name(RPMSIGTAG_RESERVEDSPACE);
+    return RPMSIGTAG_RESERVEDSPACE;
 }
 
 /*
@@ -1555,7 +1555,7 @@ reserved_space_tag(const int format)
  * Returns 0 on success, 1 if the bytes do not fit, and -1 on failure.
  */
 static int
-shrink_reserved_space(struct json_object *tags, const char *tag, const size_t bytes)
+shrink_reserved_space(struct json_object *tags, const uint32_t tag, const size_t bytes)
 {
     int r = 0;
     size_t size = 0;
@@ -1567,10 +1567,10 @@ shrink_reserved_space(struct json_object *tags, const char *tag, const size_t by
         return 0;
     }
 
-    old = get_tag_value(tags, tag);
+    old = get_tag_value(tags, tag, true);
 
     if (old == NULL || rpmBase64Decode(old, &blob, &size) != 0) {
-        warnx(_("*** unable to read %s in signature"), tag);
+        warnx(_("*** unable to read %s in signature"), sig_tag_name(tag));
         return -1;
     }
 
@@ -1589,7 +1589,7 @@ shrink_reserved_space(struct json_object *tags, const char *tag, const size_t by
         return -1;
     }
 
-    r = set_tag_value(tags, tag, value);
+    r = set_tag_value(tags, tag, true, value);
     free(value);
     return r;
 }
@@ -1721,11 +1721,11 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
     for (i = 0; digests[i] != 0; i++) {
         name = sig_tag_name(digests[i]);
 
-        if (get_tag_value(tags, name) == NULL) {
+        if (get_tag_value(tags, digests[i], true) == NULL) {
             continue;
         }
 
-        value = get_tag_value(kepttags, name);
+        value = get_tag_value(kepttags, digests[i], true);
 
         if (value == NULL || value[0] == '\0') {
             continue;
@@ -1736,7 +1736,7 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
             continue;
         }
 
-        if (set_tag_value(tags, name, value) != 0) {
+        if (set_tag_value(tags, digests[i], true, value) != 0) {
             warnx(_("*** failed to update %s in signature"), name);
             return -1;
         }
@@ -1874,7 +1874,7 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
             continue;
         }
 
-        if (has_tag(tags, sig_tag_name(tag))) {
+        if (has_tag(tags, tag, true)) {
             warnx(_("*** signature.json has more than one %s, keeping the first"), sig_tag_name(tag));
             continue;
         }
@@ -1943,7 +1943,7 @@ check_kept_signatures(struct json_object *kept, const char *sha256)
         }
     }
 
-    value = get_tag_value(kepttags, sig_tag_name(RPMSIGTAG_SHA256));
+    value = get_tag_value(kepttags, RPMSIGTAG_SHA256, true);
 
     if (signed_package && value != NULL && strcasecmp(value, sha256) != 0) {
         warnx(_("*** the main header differs from the one signature.json was signed for, the kept signatures will not verify"));
@@ -1965,8 +1965,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     unsigned char *digest = NULL;
     void *blob = NULL;
     char *buf = NULL;
-    const char *sizetag = NULL;
-    const char *payloadtag = NULL;
+    uint32_t sizetag = 0;
+    uint32_t payloadtag = 0;
     struct json_object *tags = NULL;
     off_t payload_off = 0;
     uint64_t payloadsize = 0;
@@ -2017,11 +2017,11 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     if (format == RPM_FORMAT_V4) {
         /* a package too big for the 32-bit tags gets the 64-bit ones */
         if (totalsize >= UINT32_MAX || archivesize >= UINT32_MAX) {
-            sizetag = sig_tag_name(RPMSIGTAG_LONGSIZE);
-            payloadtag = sig_tag_name(RPMSIGTAG_LONGARCHIVESIZE);
+            sizetag = RPMSIGTAG_LONGSIZE;
+            payloadtag = RPMSIGTAG_LONGARCHIVESIZE;
             oldsize = signature_size(signature);
 
-            if (widen_size_tag(tags, sig_tag_name(RPMSIGTAG_SIZE), sizetag) != 0 || widen_size_tag(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), payloadtag) != 0) {
+            if (widen_size_tag(tags, sig_tag_name(RPMSIGTAG_SIZE), sig_tag_name(sizetag)) != 0 || widen_size_tag(tags, sig_tag_name(RPMSIGTAG_PAYLOADSIZE), sig_tag_name(payloadtag)) != 0) {
                 warnx(_("*** failed to widen the size tags in signature"));
                 return -1;
             }
@@ -2034,15 +2034,15 @@ update_signature(struct json_object *signature, struct json_object *header, cons
                 return -1;
             }
         } else {
-            sizetag = sig_tag_name(RPMSIGTAG_SIZE);
-            payloadtag = sig_tag_name(RPMSIGTAG_PAYLOADSIZE);
+            sizetag = RPMSIGTAG_SIZE;
+            payloadtag = RPMSIGTAG_PAYLOADSIZE;
         }
 
         /* update the size tag (header + payload) */
         xasprintf(&buf, "%" PRIu64, totalsize);
 
-        if (set_tag_value(tags, sizetag, buf) != 0) {
-            warnx(_("*** failed to update %s in signature"), sizetag);
+        if (set_tag_value(tags, sizetag, true, buf) != 0) {
+            warnx(_("*** failed to update %s in signature"), sig_tag_name(sizetag));
             free(buf);
             return -1;
         }
@@ -2052,8 +2052,8 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         /* update the payload size tag */
         xasprintf(&buf, "%" PRIu64, archivesize);
 
-        if (set_tag_value(tags, payloadtag, buf) != 0) {
-            warnx(_("*** failed to update %s in signature"), payloadtag);
+        if (set_tag_value(tags, payloadtag, true, buf) != 0) {
+            warnx(_("*** failed to update %s in signature"), sig_tag_name(payloadtag));
             free(buf);
             return -1;
         }
@@ -2079,7 +2079,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
             return -1;
         }
 
-        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_MD5), buf) != 0) {
+        if (set_tag_value(tags, RPMSIGTAG_MD5, true, buf) != 0) {
             warnx(_("*** failed to update MD5 digest in signature"));
             free(digest);
             free(buf);
@@ -2103,7 +2103,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
             sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
         }
 
-        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA1), buf) != 0) {
+        if (set_tag_value(tags, RPMSIGTAG_SHA1, true, buf) != 0) {
             warnx(_("*** failed to update SHA-1 digest in signature"));
             free(digest);
             free(buf);
@@ -2128,7 +2128,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
         sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
     }
 
-    if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA256), buf) != 0) {
+    if (set_tag_value(tags, RPMSIGTAG_SHA256, true, buf) != 0) {
         warnx(_("*** failed to update SHA-256 digest in signature"));
         free(digest);
         free(buf);
@@ -2155,7 +2155,7 @@ update_signature(struct json_object *signature, struct json_object *header, cons
             sprintf(&buf[i * 2], "%02x", (unsigned int) digest[i]);
         }
 
-        if (set_tag_value(tags, sig_tag_name(RPMSIGTAG_SHA3_256_VALUE), buf) != 0) {
+        if (set_tag_value(tags, RPMSIGTAG_SHA3_256_VALUE, true, buf) != 0) {
             warnx(_("*** failed to update SHA3-256 digest in signature"));
             free(digest);
             free(buf);
@@ -2192,7 +2192,7 @@ warn_nevr_slash(struct json_object *header)
     }
 
     for (i = 0; nevr[i] != 0; i++) {
-        value = get_tag_value(tags, rpmTagGetName(nevr[i]));
+        value = get_tag_value(tags, nevr[i], false);
 
         if (value != NULL && strchr(value, '/') != NULL) {
             warnx(_("*** %s \"%s\" holds a slash, rpmbuild would refuse it"), rpmTagGetName(nevr[i]), value);
@@ -2363,6 +2363,68 @@ check_raw_tags(struct json_object *header)
     return 0;
 }
 
+/* qsort() comparison for tag numbers */
+static int
+compare_tag_value(const void *a, const void *b)
+{
+    rpmTagVal x = *(const rpmTagVal *) a;
+    rpmTagVal y = *(const rpmTagVal *) b;
+
+    return (x > y) - (x < y);
+}
+
+/*
+ * Warn about a tag that header.json carries more than once.  Names
+ * in another case or the numeric form count as the same tag.  The
+ * lookups only see the first copy.  A package can carry a tag twice
+ * and an extract keeps both, so this is not an error.
+ */
+static void
+warn_duplicate_tags(struct json_object *header)
+{
+    size_t i = 0;
+    size_t n = 0;
+    const char *name = NULL;
+    rpmTagVal *numbers = NULL;
+    struct json_object *tags = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
+        return;
+    }
+
+    n = json_object_array_length(tags);
+
+    if (n < 2) {
+        return;
+    }
+
+    numbers = xcalloc(n, sizeof(*numbers));
+
+    for (i = 0; i < n; i++) {
+        numbers[i] = get_tag_number(json_object_array_get_idx(tags, i), false);
+    }
+
+    qsort(numbers, n, sizeof(*numbers), compare_tag_value);
+
+    /* warn once for each tag, on its second copy */
+    for (i = 1; i < n; i++) {
+        if (numbers[i] == RPMTAG_NOT_FOUND || numbers[i] != numbers[i - 1] || (i > 1 && numbers[i] == numbers[i - 2])) {
+            continue;
+        }
+
+        name = rpmTagGetName(numbers[i]);
+
+        if (!strcmp(name, "(unknown)")) {
+            warnx(_("*** tag #%d is in the tags in %s more than once"), numbers[i], OUTPUT_HEADER);
+        } else {
+            warnx(_("*** %s is in the tags in %s more than once"), name, OUTPUT_HEADER);
+        }
+    }
+
+    free(numbers);
+    return;
+}
+
 /*
  * Check that every path in the "files" array stays in the payload
  * tree.  The path is joined to payload_dir to find the file, so ".."
@@ -2503,6 +2565,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         warnx(_("*** missing header data"));
         goto create_cleanup;
     }
+
+    warn_duplicate_tags(header);
 
     /* everything below reads the dependencies, so check them first */
     if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {

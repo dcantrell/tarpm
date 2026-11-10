@@ -584,26 +584,38 @@ get_tag_number(struct json_object *entry, bool signature)
 }
 
 /*
+ * True if a "tags" array entry is for the given tag.  We go by number
+ * like get_tag_number() so a name in another case, an older rpm name
+ * or the numeric form all match.  An entry with no name is not a
+ * match.
+ */
+static bool
+is_tag_entry(struct json_object *entry, const rpmTagVal tag, const bool signature)
+{
+    if (tag == RPMTAG_NOT_FOUND || !json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, NULL)) {
+        return false;
+    }
+
+    return (get_tag_number(entry, signature) == tag);
+}
+
+/*
  * Given a "tags" array from a header JSON file, return true if it
- * carries an entry for the named tag.  Unlike get_tag_value() this
- * does not care whether the entry holds its value inline or in a
- * file alongside header.json.
+ * carries an entry for the tag.  Unlike get_tag_value() this does not
+ * care whether the entry holds its value inline or in a file
+ * alongside header.json.
  */
 bool
-has_tag(const struct json_object *tags, const char *tag)
+has_tag(const struct json_object *tags, const rpmTagVal tag, const bool signature)
 {
     size_t i = 0;
-    struct json_object *entry = NULL;
-    struct json_object *value = NULL;
 
-    if (tags == NULL || tag == NULL || json_object_get_type(tags) != json_type_array) {
+    if (tags == NULL || json_object_get_type(tags) != json_type_array) {
         return false;
     }
 
     for (i = 0; i < json_object_array_length(tags); i++) {
-        entry = json_object_array_get_idx(tags, i);
-
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) && !strcmp(tag, str_or_empty(json_object_get_string(value)))) {
+        if (is_tag_entry(json_object_array_get_idx(tags, i), tag, signature)) {
             return true;
         }
     }
@@ -612,19 +624,19 @@ has_tag(const struct json_object *tags, const char *tag)
 }
 
 /*
- * Given a "tags" array from a header JSON file, find the entry whose
- * "tag" field matches name and return its value as a string.  Returns
- * NULL if there is no match.  Caller must not free the string.
+ * Given a "tags" array from a header JSON file, find the entry for
+ * the tag and return its value as a string.  Returns NULL if there is
+ * no match.  Caller must not free the string.
  */
 const char *
-get_tag_value(const struct json_object *tags, const char *tag)
+get_tag_value(const struct json_object *tags, const rpmTagVal tag, const bool signature)
 {
     const char *v = NULL;
     size_t i = 0;
     struct json_object *entry = NULL;
     struct json_object *value = NULL;
 
-    if (tags == NULL || tag == NULL) {
+    if (tags == NULL) {
         return NULL;
     }
 
@@ -641,20 +653,14 @@ get_tag_value(const struct json_object *tags, const char *tag)
             break;
         }
 
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
-            /* we found the name key, check the value */
-            if (strcmp(tag, str_or_empty(json_object_get_string(value)))) {
-                /* no match */
-                continue;
-            }
+        if (!is_tag_entry(entry, tag, signature)) {
+            continue;
+        }
 
-            value = NULL;
-
-            /* we have a match, get the value for the caller */
-            if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value) == 1) {
-                v = json_object_get_string(value);
-                break;
-            }
+        /* we have a match, get the value for the caller */
+        if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value) == 1) {
+            v = json_object_get_string(value);
+            break;
         }
     }
 
@@ -662,18 +668,17 @@ get_tag_value(const struct json_object *tags, const char *tag)
 }
 
 /*
- * Given a "tags" array from a header JSON file, find the entry whose
- * "tag" field matches name and set its value to new_value.  Returns 0
- * on success, -1 on failure.
+ * Given a "tags" array from a header JSON file, find the entry for
+ * the tag and set its value to new_value.  Returns 0 on success, -1
+ * on failure.
  */
 int
-set_tag_value(struct json_object *tags, const char *tag, const char *new_value)
+set_tag_value(struct json_object *tags, const rpmTagVal tag, const bool signature, const char *new_value)
 {
     size_t i = 0;
     struct json_object *entry = NULL;
-    struct json_object *value = NULL;
 
-    if (tags == NULL || tag == NULL || new_value == NULL) {
+    if (tags == NULL || new_value == NULL) {
         return -1;
     }
 
@@ -683,18 +688,15 @@ set_tag_value(struct json_object *tags, const char *tag, const char *new_value)
     }
 
     for (i = 0; i < json_object_array_length(tags); i++) {
-        value = NULL;
         entry = json_object_array_get_idx(tags, i);
 
         if (entry == NULL) {
             break;
         }
 
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
-            if (!strcmp(tag, str_or_empty(json_object_get_string(value)))) {
-                json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(new_value));
-                return 0;
-            }
+        if (is_tag_entry(entry, tag, signature)) {
+            json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(new_value));
+            return 0;
         }
     }
 

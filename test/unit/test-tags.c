@@ -370,6 +370,20 @@ test_get_tag_number(void)
     return;
 }
 
+/* Add a tag entry with a string value to a tags array */
+static void
+add_test_tag(struct json_object *tags, const char *name, const char *value)
+{
+    struct json_object *entry = NULL;
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string(name));
+    json_object_object_add(entry, "value", json_object_new_string(value));
+    json_object_array_add(tags, entry);
+
+    return;
+}
+
 void
 test_get_tag_value(void)
 {
@@ -378,49 +392,61 @@ test_get_tag_value(void)
     const char *result = NULL;
 
     /* NULL inputs return NULL */
-    result = get_tag_value(NULL, "Name");
+    result = get_tag_value(NULL, RPMTAG_NAME, false);
     TARPM_ASSERT_TRUE(result == NULL);
 
     tags = json_object_new_array();
-    result = get_tag_value(tags, NULL);
+    result = get_tag_value(tags, RPMTAG_NOT_FOUND, false);
     TARPM_ASSERT_TRUE(result == NULL);
     json_object_put(tags);
 
     /* create a tags array with some entries */
     tags = json_object_new_array();
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, "tag", json_object_new_string("Name"));
-    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
-    json_object_array_add(tags, entry);
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, "tag", json_object_new_string("Version"));
-    json_object_object_add(entry, "value", json_object_new_string("1.0"));
-    json_object_array_add(tags, entry);
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, "tag", json_object_new_string("Release"));
-    json_object_object_add(entry, "value", json_object_new_string("1"));
-    json_object_array_add(tags, entry);
+    add_test_tag(tags, "Name", "testpkg");
+    add_test_tag(tags, "Version", "1.0");
+    add_test_tag(tags, "Release", "1");
 
     /* test getting valid tag values */
-    result = get_tag_value(tags, "Name");
+    result = get_tag_value(tags, RPMTAG_NAME, false);
     TARPM_ASSERT_TRUE(result != NULL);
     TARPM_ASSERT_TRUE(strcmp(result, "testpkg") == 0);
 
-    result = get_tag_value(tags, "Version");
+    result = get_tag_value(tags, RPMTAG_VERSION, false);
     TARPM_ASSERT_TRUE(result != NULL);
     TARPM_ASSERT_TRUE(strcmp(result, "1.0") == 0);
 
-    result = get_tag_value(tags, "Release");
+    result = get_tag_value(tags, RPMTAG_RELEASE, false);
     TARPM_ASSERT_TRUE(result != NULL);
     TARPM_ASSERT_TRUE(strcmp(result, "1") == 0);
 
     /* test getting non-existent tag */
-    result = get_tag_value(tags, "NonExistent");
+    result = get_tag_value(tags, RPMTAG_SUMMARY, false);
     TARPM_ASSERT_TRUE(result == NULL);
+    TARPM_ASSERT_FALSE(has_tag(tags, RPMTAG_SUMMARY, false));
 
+    /* an entry with no name or a name we do not know matches nothing */
+    entry = json_object_new_object();
+    json_object_object_add(entry, "value", json_object_new_string("noname"));
+    json_object_array_add(tags, entry);
+    add_test_tag(tags, "NonExistent", "unknown");
+    TARPM_ASSERT_TRUE(get_tag_value(tags, RPMTAG_NOT_FOUND, false) == NULL);
+    TARPM_ASSERT_FALSE(has_tag(tags, RPMTAG_NOT_FOUND, false));
+
+    /* the name may be in any case or the numeric form */
+    add_test_tag(tags, "PAYLOADCOMPRESSOR", "xz");
+    add_test_tag(tags, "#1004", "summary");
+    TARPM_ASSERT_TRUE(has_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, false));
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false), "xz");
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_SUMMARY, false), "summary");
+
+    json_object_put(tags);
+
+    /* signature tags go by the signature tag numbers */
+    tags = json_object_new_array();
+    add_test_tag(tags, "Md5", "digest");
+    TARPM_ASSERT_TRUE(has_tag(tags, RPMSIGTAG_MD5, true));
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMSIGTAG_MD5, true), "digest");
+    TARPM_ASSERT_FALSE(has_tag(tags, RPMSIGTAG_MD5, false));
     json_object_put(tags);
 
     return;
@@ -430,53 +456,45 @@ void
 test_set_tag_value(void)
 {
     struct json_object *tags = NULL;
-    struct json_object *entry = NULL;
     const char *result = NULL;
     int ret = 0;
 
     /* NULL inputs return -1 */
-    ret = set_tag_value(NULL, "Name", "newvalue");
+    ret = set_tag_value(NULL, RPMTAG_NAME, false, "newvalue");
     TARPM_ASSERT_TRUE(ret == -1);
 
     tags = json_object_new_array();
-    ret = set_tag_value(tags, NULL, "newvalue");
+    ret = set_tag_value(tags, RPMTAG_NOT_FOUND, false, "newvalue");
     TARPM_ASSERT_TRUE(ret == -1);
 
-    ret = set_tag_value(tags, "Name", NULL);
+    ret = set_tag_value(tags, RPMTAG_NAME, false, NULL);
     TARPM_ASSERT_TRUE(ret == -1);
     json_object_put(tags);
 
     /* create a tags array with some entries */
     tags = json_object_new_array();
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, "tag", json_object_new_string("Name"));
-    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
-    json_object_array_add(tags, entry);
-
-    entry = json_object_new_object();
-    json_object_object_add(entry, "tag", json_object_new_string("Version"));
-    json_object_object_add(entry, "value", json_object_new_string("1.0"));
-    json_object_array_add(tags, entry);
+    add_test_tag(tags, "Name", "testpkg");
+    add_test_tag(tags, "VERSION", "1.0");
 
     /* test setting an existing tag value */
-    ret = set_tag_value(tags, "Name", "newname");
+    ret = set_tag_value(tags, RPMTAG_NAME, false, "newname");
     TARPM_ASSERT_TRUE(ret == 0);
 
-    result = get_tag_value(tags, "Name");
+    result = get_tag_value(tags, RPMTAG_NAME, false);
     TARPM_ASSERT_TRUE(result != NULL);
     TARPM_ASSERT_TRUE(strcmp(result, "newname") == 0);
 
-    /* test setting another existing tag value */
-    ret = set_tag_value(tags, "Version", "2.0");
+    /* test setting a tag named in another case */
+    ret = set_tag_value(tags, RPMTAG_VERSION, false, "2.0");
     TARPM_ASSERT_TRUE(ret == 0);
 
-    result = get_tag_value(tags, "Version");
+    result = get_tag_value(tags, RPMTAG_VERSION, false);
     TARPM_ASSERT_TRUE(result != NULL);
     TARPM_ASSERT_TRUE(strcmp(result, "2.0") == 0);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 2);
 
     /* test setting non-existent tag (should fail) */
-    ret = set_tag_value(tags, "NonExistent", "value");
+    ret = set_tag_value(tags, RPMTAG_RELEASE, false, "value");
     TARPM_ASSERT_TRUE(ret == -1);
 
     json_object_put(tags);
