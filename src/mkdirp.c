@@ -25,6 +25,7 @@
 #include <err.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include "tarpm.h"
@@ -53,6 +54,43 @@ mkdirp_for_file(const char *path)
     free(dir);
 
     return r;
+}
+
+/*
+ * Open path for writing like fopen() with mode "w", but refuse to
+ * follow a symlink at path.  Returns NULL on failure.
+ */
+FILE *
+fopen_output(const char *path)
+{
+    int fd = -1;
+    FILE *fp = NULL;
+
+    if (path == NULL) {
+        return NULL;
+    }
+
+    fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0666);
+
+    if (fd == -1) {
+        if (errno == ELOOP) {
+            warnx_escaped(_("*** %s is a symlink, not writing through it"), path);
+        } else {
+            warn_escaped("open: %s", path);
+        }
+
+        return NULL;
+    }
+
+    fp = fdopen(fd, "w");
+
+    if (fp == NULL) {
+        warn("fdopen");
+        close(fd);
+        return NULL;
+    }
+
+    return fp;
 }
 
 int
@@ -102,7 +140,7 @@ mkdirp(const char *path, mode_t mode)
                 p++;
                 continue;
             } else if (mkdir(start, mode) == -1 && errno != EEXIST) {
-                warn(_("*** unable to mkdir %s"), start);
+                warn_escaped(_("*** unable to mkdir %s"), start);
                 free(start);
                 return -1;
             }
@@ -115,7 +153,7 @@ mkdirp(const char *path, mode_t mode)
 
     /* final directory */
     if ((access(start, R_OK|W_OK|X_OK) != 0) && (mkdir(start, mode) == -1)) {
-        warn(_("*** unable to mkdir %s"), start);
+        warn_escaped(_("*** unable to mkdir %s"), start);
         free(start);
         return -1;
     }
@@ -123,7 +161,7 @@ mkdirp(const char *path, mode_t mode)
     r = stat(start, &sb);
 
     if (r == 0 && !S_ISDIR(sb.st_mode)) {
-        warn(_("*** %s is not a directory"), start);
+        warn_escaped(_("*** %s is not a directory"), start);
         free(start);
         return -1;
     }

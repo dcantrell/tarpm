@@ -466,6 +466,56 @@ test_create_header_valid(void)
     return;
 }
 
+/* Test create_header() writes int16 values with the top bit set */
+void
+test_create_header_int16(void)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct json_object *values = NULL;
+    struct rpmhdr *hdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+    uint16_t n = 0;
+    int r = 0;
+
+    data = json_object_new_object();
+    tags = json_object_new_array();
+    values = json_object_new_array();
+
+    /* 0100644 as extract writes it and as a negative number */
+    json_object_array_add(values, json_object_new_int(0100644));
+    json_object_array_add(values, json_object_new_int(0100644 - 65536));
+    json_object_array_add(values, json_object_new_int(65535));
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Filemodes"));
+    json_object_object_add(entry, "type", json_object_new_string("int16"));
+    json_object_object_add(entry, "value", values);
+    json_object_array_add(tags, entry);
+    json_object_object_add(data, "tags", tags);
+
+    r = create_header(data, &hdr, &hdrinfo, NULL, NULL, false);
+    TARPM_ASSERT_EQUAL(r, 0);
+    TARPM_ASSERT_PTR_NOT_NULL(hdrinfo);
+    TARPM_ASSERT_EQUAL(ntohl(hdr->nbytes), 3 * sizeof(n));
+
+    memcpy(&n, hdrinfo->datastart, sizeof(n));
+    TARPM_ASSERT_EQUAL(ntohs(n), 0100644);
+    memcpy(&n, hdrinfo->datastart + sizeof(n), sizeof(n));
+    TARPM_ASSERT_EQUAL(ntohs(n), 0100644);
+    memcpy(&n, hdrinfo->datastart + (2 * sizeof(n)), sizeof(n));
+    TARPM_ASSERT_EQUAL(ntohs(n), 65535);
+
+    free(hdrinfo->estart);
+    free(hdrinfo->datastart);
+    free(hdrinfo);
+    free(hdr);
+    json_object_put(data);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -492,7 +542,8 @@ get_suite(void)
         CU_add_test(pSuite, "test get_trailer_data() skips other tags", test_get_trailer_data_other_tag) == NULL ||
         CU_add_test(pSuite, "test fix_trailer_offset()", test_fix_trailer_offset) == NULL ||
         CU_add_test(pSuite, "test create_header() with invalid data", test_create_header_invalid) == NULL ||
-        CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL) {
+        CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL ||
+        CU_add_test(pSuite, "test create_header() with int16 values", test_create_header_int16) == NULL) {
         return NULL;
     }
 

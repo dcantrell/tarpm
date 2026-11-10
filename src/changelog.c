@@ -528,8 +528,8 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
             }
         }
 
-        /* Add the parallel array entries if we have them all */
-        if (timestamp > 0 && name != NULL && changelog_text != NULL) {
+        /* the date parsed above, so only the name and text can be missing */
+        if (name != NULL && changelog_text != NULL) {
             json_object_array_add(times, json_object_new_int(timestamp));
             json_object_array_add(names, json_object_new_string(name));
             json_object_array_add(texts, json_object_new_string(changelog_text));
@@ -538,6 +538,12 @@ add_changelog_tags(struct json_object *tags, struct json_object *changelog)
         }
 
         free(changelog_text);
+    }
+
+    /* rpm turns away a header carrying a tag with a count of zero */
+    if (json_object_array_length(times) == 0) {
+        free_changelog_arrays(times, names, texts);
+        return 0;
     }
 
     /* Create the CHANGELOGTIME tag entry */

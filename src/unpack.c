@@ -22,6 +22,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <err.h>
+#include <sys/stat.h>
 #include <archive.h>
 #include <archive_entry.h>
 
@@ -30,6 +31,7 @@
 /* Local prototypes */
 static int copy_data(struct archive *, struct archive *);
 static int extract_entry(struct archive *, struct archive *, struct archive_entry *);
+static void restrict_mode(struct archive_entry *);
 
 /*
  * From:
@@ -53,12 +55,37 @@ copy_data(struct archive *ar, struct archive *aw)
         r = archive_write_data_block(aw, buf, s, o);
 
         if (r != ARCHIVE_OK) {
-            warnx("archive_write_data_block: %s", archive_error_string(aw));
+            warnx_escaped("archive_write_data_block: %s", archive_error_string(aw));
             return r;
         }
     }
 
     return ARCHIVE_OK;
+}
+
+/*
+ * Drop the setuid and setgid bits and limit device nodes to 0600.  The
+ * full modes stay in header.json.
+ */
+static void
+restrict_mode(struct archive_entry *entry)
+{
+    mode_t mode = 0;
+
+    if (entry == NULL) {
+        return;
+    }
+
+    mode = archive_entry_mode(entry);
+
+    if (S_ISCHR(mode) || S_ISBLK(mode)) {
+        mode = (mode & ~(mode_t) 07777) | (mode & 0600);
+    } else {
+        mode &= ~(mode_t) (S_ISUID | S_ISGID);
+    }
+
+    archive_entry_set_mode(entry, mode);
+    return;
 }
 
 /* Extract a single entry from an archive and write it to disk. */
@@ -71,7 +98,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
     r = archive_write_header(output, entry);
 
     if (r != ARCHIVE_OK) {
-        warnx("archive_write_header: %s", archive_error_string(output));
+        warnx_escaped("archive_write_header: %s", archive_error_string(output));
         ret = -1;
     } else if (archive_entry_size(entry) > 0) {
         if (copy_data(input, output) != ARCHIVE_OK) {
@@ -84,7 +111,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
     if (r < ARCHIVE_WARN) {
         ret = -1;
     } else if (r != ARCHIVE_OK) {
-        warnx("archive_write_finish_entry: %s", archive_error_string(output));
+        warnx_escaped("archive_write_finish_entry: %s", archive_error_string(output));
     }
 
     return ret;
@@ -102,6 +129,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     int ret = 0;
     char cwd[PATH_MAX + 1];
     const char *p = NULL;
+    char *name = NULL;
     struct archive *input = NULL;
     struct archive *output = NULL;
     struct archive_entry *entry = NULL;
@@ -164,7 +192,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
         }
 
         if (r != ARCHIVE_OK) {
-            warnx("archive_read_next_header: %s", archive_error_string(input));
+            warnx_escaped("archive_read_next_header: %s", archive_error_string(input));
 
             if (r < ARCHIVE_WARN) {
                 ret = -1;
@@ -179,9 +207,13 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
                     p++;
                 }
 
-                printf("./%s\n", p);
+                name = escape_name(p);
+                printf("./%s\n", name);
+                free(name);
             }
         }
+
+        restrict_mode(entry);
 
         if (extract_entry(input, output, entry)) {
             ret = -1;
@@ -189,6 +221,16 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     }
 
     archive_read_free(input);
+
+    /* closing sets the directory modes and times libarchive held back */
+    r = archive_write_close(output);
+
+    if (r < ARCHIVE_WARN) {
+        warnx_escaped("archive_write_close: %s", archive_error_string(output));
+        ret = -1;
+    } else if (r != ARCHIVE_OK) {
+        warnx_escaped("archive_write_close: %s", archive_error_string(output));
+    }
 
 #if ARCHIVE_VERSION_NUMBER < 3000000
     archive_write_finish(output);

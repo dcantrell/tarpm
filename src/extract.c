@@ -143,7 +143,7 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
 
     /* we checked the NEVRA above, this is a second line of defense */
     if (!below_dir(dir, cwd)) {
-        warnx(_("*** %s is outside of %s, use -O to name an output directory"), dir, cwd);
+        warnx_escaped(_("*** %s is outside of %s, use -O to name an output directory"), dir, cwd);
         free(dir);
         return NULL;
     }

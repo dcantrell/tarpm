@@ -664,6 +664,40 @@ class VerifyUnwritableOutputDirFails(TestUnpackRPM):
         self.assertIn("unable to mkdir", err.decode("utf-8"))
 
 
+class VerifyOutputFilesDoNotFollowSymlinks(TestUnpackRPM):
+    """Test the JSON and tag files are not written through a symlink"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        pkg = self.rpm.get_built_rpm(get_expected_arch())
+        target = os.path.join(self.output_dir, "target")
+
+        for name in ["header.json", "description.txt"]:
+            f = open(target, "w")
+            f.write("keep me\n")
+            f.close()
+
+            dest = os.path.join(self.output_dir, name + ".out")
+            os.makedirs(dest)
+            os.symlink(target, os.path.join(dest, name))
+
+            args = [self.tarpm, "-x", "-n", "-f", pkg, "-O", dest]
+            proc = subprocess.Popen(
+                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            out, err = proc.communicate()
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn(
+                "%s is a symlink, not writing through it" % name,
+                err.decode("utf-8"),
+            )
+
+            f = open(target)
+            self.assertEqual(f.read(), "keep me\n")
+            f.close()
+
+
 class VerifyNevraCannotLeaveWorkingDir(TestUnpackRPM):
     """Test a Name with "../" does not move the extraction out of cwd"""
 

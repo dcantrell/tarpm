@@ -261,7 +261,7 @@ file_class(const char *path, const char *file_path, const struct stat *sb)
             /* libmagic could not tell us, so rpm calls the file data */
             if (name == NULL) {
                 if (ms != NULL) {
-                    warnx(_("*** unable to recognize %s: %s"), path, magic_error(ms));
+                    warnx_escaped(_("*** unable to recognize %s: %s"), path, magic_error(ms));
                 }
 
                 name = RPM_FILE_CLASS_DATA;
@@ -333,7 +333,7 @@ file_mime(const char *path, const char *file_path, const struct stat *sb)
 
     if (name == NULL) {
         if (ms != NULL) {
-            warnx(_("*** unable to recognize %s: %s"), path, magic_error(ms));
+            warnx_escaped(_("*** unable to recognize %s: %s"), path, magic_error(ms));
         }
 
         name = RPM_FILE_MIME_UNKNOWN;

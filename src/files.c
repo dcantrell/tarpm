@@ -170,6 +170,7 @@ struct file_list_build {
     uint32_t digestalgo;
     size_t nkept;
     int64_t totalsize;
+    bool failed;
 };
 
 /*
@@ -1416,7 +1417,7 @@ new_in_payload(struct json_object *files, const char *path, const struct stat *s
             continue;
         }
 
-        s = json_object_get_string(entry_path);
+        s = str_or_empty(json_object_get_string(entry_path));
 
         /* the list already names it */
         if (!strcmp(s, path)) {
@@ -1598,7 +1599,7 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
     n = scandir(dir_path, &entries, NULL, alphasort);
 
     if (n < 0) {
-        warn("scandir: %s", dir_path);
+        warn_escaped("scandir: %s", dir_path);
         return;
     }
 
@@ -1621,7 +1622,7 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
             warn("lstat");
         } else {
             if (new_in_payload(scan->files, path, &sb)) {
-                warnx(_("*** %s is new in the payload, adding it to the file list"), path);
+                warnx_escaped(_("*** %s is new in the payload, adding it to the file list"), path);
                 json_object_array_add(scan->files, mkfileentry(scan, path, file_path, &sb));
             }
 
@@ -1707,14 +1708,14 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
         return;
     }
 
-    entry_type = json_object_get_string(type);
+    entry_type = str_or_empty(json_object_get_string(type));
     payload_type = type_name(sb->st_mode);
 
     if (!strcmp(entry_type, payload_type)) {
         return;
     }
 
-    warnx(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, entry_type);
+    warnx_escaped(_("*** %s is a %s in the payload and not a %s, going with the payload"), path, payload_type, entry_type);
     json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(payload_type));
 
     /*
@@ -1776,9 +1777,9 @@ static void
 report_missing(const char *path, const char *key, const bool from_payload)
 {
     if (from_payload) {
-        warnx(_("*** %s is missing the %s file metadata, taking it from the payload"), path, key);
+        warnx_escaped(_("*** %s is missing the %s file metadata, taking it from the payload"), path, key);
     } else {
-        warnx(_("*** %s is missing the %s file metadata, using the default"), path, key);
+        warnx_escaped(_("*** %s is missing the %s file metadata, using the default"), path, key);
     }
 
     return;
@@ -1792,7 +1793,7 @@ report_missing(const char *path, const char *key, const bool from_payload)
 static void
 report_override(const char *path, const char *key)
 {
-    warnx(_("*** %s %s in header.json does not match the payload, taking the payload value"), path, key);
+    warnx_escaped(_("*** %s %s in header.json does not match the payload, taking the payload value"), path, key);
 
     return;
 }
@@ -2205,7 +2206,7 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
         pw = getpwuid(sb->st_uid);
 
         if (pw == NULL) {
-            warnx(_("*** %s in the payload is owned by uid %u, which has no name"), path, (unsigned int) sb->st_uid);
+            warnx_escaped(_("*** %s in the payload is owned by uid %u, which has no name"), path, (unsigned int) sb->st_uid);
         } else if (strcmp(pw->pw_name, key_string(file, RPM_FILE_USER_DESC, RPM_FILE_DEFAULT_USER))) {
             report_override(path, RPM_FILE_USER_DESC);
             json_object_object_add(file, RPM_FILE_USER_DESC, json_object_new_string(pw->pw_name));
@@ -2217,7 +2218,7 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
         gr = getgrgid(sb->st_gid);
 
         if (gr == NULL) {
-            warnx(_("*** %s in the payload is in gid %u, which has no name"), path, (unsigned int) sb->st_gid);
+            warnx_escaped(_("*** %s in the payload is in gid %u, which has no name"), path, (unsigned int) sb->st_gid);
         } else if (strcmp(gr->gr_name, key_string(file, RPM_FILE_GROUP_DESC, RPM_FILE_DEFAULT_GROUP))) {
             report_override(path, RPM_FILE_GROUP_DESC);
             json_object_object_add(file, RPM_FILE_GROUP_DESC, json_object_new_string(gr->gr_name));
@@ -2371,12 +2372,15 @@ file_digest_value(struct json_object *file, const char *file_path, const struct 
         return strdup(str);
     }
 
+    /* the file is there, so a digest we cannot compute is an error */
     if (str[0] != '\0' && digestalgo != 0 && sb != NULL && S_ISREG(sb->st_mode)) {
         digest = mkfiledigest(file_path, digestalgo);
 
-        if (digest != NULL) {
-            return digest;
+        if (digest == NULL) {
+            warnx_escaped(_("*** unable to compute the digest of %s"), file_path);
         }
+
+        return digest;
     }
 
     return strdup(str);
@@ -2563,21 +2567,21 @@ add_file_provides(struct file_list_build *build, struct json_object *file, const
         str = key_string(ref, RPM_DEPENDENCY_TYPE_DESC, NULL);
 
         if (str == NULL) {
-            warnx(_("*** missing dependency type in the provides of %s"), path);
+            warnx_escaped(_("*** missing dependency type in the provides of %s"), path);
             continue;
         }
 
         abbrev = dependency_type_abbrev(str);
 
         if (abbrev == '\0') {
-            warnx(_("*** unknown dependency type %s in the provides of %s"), str, path);
+            warnx_escaped(_("*** unknown dependency type %s in the provides of %s"), str, path);
             continue;
         }
 
         depindex = dependency_index(build->dependencies, str, ref);
 
         if (depindex < 0) {
-            warnx(_("*** no matching %s dependency for the provides of %s"), str, path);
+            warnx_escaped(_("*** no matching %s dependency for the provides of %s"), str, path);
             continue;
         }
 
@@ -2599,7 +2603,7 @@ drop_file_signatures(struct json_object *file, const char *path)
         return;
     }
 
-    warnx(_("*** %s changed, dropping its file signatures"), path);
+    warnx_escaped(_("*** %s changed, dropping its file signatures"), path);
     json_object_object_del(file, RPM_FILE_SIGNATURE_DESC);
     json_object_object_del(file, RPM_FILE_VERITY_DESC);
 
@@ -2635,7 +2639,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * package was unpacked do not go in to the header.
      */
     if (missing_from_payload(file, path, build->payload_dir)) {
-        warnx(_("*** %s is not in the payload, leaving it out of the file list"), path);
+        warnx_escaped(_("*** %s is not in the payload, leaving it out of the file list"), path);
         return;
     }
 
@@ -2689,6 +2693,11 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     json_object_array_add(out->filedevices, json_object_new_int64(key_number(file, RPM_FILE_DEVICE_DESC)));
 
     str = file_digest_value(file, file_path, psb, build->digestalgo);
+
+    if (str == NULL) {
+        build->failed = true;
+        str = strdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
+    }
 
     /*
      * The bytes are not the ones the entry describes, so the file may
@@ -2857,28 +2866,31 @@ file_sizes_tag(struct json_object *sizes, const int format)
  * Rebuild the file list tags from the "files" array and add them to
  * the tags array.  The format is the RPM format we are writing, which
  * determines whether a file missing a class or a MIME type gets one
- * assigned based on the files in the payload tree.
+ * assigned based on the files in the payload tree.  Returns 0, or -1
+ * when a file in the payload tree could not be read.
  */
-void
+int
 add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format)
 {
+    size_t i = 0;
     char sizebuf[32];
     bool source_package = false;
+    struct json_object *entry = NULL;
     rpmTagVal sizestag = RPMTAG_FILESIZES;
     rpmTagType sizestype = RPM_INT32_TYPE;
     struct file_list_tags out;
     struct file_list_build build;
 
     if (tags == NULL || files == NULL) {
-        return;
+        return 0;
     }
 
     if (json_object_get_type(files) != json_type_array) {
-        return;
+        return 0;
     }
 
     if (json_object_array_length(files) == 0) {
-        return;
+        return 0;
     }
 
     /* start with empty lists and nothing counted */
@@ -2902,16 +2914,19 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     finish_file_list_arrays(&out);
 
     /*
-     * A header.json from before tarpm folded the MIME types in to the
-     * file list holds them as tags.  We rebuild them from the file
-     * list, so the old ones come out.
+     * We build every file list tag from the files array, so any copy
+     * already in the tags comes out first.  That covers a header.json
+     * from before tarpm folded the MIME types in to the file list.
      */
-    drop_tag(tags, RPMTAG_FILEMIMEINDEX_VALUE);
-    drop_tag(tags, RPMTAG_MIMEDICT_VALUE);
+    i = 0;
 
-    /* the same goes for the file sizes, which come from the "size" keys */
-    drop_tag(tags, RPMTAG_FILESIZES);
-    drop_tag(tags, RPMTAG_LONGFILESIZES);
+    while (i < json_object_array_length(tags)) {
+        if (is_file_list_tag(get_tag_number(json_object_array_get_idx(tags, i), false))) {
+            json_object_array_del_idx(tags, i, 1);
+        } else {
+            i++;
+        }
+    }
 
     /*
      * Update the installed size.  The payload tree may have gained,
@@ -2924,13 +2939,33 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     set_tag_value(tags, rpmTagGetName(RPMTAG_LONGSIZE), sizebuf);
 
     /*
+     * rpmbuild always writes one of the two, so a header with neither
+     * gets the one the total fits in.  filter_format_tags() moves Size
+     * to Longsize later when the total outgrew it.
+     */
+    if (!has_tag(tags, rpmTagGetName(RPMTAG_SIZE)) && !has_tag(tags, rpmTagGetName(RPMTAG_LONGSIZE))) {
+        entry = json_object_new_object();
+
+        if (build.totalsize < (int64_t) UINT32_MAX) {
+            json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_SIZE)));
+            json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT32_TYPE)));
+        } else {
+            json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(rpmTagGetName(RPMTAG_LONGSIZE)));
+            json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT64_TYPE)));
+        }
+
+        json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_int64(build.totalsize));
+        json_object_array_add(tags, entry);
+    }
+
+    /*
      * Every entry dropped out, so the package owns no files.  rpm
      * turns away a header carrying a tag with a count of zero, so
      * write no file list tags rather than empty ones.
      */
     if (build.nkept == 0) {
         free_file_list_arrays(&out);
-        return;
+        return 0;
     }
 
     /* add the tags in the order rpm writes them */
@@ -3014,7 +3049,11 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
         json_object_put(out.filedependsn);
     }
 
-    return;
+    if (build.failed) {
+        return -1;
+    }
+
+    return 0;
 }
 
 /* Return where a tag sits in the tags array, -1 if not found */

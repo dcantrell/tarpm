@@ -182,6 +182,46 @@ test_strsplit(void)
     return;
 }
 
+void
+test_escape_name(void)
+{
+    char *s = NULL;
+
+    TARPM_ASSERT_TRUE(escape_name(NULL) == NULL);
+
+    s = escape_name("");
+    TARPM_ASSERT_TRUE(strcmp(s, "") == 0);
+    free(s);
+
+    /* printable names come back as they are, UTF-8 included */
+    s = escape_name("/usr/bin/caf\xc3\xa9 ok");
+    TARPM_ASSERT_TRUE(strcmp(s, "/usr/bin/caf\xc3\xa9 ok") == 0);
+    free(s);
+
+    /* control characters become octal escapes */
+    s = escape_name("a\033[2Jb\nc\x7f");
+    TARPM_ASSERT_TRUE(strcmp(s, "a\\033[2Jb\\012c\\177") == 0);
+    free(s);
+
+    /* a backslash is doubled so the escapes stay unambiguous */
+    s = escape_name("a\\012");
+    TARPM_ASSERT_TRUE(strcmp(s, "a\\\\012") == 0);
+    free(s);
+
+    return;
+}
+
+void
+test_str_or_empty(void)
+{
+    const char *s = "abc";
+
+    TARPM_ASSERT_STRING_EQUAL(str_or_empty(NULL), "");
+    TARPM_ASSERT_TRUE(str_or_empty(s) == s);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -196,7 +236,9 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test strappend()", test_strappend) == NULL ||
-        CU_add_test(pSuite, "test strsplit()", test_strsplit) == NULL) {
+        CU_add_test(pSuite, "test strsplit()", test_strsplit) == NULL ||
+        CU_add_test(pSuite, "test escape_name()", test_escape_name) == NULL ||
+        CU_add_test(pSuite, "test str_or_empty()", test_str_or_empty) == NULL) {
         return NULL;
     }
 

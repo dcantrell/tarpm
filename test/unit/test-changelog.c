@@ -573,8 +573,6 @@ test_add_changelog_tags_missing_name(void)
     struct json_object *changelog = NULL;
     struct json_object *entry = NULL;
     struct json_object *text = NULL;
-    struct json_object *tag_entry = NULL;
-    struct json_object *tag_value = NULL;
 
     tags = json_object_new_array();
     changelog = json_object_new_array();
@@ -589,13 +587,8 @@ test_add_changelog_tags_missing_name(void)
 
     add_changelog_tags(tags, changelog);
 
-    /* Should still create three tags */
-    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 3);
-
-    /* CHANGELOGNAME should have no entry when name is missing */
-    tag_entry = json_object_array_get_idx(tags, 1);
-    json_object_object_get_ex(tag_entry, "value", &tag_value);
-    TARPM_ASSERT_EQUAL(json_object_array_length(tag_value), 0);
+    /* no entry is left, so none of the three tags go in */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
 
     json_object_put(tags);
     json_object_put(changelog);
@@ -610,8 +603,6 @@ test_add_changelog_tags_missing_text(void)
     struct json_object *tags = NULL;
     struct json_object *changelog = NULL;
     struct json_object *entry = NULL;
-    struct json_object *tag_entry = NULL;
-    struct json_object *tag_value = NULL;
 
     tags = json_object_new_array();
     changelog = json_object_new_array();
@@ -624,13 +615,8 @@ test_add_changelog_tags_missing_text(void)
 
     add_changelog_tags(tags, changelog);
 
-    /* Should still create three tags */
-    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 3);
-
-    /* CHANGELOGTEXT should have no entry when text is missing */
-    tag_entry = json_object_array_get_idx(tags, 2);
-    json_object_object_get_ex(tag_entry, "value", &tag_value);
-    TARPM_ASSERT_EQUAL(json_object_array_length(tag_value), 0);
+    /* no entry is left, so none of the three tags go in */
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 0);
 
     json_object_put(tags);
     json_object_put(changelog);

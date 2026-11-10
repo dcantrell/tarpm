@@ -158,6 +158,15 @@ test_add_entry_value_scalars(void)
     TARPM_ASSERT_EQUAL(json_object_get_int(value), 4700);
     json_object_put(arrayentry);
 
+    /* a sixteen bit integer with the top bit set stays positive */
+    val16 = htons(0100644);
+    memcpy(buffer, &val16, sizeof(val16));
+    arrayentry = json_object_new_object();
+    add_entry_value(arrayentry, RPMTAG_NAME, buffer, 0, RPM_INT16_TYPE, 1, NULL, false);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(arrayentry, RPM_ENTRY_VALUE_DESC, &value));
+    TARPM_ASSERT_EQUAL(json_object_get_int(value), 0100644);
+    json_object_put(arrayentry);
+
     /* a thirty two bit integer */
     val32 = htonl(470000);
     memcpy(buffer, &val32, sizeof(val32));

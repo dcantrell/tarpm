@@ -390,10 +390,9 @@ write_json_file(struct json_object *data, const char *path)
             return -1;
         }
 
-        fp = fopen(path, "w");
+        fp = fopen_output(path);
 
         if (fp == NULL) {
-            warn("fopen");
             return -1;
         }
     }

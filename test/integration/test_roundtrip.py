@@ -2785,3 +2785,39 @@ class TestMetadataStdoutRejectedOnCreate(RoundTrip, TestUnpackRPM):
                 "Create with %s - said: %s" % (opt, err),
             )
             self.assertFalse(os.path.exists(pkg), "A package was written anyway")
+
+
+class TestControlCharactersEscaped(RoundTrip, TestUnpackRPM):
+    """File names with control characters are printed with escapes"""
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        extract_dir = self.extract(original)
+        name = "/usr/share/%s/bad\x1b[2Jname" % NAME
+        path = self.payload_path(extract_dir, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        with open(path, "w") as f:
+            f.write("bad\n")
+
+        # the warning about the new file escapes the name
+        pkg, err = self.create_warns(extract_dir)
+        self.assertTrue("bad\\033[2Jname is new in the payload" in err, err)
+        self.assertFalse("\x1b" in err, err)
+
+        # so does the listing
+        rc, out, err = run_tarpm(self.tarpm, ["-t", "-f", pkg])
+        self.assertEqual(rc, 0, err)
+        self.assertTrue("bad\\033[2Jname" in out, out)
+        self.assertFalse("\x1b" in out, out)
+
+        # and the verbose extract
+        dest = os.path.join(self.output_dir, "verbose")
+        os.makedirs(dest)
+        rc, out, err = run_tarpm(self.tarpm, ["-x", "-v", "-f", pkg, "-O", dest])
+        self.assertEqual(rc, 0, err)
+        self.assertTrue("bad\\033[2Jname" in out, out)
+        self.assertFalse("\x1b" in out, out)
+        self.assertTrue(os.path.isfile(self.payload_path(dest, name)))

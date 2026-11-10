@@ -810,6 +810,15 @@ check_dependencies(struct json_object *dependencies)
         return -1;
     }
 
+    /* we only write the types we know, so say what gets left out */
+    json_object_object_foreach(dependencies, key, val) {
+        (void) val;
+
+        if (dependency_type_abbrev(key) == '\0') {
+            warnx_escaped(_("*** unknown dependency type \"%s\" in %s, leaving it out"), key, RPM_DEPENDENCIES_DESC);
+        }
+    }
+
     for (i = 0; dep_types[i].key != NULL; i++) {
         if (!json_object_object_get_ex(dependencies, dep_types[i].key, &deps)) {
             continue;

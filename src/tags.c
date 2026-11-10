@@ -536,7 +536,7 @@ get_tag_number(struct json_object *entry, bool signature)
         return RPMTAG_NOT_FOUND;
     }
 
-    tagname = json_object_get_string(tag);
+    tagname = str_or_empty(json_object_get_string(tag));
 
     /*
      * For signature tags, check signature tag names first to
@@ -603,7 +603,7 @@ has_tag(const struct json_object *tags, const char *tag)
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
 
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) && !strcmp(tag, json_object_get_string(value))) {
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) && !strcmp(tag, str_or_empty(json_object_get_string(value)))) {
             return true;
         }
     }
@@ -643,7 +643,7 @@ get_tag_value(const struct json_object *tags, const char *tag)
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
             /* we found the name key, check the value */
-            if (strcmp(tag, json_object_get_string(value))) {
+            if (strcmp(tag, str_or_empty(json_object_get_string(value)))) {
                 /* no match */
                 continue;
             }
@@ -691,7 +691,7 @@ set_tag_value(struct json_object *tags, const char *tag, const char *new_value)
         }
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1) {
-            if (!strcmp(tag, json_object_get_string(value))) {
+            if (!strcmp(tag, str_or_empty(json_object_get_string(value)))) {
                 json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(new_value));
                 return 0;
             }

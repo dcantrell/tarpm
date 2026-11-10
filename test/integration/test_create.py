@@ -1266,6 +1266,149 @@ class CreateRejectsUnknownCompressor(RequiresTarpm):
             f.close()
 
 
+class CreatePayloadflags(RequiresTarpm):
+    """Payloadflags must be a level with an optional thread count"""
+
+    def tree_with(self, name, compressor, flags):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": "Payloadcompressor", "type": "string", "value": compressor})
+        tags.append({"tag": "Payloadflags", "type": "string", "value": flags})
+        tree = write_minimal_tree(os.path.join(self.output_dir, name), tags)
+
+        f = open(os.path.join(tree, "payload", "README"), "w")
+        f.write("hello\n")
+        f.close()
+
+        return tree
+
+    def runTest(self):
+        # what rpmbuild writes, with and without a thread count
+        good = [("xz", "3T"), ("xz", "2T16"), ("gzip", "9"), ("zstd", "19T8")]
+
+        for i, (compressor, flags) in enumerate(good):
+            tree = self.tree_with("good%d" % i, compressor, flags)
+            pkg = os.path.join(self.output_dir, "good%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
+            self.assertEqual(rc, 0, msg=err)
+            rc, err = verify_rpm(pkg)
+            self.assertEqual(rc, 0, msg=err)
+
+            # the payload still unpacks
+            rc, out, err = run_tarpm([self.tarpm, "-t", "-f", pkg])
+            self.assertEqual(rc, 0, msg=err)
+            self.assertIn("./README", out)
+
+        # extra libarchive options and junk are refused
+        bad = [("xz", "6,xz:threads=64"), ("gzip", "fast"), ("zstd", "19x"), ("xz", "")]
+
+        for i, (compressor, flags) in enumerate(bad):
+            tree = self.tree_with("bad%d" % i, compressor, flags)
+            pkg = os.path.join(self.output_dir, "bad%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
+            self.assertNotEqual(rc, 0, msg=flags)
+            self.assertIn('Payloadflags "%s" is not a compression level' % flags, err)
+            self.assertFalse(os.path.exists(pkg))
+
+        # a level the compressor does not take is an error too
+        tree = self.tree_with("range", "gzip", "99")
+        pkg = os.path.join(self.output_dir, "range.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-F", "4", "-f", pkg, tree])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("archive_write_set_options", err)
+        self.assertFalse(os.path.exists(pkg))
+
+
+class CreateChangelogWithNoValidEntries(RequiresTarpm):
+    """A changelog with no usable entry leaves the changelog tags out"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        changelog = [{"timestamp": "Wed Jul 29 2020", "text": ["- no name"]}]
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "changelog": changelog}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn("invalid changelog entry at index 0", err)
+
+        # rpm reads the package and finds no changelog in it
+        self.assertEqual(query_rpm(pkg, "%{name}"), "hello")
+        self.assertEqual(query_rpm(pkg, "%{changelogtime}"), "(none)")
+
+
+class CreateWarnsAboutUnknownDependencyType(RequiresTarpm):
+    """A dependency type tarpm does not write gets a warning"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        dependencies = {
+            "requires": [{"name": "bash"}],
+            "requirez": [{"name": "typo"}],
+        }
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "dependencies": dependencies}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(
+            err.count('unknown dependency type "requirez" in dependencies'), 1, err
+        )
+        self.assertIn("bash", query_rpm(pkg, "[%{requirename}\n]"))
+        self.assertNotIn("typo", query_rpm(pkg, "[%{requirename}\n]"))
+
+
+class CreateSurvivesNullStrings(RequiresTarpm):
+    """A JSON null where header.json wants a string does not crash create"""
+
+    def tree_with(self, name, tags, files):
+        tree = write_minimal_tree(os.path.join(self.output_dir, name), tags)
+        os.makedirs(os.path.join(tree, "payload", "usr"))
+
+        f = open(os.path.join(tree, "payload", "usr", "README"), "w")
+        f.write("hello\n")
+        f.close()
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": tags, "files": files}, f)
+        f.close()
+
+        return tree
+
+    def runTest(self):
+        readme = {"path": "/usr/README", "type": "file"}
+
+        # a null tag name is an unknown tag
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        tags.append({"tag": None, "type": "string", "value": "x"})
+        tree = self.tree_with("tag", tags, [readme])
+        pkg = os.path.join(self.output_dir, "tag.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn('unknown tag ""', err)
+
+        # a null type is a mismatch the payload settles
+        tree = self.tree_with(
+            "type", MINIMAL_TAGS, [{"path": "/usr/README", "type": None}]
+        )
+        pkg = os.path.join(self.output_dir, "type.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn("/usr/README", query_rpm(pkg, "[%{filenames}\n]"))
+
+        # an entry with a null path names nothing, so the file is new
+        tree = self.tree_with("path", MINIMAL_TAGS, [{"path": None, "type": "file"}])
+        pkg = os.path.join(self.output_dir, "path.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn("/usr/README is new in the payload", err)
+
+
 class CreateAcceptsCompressorNone(RequiresTarpm):
     """A Payloadcompressor of none leaves the tag off an uncompressed package"""
 
@@ -1643,6 +1786,35 @@ class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
             self.assertNotEqual(rc, 0)
             self.assertIn("failed to add file: /usr/bin/hello", err)
             self.assertFalse(os.path.exists(pkg))
+
+
+class CreateFailsOnUnreadableDigest(RequiresTarpm):
+    """A file list digest that cannot be recomputed is an error"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        bindir = os.path.join(tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        program = os.path.join(bindir, "hello")
+        f = open(program, "w")
+        f.write("#!/bin/sh\necho hello\n")
+        f.close()
+        os.chmod(program, 0o000)
+
+        # the entry carries a digest that is now out of date
+        files = [{"path": "/usr/bin/hello", "type": "file", "digest": "00" * 32}]
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "files": files}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        os.chmod(program, 0o644)
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("unable to compute the digest of %s" % program, err)
+        self.assertFalse(os.path.exists(pkg))
 
 
 class CreateWithEmptiedPayload(TestUnpackRPM):

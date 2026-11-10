@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <limits.h>
+#include <ctype.h>
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
@@ -230,7 +231,7 @@ write_file_data(const char *file_path, const uint64_t size)
     }
 
     if ((fd = open(file_path, O_RDONLY)) == -1) {
-        warn("open: %s", file_path);
+        warn_escaped("open: %s", file_path);
         return -1;
     }
 
@@ -244,11 +245,11 @@ write_file_data(const char *file_path, const uint64_t size)
     }
 
     if (len == -1) {
-        warn("read: %s", file_path);
+        warn_escaped("read: %s", file_path);
         r = -1;
     } else if (r == 0 && total != size) {
         /* the file changed size after we scanned the payload tree */
-        warnx(_("*** %s is %" PRIu64 " bytes but the header lists %" PRIu64), file_path, total, size);
+        warnx_escaped(_("*** %s is %" PRIu64 " bytes but the header lists %" PRIu64), file_path, total, size);
         r = -1;
     }
 
@@ -290,7 +291,7 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
         relative_path = joinpath(params->dirname, params->basename, NULL);
 
         if (!path_beneath(payload_dir, relative_path, false)) {
-            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
+            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
             free(relative_path);
             return -1;
         }
@@ -420,7 +421,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         if (!path_beneath(payload_dir, relative_path, false)) {
-            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
+            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
             r = -1;
             goto file_cleanup;
         }
@@ -694,7 +695,7 @@ collect_file_list_tags(struct json_object *tags, struct hdr_file_lists *hfl)
         entry = json_object_array_get_idx(tags, i);
 
         if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tagname)) {
-            tagnum = rpmTagGetValue(json_object_get_string(tagname));
+            tagnum = rpmTagGetValue(str_or_empty(json_object_get_string(tagname)));
 
             if (json_object_object_get_ex(entry, RPM_ENTRY_VALUE_DESC, &value)) {
                 if (tagnum == RPMTAG_BASENAMES) {
@@ -954,6 +955,42 @@ known_compressor(const char *compressor)
 }
 
 /*
+ * Parse Payloadflags the way rpm writes it, a compression level with an
+ * optional T and thread count after it.  We only use the level.
+ * Returns 0 and sets level, or -1 when the value is anything else.
+ */
+static int
+parse_payload_flags(const char *flags, long *level)
+{
+    char *end = NULL;
+
+    if (flags == NULL || level == NULL || !isdigit((unsigned char) *flags)) {
+        return -1;
+    }
+
+    errno = 0;
+    *level = strtol(flags, &end, 10);
+
+    if (errno == ERANGE) {
+        return -1;
+    }
+
+    if (*end == 'T') {
+        end++;
+
+        while (isdigit((unsigned char) *end)) {
+            end++;
+        }
+    }
+
+    if (*end != '\0') {
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
  * Helper for create_rpm() that writes the payload to a temporary
  * file.  Returns an open file descriptor to use later when putting
  * the RPM together, or -1 on failure.  Closing it removes the
@@ -979,6 +1016,7 @@ create_payload(struct json_object *header, const char *payload_dir)
     char *current_path = NULL;
     const char *tag = NULL;
     const char *level = NULL;
+    long flags_level = 0;
     struct hdr_file_lists hfl;
     struct hardlink_groups hl;
     struct zstd_payload zstd;
@@ -1031,7 +1069,10 @@ create_payload(struct json_object *header, const char *payload_dir)
             dependencies = NULL;
         }
 
-        add_file_list_tags(tags_with_files, files, payload_dir, dependencies, rpmformat);
+        if (add_file_list_tags(tags_with_files, files, payload_dir, dependencies, rpmformat) != 0) {
+            json_object_put(tags_with_files);
+            return -1;
+        }
 
         /* Use the copy for processing */
         tags = tags_with_files;
@@ -1151,18 +1192,18 @@ create_payload(struct json_object *header, const char *payload_dir)
         level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
 
         if (level != NULL) {
-            errno = 0;
-            zstd.level = strtol(level, NULL, 10);
-
-            if (errno == EINVAL || errno == ERANGE) {
-                warn("strtol");
-                zstd.level = 3;
+            if (parse_payload_flags(level, &flags_level) != 0) {
+                warnx_escaped(_("*** %s \"%s\" is not a compression level"), rpmTagGetName(RPMTAG_PAYLOADFLAGS), level);
+                failed = true;
+                goto close_payload;
             }
 
-            if (zstd.level < 1) {
+            if (flags_level < 1) {
                 zstd.level = 1;
-            } else if (zstd.level > 22) {
+            } else if (flags_level > 22) {
                 zstd.level = 22;
+            } else {
+                zstd.level = (int) flags_level;
             }
         }
     } else if (tag == NULL) {
@@ -1196,12 +1237,25 @@ create_payload(struct json_object *header, const char *payload_dir)
     }
 
     /* set the compression level for non-zstd compressors */
-    if (!zstd.used) {
-        tag = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
+    if (!zstd.used && tag != NULL) {
+        level = get_tag_value(tags, rpmTagGetName(RPMTAG_PAYLOADFLAGS));
 
-        if (tag != NULL) {
-            xasprintf(&opts, "compression-level=%s", tag);
-            archive_write_set_options(payload, opts);
+        if (level != NULL) {
+            if (parse_payload_flags(level, &flags_level) != 0) {
+                warnx_escaped(_("*** %s \"%s\" is not a compression level"), rpmTagGetName(RPMTAG_PAYLOADFLAGS), level);
+                failed = true;
+                goto close_payload;
+            }
+
+            xasprintf(&opts, "compression-level=%ld", flags_level);
+
+            if (archive_write_set_options(payload, opts) != ARCHIVE_OK) {
+                warnx("archive_write_set_options: %s", archive_error_string(payload));
+                free(opts);
+                failed = true;
+                goto close_payload;
+            }
+
             free(opts);
         }
     }
@@ -1341,12 +1395,12 @@ create_payload(struct json_object *header, const char *payload_dir)
         /* the header lists every file, so a missing one is fatal */
         if (stripped) {
             if (add_file_to_stripped_payload(payload_dir, &params) != 0) {
-                warnx("failed to add file: %s%s", params.dirname, params.basename);
+                warnx_escaped("failed to add file: %s%s", params.dirname, params.basename);
                 failed = true;
                 break;
             }
         } else if (add_file_to_payload(payload_dir, &params) != 0) {
-            warnx("failed to add file: %s%s", params.dirname, params.basename);
+            warnx_escaped("failed to add file: %s%s", params.dirname, params.basename);
             failed = true;
             break;
         }
@@ -1407,9 +1461,11 @@ close_payload:
         return -1;
     }
 
-    /* back to the beginning */
+    /* back to the beginning, the digests read from here */
     if (lseek(payloadfd, 0, SEEK_SET) == -1) {
         warn("lseek");
+        close(payloadfd);
+        return -1;
     }
 
     return payloadfd;
@@ -1460,6 +1516,12 @@ write_payload(FILE *rpm, int fd)
         }
     }
 
+    /* fread() returns 0 on a read error as well as at the end */
+    if (r == 0 && ferror(pload)) {
+        warn("fread");
+        r = -1;
+    }
+
     /* close the payload -- deletes the temporary file */
     if (fclose(pload) != 0) {
         warn("fclose");
@@ -1488,7 +1550,7 @@ widen_size_tag(struct json_object *tags, const char *tag, const char *wide)
             break;
         }
 
-        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1 && !strcmp(tag, json_object_get_string(value))) {
+        if (json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &value) == 1 && !strcmp(tag, str_or_empty(json_object_get_string(value)))) {
             json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(wide));
             json_object_object_add(entry, RPM_ENTRY_TYPE_DESC, json_object_new_string(strtagtype(RPM_INT64_TYPE)));
             return 0;
@@ -1644,7 +1706,7 @@ read_kept_signature(const struct json_paths *paths, struct json_object **kept)
     *kept = read_json_file(path);
 
     if (*kept == NULL) {
-        warnx(_("*** unable to read %s"), path);
+        warnx_escaped(_("*** unable to read %s"), path);
         return -1;
     }
 
@@ -2396,7 +2458,7 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
         }
 
         if (!path_beneath(payload_dir, path, true)) {
-            warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
+            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
             r = -1;
         }
     }

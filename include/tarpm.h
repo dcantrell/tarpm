@@ -32,6 +32,10 @@ char *get_nevra(Header h);
 /* strfuncs.c */
 char *strappend(char *dest, ...);
 str_list_t *strsplit(const char *s, const char *delim);
+char *escape_name(const char *s);
+const char *str_or_empty(const char *s);
+void warnx_escaped(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void warn_escaped(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /* listfuncs.c */
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
@@ -61,6 +65,7 @@ char *xstrdup(const char *s);
 /* mkdirp.c */
 int mkdirp(const char *path, mode_t mode);
 int mkdirp_for_file(const char *path);
+FILE *fopen_output(const char *path);
 
 /* unpack.c */
 int unpack_archive(const char *archive, const char *dest, const bool verbose);
@@ -142,7 +147,7 @@ extern bool keep_signatures;
 
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 void add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir);
-void add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);
+int add_file_list_tags(struct json_object *tags, struct json_object *files, const char *payload_dir, struct json_object *dependencies, const int format);
 void move_file_signatures(struct json_object *signature, struct json_object *header);
 struct json_object *new_signature_entry(const rpmTagVal tag, const rpmTagType type, struct json_object *value);
 void add_file_signature_tags(struct json_object *signature, struct json_object *header, const char *payload_dir, const int format);

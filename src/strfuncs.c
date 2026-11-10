@@ -5,7 +5,11 @@
  */
 
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <err.h>
 
 #include "tarpm.h"
 
@@ -69,4 +73,102 @@ str_list_t *strsplit(const char *s, const char *delim)
 
     free(walkp);
     return list;
+}
+
+/*
+ * Return a copy of s with control characters turned into \ooo escapes
+ * and backslashes doubled, the way ls -b prints names.  Bytes of 0x80
+ * and up are kept so UTF-8 names stay readable.  Caller must free the
+ * result.
+ */
+char *
+escape_name(const char *s)
+{
+    char *result = NULL;
+    char *out = NULL;
+    const unsigned char *c = NULL;
+
+    if (s == NULL) {
+        return NULL;
+    }
+
+    /* every byte grows to at most four */
+    result = xalloc((strlen(s) * 4) + 1);
+    out = result;
+
+    for (c = (const unsigned char *) s; *c != '\0'; c++) {
+        if (*c == '\\') {
+            *out++ = '\\';
+            *out++ = '\\';
+        } else if (*c < 0x20 || *c == 0x7f) {
+            out += sprintf(out, "\\%03o", *c);
+        } else {
+            *out++ = (char) *c;
+        }
+    }
+
+    *out = '\0';
+    return result;
+}
+
+/* Format a message and pass it to warnx() with escape_name() applied. */
+void
+warnx_escaped(const char *fmt, ...)
+{
+    va_list ap;
+    char *msg = NULL;
+    char *escaped = NULL;
+
+    va_start(ap, fmt);
+
+    if (vasprintf(&msg, fmt, ap) == -1) {
+        va_end(ap);
+        warnx("%s", fmt);
+        return;
+    }
+
+    va_end(ap);
+    escaped = escape_name(msg);
+    warnx("%s", escaped);
+    free(escaped);
+    free(msg);
+    return;
+}
+
+/* The warn() version of warnx_escaped(), errno is kept for warn(). */
+void
+warn_escaped(const char *fmt, ...)
+{
+    int saved = errno;
+    va_list ap;
+    char *msg = NULL;
+    char *escaped = NULL;
+
+    va_start(ap, fmt);
+
+    if (vasprintf(&msg, fmt, ap) == -1) {
+        va_end(ap);
+        errno = saved;
+        warn("%s", fmt);
+        return;
+    }
+
+    va_end(ap);
+    escaped = escape_name(msg);
+    errno = saved;
+    warn("%s", escaped);
+    free(escaped);
+    free(msg);
+    return;
+}
+
+/* Give back s, or "" when s is NULL, for callers that compare strings. */
+const char *
+str_or_empty(const char *s)
+{
+    if (s == NULL) {
+        return "";
+    }
+
+    return s;
 }

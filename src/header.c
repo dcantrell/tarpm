@@ -187,12 +187,12 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
     }
 
     if (stat(path, &sb) == -1) {
-        warn(_("*** unable to read %s"), path);
+        warn_escaped(_("*** unable to read %s"), path);
         return -1;
     }
 
     if (!S_ISREG(sb.st_mode)) {
-        warnx(_("*** %s is not a regular file"), path);
+        warnx_escaped(_("*** %s is not a regular file"), path);
         return -1;
     }
 
@@ -210,7 +210,7 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
     *data = read_file_bytes(path, &filelen);
 
     if (*data == NULL) {
-        warn(_("*** unable to read %s"), path);
+        warn_escaped(_("*** unable to read %s"), path);
         return -1;
     }
 
@@ -222,7 +222,7 @@ read_tag_file(const char *path, uint8_t **data, size_t *len)
      * keep a NUL inside one.  Catch it here, tell the user and stop.
      */
     if (memchr(*data, '\0', *len) != NULL) {
-        warnx(_("*** %s contains a NUL byte and cannot be used as a tag value"), path);
+        warnx_escaped(_("*** %s contains a NUL byte and cannot be used as a tag value"), path);
         free(*data);
         *data = NULL;
         *len = 0;
@@ -302,7 +302,7 @@ read_named_tag_file(const rpmTagVal tag_number, const char *name, uint8_t **data
     free(full);
 
     if (!tag_file_below(path, tagfile_dir) && !tag_file_below(path, payload_dir)) {
-        warnx(_("*** the %s tag names \"%s\", which is not a file below the directory holding %s or the payload directory"), rpmTagGetName(tag_number), name, OUTPUT_HEADER);
+        warnx_escaped(_("*** the %s tag names \"%s\", which is not a file below the directory holding %s or the payload directory"), rpmTagGetName(tag_number), name, OUTPUT_HEADER);
         free(path);
         return -1;
     }
@@ -1054,7 +1054,8 @@ put_number(struct data_writer *w, const rpmTagType type, const rpmTagVal tag, st
         len = sizeof(n.i8);
         memcpy(w->datapos, &n.i8, len);
     } else if (type == RPM_INT16_TYPE) {
-        n.i16 = htons(json_object_get_uint64(value));
+        /* a negative value is the same 16 bits rpm reads unsigned */
+        n.i16 = htons((uint16_t) json_object_get_int64(value));
         len = sizeof(n.i16);
         memcpy(w->datapos, &n.i16, len);
     } else if (type == RPM_INT32_TYPE) {
@@ -1599,7 +1600,12 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
          * as well because the depends dictionary rebuilt here holds
          * indexes in to them.
          */
-        add_file_list_tags(tags_copy, files, payload_dir, dependencies, rpmformat);
+        if (add_file_list_tags(tags_copy, files, payload_dir, dependencies, rpmformat) != 0) {
+            json_object_put(tags);
+            free(s);
+            free(v);
+            return -1;
+        }
     }
 
     /*

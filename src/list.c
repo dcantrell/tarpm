@@ -88,7 +88,7 @@ max_column_strlen(const char *rpm, const int standard, const int column)
     /* find the maximum column width we need */
     while (rpmfiNext(fi) >= 0) {
         if (column == COLUMN_OWNERSHIP) {
-            l = strlen(rpmfiFUser(fi)) + strlen(rpmfiFGroup(fi)) + 1;
+            l = strlen(str_or_empty(rpmfiFUser(fi))) + strlen(str_or_empty(rpmfiFGroup(fi))) + 1;
         } else if (column == COLUMN_SIZE) {
             xasprintf(&buf, "%" PRIu64 "", rpmfiFSize(fi));
             l = strlen(buf) + 1;
@@ -125,6 +125,7 @@ list_rpm(const char *rpm)
 {
     const char *dn = NULL;
     char *filename = NULL;
+    char *escaped = NULL;
     int ownerlen = 0;
     int sizelen = 0;
     char modebuf[BUFSIZ];
@@ -237,12 +238,14 @@ list_rpm(const char *rpm)
         }
 
         /* ownership formatted string */
-        xasprintf(&ownership, "%s/%s", rpmfiFUser(fi), rpmfiFGroup(fi));
+        xasprintf(&ownership, "%s/%s", str_or_empty(rpmfiFUser(fi)), str_or_empty(rpmfiFGroup(fi)));
 
         /* build and display the line for the payload entry */
         xasprintf(&filename, "%s%-*s%*" PRIu64 " %s .%s%s", modebuf, ownerlen, ownership, sizelen, rpmfiFSize(fi), timebuf, dn, rpmfiBN(fi));
-        printf("%s\n", filename);
+        escaped = escape_name(filename);
+        printf("%s\n", escaped);
 
+        free(escaped);
         free(filename);
         free(ownership);
     }

@@ -338,3 +338,51 @@ class VerifyListCorruptPayload(TestUnpackRPM):
 
         self.assertGreater(proc.returncode, 0)
         self.assertIn("error reading RPM payload", err.decode("utf-8"))
+
+
+class VerifyListWithoutOwnerNames(TestUnpackRPM):
+    """Listing a package with no Fileusername or Filegroupname works"""
+
+    def runTest(self):
+        self.rpm.add_simple_payload_file()
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = bytearray(f.read())
+        f.close()
+
+        # the lead is 96 bytes, then the signature header padded to 8
+        nentries, nbytes = struct.unpack_from(">II", data, 96 + 8)
+        hlen = 16 * nentries + nbytes
+        hdr = 96 + 16 + hlen + (8 - (hlen % 8)) % 8
+        nentries, nbytes = struct.unpack_from(">II", data, hdr + 8)
+        found = 0
+
+        # move Fileusername and Filegroupname to tag numbers rpm does not use
+        for i in range(nentries):
+            entry = hdr + 16 + 16 * i
+            tag = struct.unpack_from(">I", data, entry)[0]
+
+            if tag in [1039, 1040]:
+                struct.pack_into(">I", data, entry, tag + 20000)
+                found += 1
+
+        self.assertEqual(found, 2)
+
+        pkg = os.path.join(self.output_dir, "noowner.rpm")
+        f = open(pkg, "wb")
+        f.write(data)
+        f.close()
+
+        proc = subprocess.Popen(
+            [self.tarpm, "-t", "-f", pkg],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+
+        # rpm may refuse the payload without the names, but tarpm must not crash
+        self.assertIn(proc.returncode, [0, 1], err.decode("utf-8"))
+
+        if proc.returncode == 0:
+            self.assertIn(b"/usr/share/", out)

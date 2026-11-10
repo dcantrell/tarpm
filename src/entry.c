@@ -116,10 +116,9 @@ write_entry_value_file(rpmTagVal tag, uint8_t *data, const char *dest_dir, const
     }
 
     /* open the output file */
-    fp = fopen(path, "wb");
+    fp = fopen_output(path);
 
     if (fp == NULL) {
-        warn("fopen");
         free(path);
         free(tagname);
         return NULL;
@@ -277,7 +276,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
     } else if (datatype == RPM_INT16_TYPE) {
         if (count == 1) {
             memcpy(&dt.i16, data, sizeof(dt.i16));
-            dt.i16 = (int16_t) ntohs(dt.i16);
+            dt.i16 = ntohs(dt.i16);
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_int(dt.i16));
         } else {
             sa = json_object_new_array();
@@ -285,7 +284,7 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
 
             for (i = 0; i < count; i++) {
                 memcpy(&dt.i16, p, sizeof(dt.i16));
-                dt.i16 = (int16_t) ntohs(dt.i16);
+                dt.i16 = ntohs(dt.i16);
                 json_object_array_add(sa, json_object_new_int(dt.i16));
                 p += sizeof(dt.i16);
             }
@@ -347,11 +346,14 @@ add_entry_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *buffer, 
             /* write this tag value to a metadata file rather than a string in the JSON data */
             tagname = write_entry_value_file(tag, data, dest_dir, NULL);
 
-            /* add the JSON entry noting it's a file and not a direct value */
-            if (tagname != NULL) {
-                json_object_object_add(arrayentry, RPM_ENTRY_FILE_DESC, json_object_new_string(tagname));
-                free(tagname);
+            /* the value is lost without its file, so this is an error */
+            if (tagname == NULL) {
+                return -1;
             }
+
+            /* add the JSON entry noting it's a file and not a direct value */
+            json_object_object_add(arrayentry, RPM_ENTRY_FILE_DESC, json_object_new_string(tagname));
+            free(tagname);
         } else {
             json_object_object_add(arrayentry, RPM_ENTRY_VALUE_DESC, json_object_new_string((char *) data));
         }
