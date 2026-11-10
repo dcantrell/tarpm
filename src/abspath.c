@@ -56,6 +56,7 @@ char *abspath(const char *path)
     tokens = strsplit(workpath, delim);
 
     if (tokens == NULL) {
+        free(workpath);
         return NULL;
     }
 

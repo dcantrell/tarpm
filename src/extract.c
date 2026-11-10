@@ -218,7 +218,8 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 
     if (lead == NULL) {
         warnx("read_lead");
-        return -1;
+        r = -1;
+        goto metadata_cleanup;
     }
 
     /* extract the RPM signature -- the second header (sort of used) */
@@ -226,7 +227,8 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 
     if (signature == NULL) {
         warnx("read_signature");
-        return -1;
+        r = -1;
+        goto metadata_cleanup;
     }
 
     /* extract the RPM header -- the third header (used) */
@@ -234,7 +236,8 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 
     if (header == NULL) {
         warnx("read_header");
-        return -1;
+        r = -1;
+        goto metadata_cleanup;
     }
 
     /* move the file and verify signatures to the "files" array */
@@ -247,6 +250,8 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     if (close(rpmfd) == -1) {
         warn("close");
     }
+
+    rpmfd = -1;
 
     /*
      * Write out the header metadata.  We make the output directory as
@@ -266,6 +271,11 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     if (write_metadata(header, dest_dir, paths->header, OUTPUT_HEADER) != 0) {
         warnx(_("*** unable to write %s"), OUTPUT_HEADER);
         r = -1;
+    }
+
+metadata_cleanup:
+    if (rpmfd != -1 && close(rpmfd) == -1) {
+        warn("close");
     }
 
     json_object_put(header);

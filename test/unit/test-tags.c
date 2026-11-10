@@ -381,8 +381,10 @@ test_get_tag_value(void)
     result = get_tag_value(NULL, "Name");
     TARPM_ASSERT_TRUE(result == NULL);
 
-    result = get_tag_value(json_object_new_array(), NULL);
+    tags = json_object_new_array();
+    result = get_tag_value(tags, NULL);
     TARPM_ASSERT_TRUE(result == NULL);
+    json_object_put(tags);
 
     /* create a tags array with some entries */
     tags = json_object_new_array();

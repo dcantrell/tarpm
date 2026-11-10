@@ -70,6 +70,7 @@ test_list_to_string(void)
     TARPM_ASSERT_TRUE(s != NULL);
     r = strcmp(s, "foo,bar,baz,qux");
     TARPM_ASSERT_TRUE(r == 0);
+    free(s);
     list_free(list, free);
 
     return;

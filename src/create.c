@@ -413,28 +413,21 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     /* write the entry header */
     if (archive_write_header(payload, entry) != ARCHIVE_OK) {
         warnx("archive_write_header: %s", archive_error_string(payload));
-        archive_entry_free(entry);
-        free(full_path);
-        free(file_path);
-        return -1;
+        r = -1;
+        goto file_cleanup;
     }
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         if (!path_beneath(payload_dir, relative_path, false)) {
             warnx(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
-            archive_entry_free(entry);
-            free(full_path);
-            free(file_path);
-            free(relative_path);
-            return -1;
+            r = -1;
+            goto file_cleanup;
         }
 
         if (write_file_data(file_path, params->size) != 0) {
-            archive_entry_free(entry);
-            free(full_path);
-            free(file_path);
-            return -1;
+            r = -1;
+            goto file_cleanup;
         }
     }
 
@@ -444,7 +437,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
         r = -1;
     }
 
-    /* clean up */
+file_cleanup:
     archive_entry_free(entry);
     free(full_path);
     free(file_path);
@@ -479,6 +472,8 @@ compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level
     size_t n = 0;
     bool finished = false;
     int rc = 0;
+    int infd = -1;
+    int outfd = -1;
 
     /* create compression context */
     cctx = ZSTD_createCCtx();
@@ -516,9 +511,27 @@ compress_with_zstd_no_checksum(int uncompressed_fd, int compressed_fd, int level
         goto cleanup;
     }
 
-    /* open file descriptors */
-    in = fdopen(dup(uncompressed_fd), "rb");
-    out = fdopen(dup(compressed_fd), "wb");
+    /* open file descriptors, a dup() that does not become a FILE * is closed below */
+    infd = dup(uncompressed_fd);
+    outfd = dup(compressed_fd);
+
+    if (infd == -1 || outfd == -1) {
+        warn("dup");
+        rc = -1;
+        goto cleanup;
+    }
+
+    in = fdopen(infd, "rb");
+
+    if (in != NULL) {
+        infd = -1;
+    }
+
+    out = fdopen(outfd, "wb");
+
+    if (out != NULL) {
+        outfd = -1;
+    }
 
     if (in == NULL || out == NULL) {
         warn("fdopen");
@@ -599,6 +612,14 @@ cleanup:
     if (out && fclose(out) != 0) {
         warn("fclose");
         rc = -1;
+    }
+
+    if (infd != -1) {
+        close(infd);
+    }
+
+    if (outfd != -1) {
+        close(outfd);
     }
 
     free(ibuf);
@@ -1057,7 +1078,13 @@ create_payload(struct json_object *header, const char *payload_dir)
 
     if (payloadfd == -1) {
         warn("memfd_create");
-        return payloadfd;
+        free(template);
+
+        if (need_free_tags) {
+            json_object_put(tags);
+        }
+
+        return -1;
     }
 
     free(template);
@@ -1183,7 +1210,8 @@ create_payload(struct json_object *header, const char *payload_dir)
     if (zstd.used) {
         if (pipe(zstd.pipefd) == -1) {
             warn("pipe");
-            return -1;
+            failed = true;
+            goto close_payload;
         }
 
         tmp_payloadfd = zstd.pipefd[1];
@@ -1202,7 +1230,8 @@ create_payload(struct json_object *header, const char *payload_dir)
                 warn("close");
             }
 
-            return -1;
+            failed = true;
+            goto close_payload;
         } else if (zstd.pid == 0) {
             /* read from pipe, compress, write to payloadfd */
             if (close(zstd.pipefd[1]) == -1) {
@@ -1338,9 +1367,12 @@ close_payload:
 #if ARCHIVE_VERSION_NUMBER < 3000000
     archive_write_finish(payload);
 #else
+    /* the error string goes with the archive, so there is none to print */
     if (archive_write_free(payload) != ARCHIVE_OK) {
-        warnx("archive_write_free: %s", archive_error_string(payload));
+        warnx("archive_write_free");
     }
+
+    payload = NULL;
 #endif
 
     /* clean up hardlink tracking */
@@ -1389,7 +1421,7 @@ close_payload:
  *
  * NOTE:
  * This closes the file descriptor, which removes the temporary
- * payload file.
+ * payload file.  It does that on failure too.
  */
 static int
 write_payload(FILE *rpm, int fd)
@@ -1406,6 +1438,7 @@ write_payload(FILE *rpm, int fd)
     /* bring the payload back to the beginning */
     if (lseek(fd, 0, SEEK_SET) == -1) {
         warn("lseek");
+        close(fd);
         return -1;
     }
 
@@ -1414,6 +1447,7 @@ write_payload(FILE *rpm, int fd)
 
     if (pload == NULL) {
         warn("fdopen");
+        close(fd);
         return -1;
     }
 
@@ -2374,7 +2408,8 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
 int
 create_rpm(const char *filename, const char *cwd, const char *input_dir, const struct json_paths *paths)
 {
-    int rc = 0;
+    int r = 0;
+    int rc = -1;
     FILE *rpm = NULL;
     int payloadfd = -1;
     uint32_t keptpayload = 0;
@@ -2405,7 +2440,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         return -1;
     }
 
-    /* change to the input directory */
+    /* change to the input directory, every failure after this goes through create_cleanup */
     if (chdir(input_dir) == -1) {
         warn("chdir");
         return -1;
@@ -2420,20 +2455,18 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (payload_dir == NULL) {
         warnx(_("*** unable to set payload_dir"));
-        return -1;
+        goto create_cleanup;
     }
 
     /* make sure we have the payload subdirectory */
     if (lstat(payload_dir, &sb) == -1) {
         warn("lstat");
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     if (!S_ISDIR(sb.st_mode)) {
         warn(_("*** %s is not a directory"), payload_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* the caller may have named where the JSON metadata files are */
@@ -2448,8 +2481,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (header_dir == NULL) {
         warnx(_("*** unable to set header_dir"));
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /*
@@ -2461,9 +2493,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (signature == NULL) {
         warnx(_("*** unable to construct RPM signature"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* read in header.json */
@@ -2471,9 +2501,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (header == NULL) {
         warnx(_("*** missing header data"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* everything below reads the dependencies, so check them first */
@@ -2487,21 +2515,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      * the package type it leaves behind.
      */
     if (check_dependencies(dependencies) != 0 || apply_header_defaults(header, rpmformat) != 0) {
-        json_object_put(header);
-        json_object_put(signature);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     warn_nevr_slash(header);
 
     if (check_raw_tags(header) != 0) {
-        json_object_put(header);
-        json_object_put(signature);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* pick up the files added to the payload tree */
@@ -2516,11 +2536,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     if (check_payload_paths(header, payload_dir) != 0) {
-        json_object_put(header);
-        json_object_put(signature);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* note the payload digests header.json carries before placeholders go in */
@@ -2533,9 +2549,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      */
     if (apply_rpmformat(header, rpmformat) != 0) {
         warnx(_("*** unable to apply the RPM format to the header"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* create the lead from header metadata */
@@ -2543,17 +2557,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (rawlead == NULL) {
         warnx(_("*** unable to construct RPM lead"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* create the header (the main header) */
     if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to construct RPM header"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* create the payload */
@@ -2561,55 +2571,41 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (payloadfd == -1) {
         warnx("create_payload");
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* create the signature */
     if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         warnx(_("*** unable to construct RPM signature"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* work out the payload digests and sizes the format calls for */
     if (update_payload_tags(header, payloadfd, rpmformat, keptpayload) != 0) {
-        close(payloadfd);
         warnx("update_payload_tags");
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* free the old header structures before regenerating */
     free_header(hdr, hdrinfo);
+    hdr = NULL;
+    hdrinfo = NULL;
 
     /* regenerate the header with updated digests */
     if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to reconstruct RPM header"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* with -D and -k what signature.json carries goes in as-is */
     if (read_kept_signature(paths, &keptsig) != 0) {
-        close(payloadfd);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* recalculate the digests and update the signature data using the updated header */
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat, keptsig) != 0) {
-        close(payloadfd);
-        json_object_put(keptsig);
         warnx("update_signature");
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /*
@@ -2618,80 +2614,74 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      * above dropped them from the files that changed.
      */
     if (add_signature_files(signature, header, payload_dir, rpmformat) != 0) {
-        close(payloadfd);
-        json_object_put(keptsig);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* with -k the package signatures from signature.json go in too */
     if (keep_package_signatures(signature, keptsig, rpmformat) != 0) {
-        close(payloadfd);
-        json_object_put(keptsig);
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
-
-    json_object_put(keptsig);
 
     /* free the old signature structures before regenerating */
     free_header(sig, siginfo);
+    sig = NULL;
+    siginfo = NULL;
 
     /* regenerate the signature with updated digests */
     if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
         warnx(_("*** unable to reconstruct RPM signature"));
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* create an RPM for writing */
     rpm = open_package(filename, &tmpname);
 
     if (rpm == NULL) {
-        free(header_dir);
-        free(payload_dir);
-        return -1;
+        goto create_cleanup;
     }
 
     /* write the lead to the RPM */
     if (fwrite(rawlead, sizeof(*rawlead), 1, rpm) != 1) {
         warn("fwrite");
-        rc = -1;
         goto create_cleanup;
     }
 
     /* write the signature to the RPM */
     if (write_header(rpm, sig, siginfo, true, signature) == -1) {
-        rc = -1;
         goto create_cleanup;
     }
 
     /* write the header to the RPM */
     if (write_header(rpm, hdr, hdrinfo, false, header) == -1) {
-        rc = -1;
         goto create_cleanup;
     }
 
-    /* write the payload to the RPM */
-    if (write_payload(rpm, payloadfd) == -1) {
-        rc = -1;
+    /* write_payload() closes the payload whether or not it works */
+    r = write_payload(rpm, payloadfd);
+    payloadfd = -1;
+
+    if (r == -1) {
         goto create_cleanup;
     }
+
+    rc = 0;
 
 create_cleanup:
     json_object_put(header);
     json_object_put(signature);
+    json_object_put(keptsig);
     free_header(sig, siginfo);
     free_header(hdr, hdrinfo);
     free(rawlead);
     free(header_dir);
     free(payload_dir);
 
+    if (payloadfd != -1 && close(payloadfd) == -1) {
+        warn("close");
+    }
+
     /* close the RPM, the final flush can fail too */
-    if (fclose(rpm) != 0) {
+    if (rpm != NULL && fclose(rpm) != 0) {
         warn("fclose");
         rc = -1;
     }

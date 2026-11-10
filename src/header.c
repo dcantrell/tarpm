@@ -1532,9 +1532,13 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     bool need_free_tags = false;
     size_t i = 0;
 
-    if (data == NULL) {
+    if (data == NULL || hdr == NULL || hdrinfo == NULL) {
         return -1;
     }
+
+    /* the caller gets nothing back unless we succeed */
+    *hdr = NULL;
+    *hdrinfo = NULL;
 
     /* allocate the two structures for the header */
     s = xalloc(sizeof(*s));
@@ -1670,6 +1674,14 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     }
 
     free_tag_files(tagfiles, ntags);
+
+    if (r != 0) {
+        free(v->estart);
+        free(v->datastart);
+        free(v);
+        free(s);
+        return r;
+    }
 
     /* ensure caller gets the header and data */
     *hdr = s;

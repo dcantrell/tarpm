@@ -472,7 +472,8 @@ collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, c
         count = ntohl(hdrentry[i].count);
         data = hdrinfo->datastart + offset;
 
-        if (tag == dep->name && datatype == RPM_STRING_ARRAY_TYPE) {
+        /* rpm reads the first of a tag that appears twice, so we do too */
+        if (tag == dep->name && datatype == RPM_STRING_ARRAY_TYPE && da->names == NULL) {
             da->nnames = count;
             da->names = xalloc(count * sizeof(char *));
             p = data;
@@ -481,7 +482,7 @@ collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, c
                 da->names[j] = strdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
-        } else if (tag == dep->flags && datatype == RPM_INT32_TYPE) {
+        } else if (tag == dep->flags && datatype == RPM_INT32_TYPE && da->flags == NULL) {
             da->nflags = count;
             da->flags = xalloc(count * sizeof(uint32_t));
             p = data;
@@ -491,7 +492,7 @@ collect_dep_arrays(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, c
                 da->flags[j] = ntohl(flag);
                 p += sizeof(uint32_t);
             }
-        } else if (tag == dep->version && datatype == RPM_STRING_ARRAY_TYPE) {
+        } else if (tag == dep->version && datatype == RPM_STRING_ARRAY_TYPE && da->versions == NULL) {
             da->nversions = count;
             da->versions = xalloc(count * sizeof(char *));
             p = data;

@@ -352,7 +352,8 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         count = ntohl(hdrentry[i].count);
         data = hdrinfo->datastart + offset;
 
-        if (tag == RPMTAG_CHANGELOGTIME && datatype == RPM_INT32_TYPE) {
+        /* rpm reads the first of a tag that appears twice, so we do too */
+        if (tag == RPMTAG_CHANGELOGTIME && datatype == RPM_INT32_TYPE && times == NULL) {
             ntimes = count;
             times = xalloc(count * sizeof(uint32_t));
             p = data;
@@ -362,7 +363,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 times[j] = ntohl(time_val);
                 p += sizeof(uint32_t);
             }
-        } else if (tag == RPMTAG_CHANGELOGNAME && datatype == RPM_STRING_ARRAY_TYPE) {
+        } else if (tag == RPMTAG_CHANGELOGNAME && datatype == RPM_STRING_ARRAY_TYPE && names == NULL) {
             nnames = count;
             names = xalloc(count * sizeof(char *));
             p = data;
@@ -371,7 +372,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
                 names[j] = strdup((char *) p);
                 p += strlen((char *) p) + 1;
             }
-        } else if (tag == RPMTAG_CHANGELOGTEXT && datatype == RPM_STRING_ARRAY_TYPE) {
+        } else if (tag == RPMTAG_CHANGELOGTEXT && datatype == RPM_STRING_ARRAY_TYPE && texts == NULL) {
             ntexts = count;
             texts = xalloc(count * sizeof(char *));
             p = data;
