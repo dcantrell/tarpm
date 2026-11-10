@@ -115,36 +115,7 @@ convert_payload(const char *rpm)
     /* create a new archive with the payload data */
     archive = archive_write_new();
 
-    /*
-     * add the compression filter based on the type indicated in
-     * the header
-     */
-    if (!strcmp(compr, "gzip")) {
-        if (archive_write_add_filter_gzip(archive) != ARCHIVE_OK) {
-            warnx("*** archive_write_add_filter_gzip: %s", archive_error_string(archive));
-            goto cleanup;
-        }
-    } else if (!strcmp(compr, "bzip2")) {
-        if (archive_write_add_filter_bzip2(archive) != ARCHIVE_OK) {
-            warnx("*** archive_write_add_filter_bzip2: %s", archive_error_string(archive));
-            goto cleanup;
-        }
-    } else if (!strcmp(compr, "xz")) {
-        if (archive_write_add_filter_xz(archive) != ARCHIVE_OK) {
-            warnx("*** archive_write_add_filter_xz: %s", archive_error_string(archive));
-            goto cleanup;
-        }
-    } else if (!strcmp(compr, "lzma")) {
-        if (archive_write_add_filter_lzma(archive) != ARCHIVE_OK) {
-            warnx("*** archive_write_add_filter_lzma: %s", archive_error_string(archive));
-            goto cleanup;
-        }
-    } else if (!strcmp(compr, "zstd")) {
-        if (archive_write_add_filter_zstd(archive) != ARCHIVE_OK) {
-            warnx("*** archive_write_add_filter_zstd: %s", archive_error_string(archive));
-            goto cleanup;
-        }
-    }
+    /* extract.c unpacks the tar file right away, so we leave it uncompressed */
 
     /*
      * Write pax the way rpm2archive does.  newc cannot hold a file of

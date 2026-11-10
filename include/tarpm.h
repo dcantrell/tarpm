@@ -85,7 +85,7 @@ extern int rpmformat;
 void filter_format_tags(struct json_object *tags, const int format);
 int apply_rpmformat(struct json_object *header, const int format);
 uint32_t kept_payload_digests(struct json_object *header);
-int update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept);
+int update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept, uint64_t *uncompressed);
 
 /* defaults.c */
 int apply_header_defaults(struct json_object *header, const int format);
@@ -115,6 +115,8 @@ bool is_dependency_tag(rpmTagVal tag);
 const char *dependency_type_key(const char abbrev);
 char dependency_type_abbrev(const char *key);
 int dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry);
+struct json_object *index_dependencies(struct json_object *dependencies);
+int lookup_dependency(struct json_object *dependencies, struct json_object *lookup, const char *key, struct json_object *entry);
 
 /* files.c */
 /*
@@ -221,6 +223,8 @@ int list_rpm(const char *rpm);
 unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
 char *payload_digest(const int type, const int payloadfd, uint64_t *size);
 char *archive_digest(const int type, const int payloadfd, uint64_t *size);
+int payload_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size);
+int archive_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size);
 char *nul_digest(const int type);
 
 /* strmode.c */

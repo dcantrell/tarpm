@@ -63,6 +63,9 @@ static const struct {
     { 0,                               0,                     false }
 };
 
+/* room for every payload digest, the terminator included */
+#define PAYLOAD_DIGEST_COUNT (sizeof(payload_digests) / sizeof(payload_digests[0]))
+
 /* Return the group of main header tags a format calls for, NULL for a format we cannot write */
 static const rpmTagVal *
 header_tags(const int format, size_t *ntags)
@@ -514,16 +517,25 @@ kept_payload_digests(struct json_object *header)
 /*
  * Work out the payload digests and sizes and write them in to the
  * main header.  The payload has to exist by the time we are called.
- * A digest with its bit set in kept stays as header.json has it.
- * Returns non-zero on failure.
+ * A digest with its bit set in kept stays as header.json has it.  We
+ * read the payload once as it is and decompress it once, whatever the
+ * number of digests.  The uncompressed size goes in uncompressed if
+ * the caller asked for it.  Returns non-zero on failure.
  */
 int
-update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept)
+update_payload_tags(struct json_object *header, const int payloadfd, const int format, const uint32_t kept, uint64_t *uncompressed)
 {
     size_t i = 0;
     size_t ntags = 0;
+    size_t nplain = 0;
+    size_t narchive = 0;
+    size_t which[PAYLOAD_DIGEST_COUNT];
+    int plaintypes[PAYLOAD_DIGEST_COUNT];
+    int archivetypes[PAYLOAD_DIGEST_COUNT];
+    char *digests[PAYLOAD_DIGEST_COUNT];
     uint64_t payloadsize = 0;
     uint64_t archivesize = 0;
+    int r = -1;
     char *digest = NULL;
     const char *tag_name = NULL;
     const rpmTagVal *group = NULL;
@@ -545,54 +557,79 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
         return -1;
     }
 
+    /*
+     * Sort the digests the format calls for by what they cover.  The
+     * compressed ones come first in digests[] and the uncompressed
+     * ones after them.
+     */
+    memset(digests, 0, sizeof(digests));
+
     for (i = 0; payload_digests[i].tag != 0; i++) {
-        if (!in_group(group, ntags, payload_digests[i].tag)) {
+        if (!in_group(group, ntags, payload_digests[i].tag) || payload_digests[i].uncompressed) {
             continue;
         }
 
-        if (payload_digests[i].uncompressed) {
-            digest = archive_digest(payload_digests[i].type, payloadfd, &archivesize);
-        } else {
-            digest = payload_digest(payload_digests[i].type, payloadfd, &payloadsize);
+        which[nplain] = i;
+        plaintypes[nplain++] = payload_digests[i].type;
+    }
+
+    for (i = 0; payload_digests[i].tag != 0; i++) {
+        if (!in_group(group, ntags, payload_digests[i].tag) || !payload_digests[i].uncompressed) {
+            continue;
         }
 
-        if (digest == NULL) {
-            warnx(_("*** failed to compute the %s digest"), rpmTagGetName(payload_digests[i].tag));
-            return -1;
-        }
+        which[nplain + narchive] = i;
+        archivetypes[narchive++] = payload_digests[i].type;
+    }
+
+    /* the uncompressed size always gets measured, the signature header needs it */
+    if (payload_digest_list(plaintypes, nplain, payloadfd, digests, &payloadsize) != 0 || archive_digest_list(archivetypes, narchive, payloadfd, digests + nplain, &archivesize) != 0) {
+        warnx(_("*** failed to compute the payload digests"));
+        goto cleanup_update_payload_tags;
+    }
+
+    for (i = 0; i < nplain + narchive; i++) {
+        digest = digests[i];
 
         /* we still computed it since the sizes come from the same pass */
-        if (kept & ((uint32_t) 1 << i)) {
-            free(digest);
+        if (kept & ((uint32_t) 1 << which[i])) {
             continue;
         }
 
-        if (set_payload_tag(tags, payload_digests[i].tag, digest) != 0) {
-            tag_name = rpmTagGetName(payload_digests[i].tag);
+        if (set_payload_tag(tags, payload_digests[which[i]].tag, digest) != 0) {
+            tag_name = rpmTagGetName(payload_digests[which[i]].tag);
 
             /* older rpm versions may not have all payload digest tags, skip them gracefully */
             if (strcmp(tag_name, "(unknown)") == 0) {
-                free(digest);
                 continue;
             }
 
             warnx(_("*** failed to update %s in the header"), tag_name);
-            free(digest);
-            return -1;
+            goto cleanup_update_payload_tags;
         }
+    }
 
-        free(digest);
+    if (uncompressed != NULL) {
+        *uncompressed = archivesize;
     }
 
     /* only a v6 header records the payload sizes */
     if (!in_group(group, ntags, RPMTAG_PAYLOADSIZE_VALUE)) {
-        return 0;
+        r = 0;
+        goto cleanup_update_payload_tags;
     }
 
     if (set_size_tag(tags, RPMTAG_PAYLOADSIZE_VALUE, payloadsize) != 0 || set_size_tag(tags, RPMTAG_PAYLOADSIZEALT_VALUE, archivesize) != 0) {
         warnx(_("*** failed to update the payload sizes in the header"));
-        return -1;
+        goto cleanup_update_payload_tags;
     }
 
-    return 0;
+    r = 0;
+
+cleanup_update_payload_tags:
+    for (i = 0; i < PAYLOAD_DIGEST_COUNT; i++) {
+        free(digests[i]);
+    }
+
+    return r;
 }

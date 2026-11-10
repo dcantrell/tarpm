@@ -779,20 +779,51 @@ valid_file_list(const struct hdr_file_lists *hfl, size_t *numfiles)
     return true;
 }
 
+/* A payload file and its inode, sorted to find the hardlink groups */
+struct inode_index {
+    uint32_t inode;
+    size_t index;
+};
+
+/* qsort() comparison by inode, then by place in the file list */
+static int
+compare_inode_index(const void *a, const void *b)
+{
+    const struct inode_index *x = a;
+    const struct inode_index *y = b;
+
+    if (x->inode < y->inode) {
+        return -1;
+    } else if (x->inode > y->inode) {
+        return 1;
+    } else if (x->index < y->index) {
+        return -1;
+    } else if (x->index > y->index) {
+        return 1;
+    }
+
+    return 0;
+}
+
 /*
  * Find the hardlink groups in the file list.  RPM wants the last file
  * in a group to hold the data and the ones before it to link to it,
- * so we keep the last path we see for each group.  We allocate the
- * arrays here and free_hardlink_groups() frees them.
+ * so we keep the last path we see for each group.  The groups are
+ * numbered in the order they first show up in the file list and every
+ * file gets its group number in hl->group.  We sort by inode so this
+ * does not take time quadratic in the number of files.  We allocate
+ * the arrays here and free_hardlink_groups() frees them.
  */
 static void
 find_hardlink_groups(const struct hdr_file_lists *hfl, const size_t numfiles, struct hardlink_groups *hl)
 {
     size_t i = 0;
-    size_t j = 0;
-    uint32_t inode = 0;
+    size_t n = 0;
+    size_t g = 0;
+    size_t *first = NULL;
+    size_t *last = NULL;
     uint16_t mode = 0;
-    bool found = false;
+    struct inode_index *sorted = NULL;
 
     if (hfl == NULL || hl == NULL) {
         return;
@@ -801,9 +832,14 @@ find_hardlink_groups(const struct hdr_file_lists *hfl, const size_t numfiles, st
     hl->paths = xcalloc(numfiles, sizeof(char *));
     hl->inodes = xcalloc(numfiles, sizeof(uint32_t));
     hl->nlinks = xcalloc(numfiles, sizeof(uint32_t));
+    hl->group = xcalloc(numfiles, sizeof(size_t));
+    sorted = xcalloc(numfiles, sizeof(*sorted));
+    first = xcalloc(numfiles, sizeof(size_t));
+    last = xcalloc(numfiles, sizeof(size_t));
 
     for (i = 0; i < numfiles; i++) {
-        inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
+        hl->group[i] = SIZE_MAX;
+        first[i] = SIZE_MAX;
         mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
 
         /* only regular files can be hardlinks */
@@ -816,33 +852,50 @@ find_hardlink_groups(const struct hdr_file_lists *hfl, const size_t numfiles, st
             continue;
         }
 
-        found = false;
+        sorted[n].inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
+        sorted[n].index = i;
+        n++;
+    }
 
-        /* have we seen this inode? */
-        for (j = 0; j < hl->count; j++) {
-            if (hl->inodes[j] == inode) {
-                found = true;
-                hl->nlinks[j]++;
+    if (n > 0) {
+        qsort(sorted, n, sizeof(*sorted), compare_inode_index);
+    }
 
-                /*
-                 * This is now the last occurrence of the hardlink, so
-                 * update our tracking structure.
-                 */
-                free(hl->paths[j]);
-                hl->paths[j] = file_list_path(hfl, i);
-                break;
-            }
-        }
-
-        /* new inode, so this is the first occurrence */
-        if (!found) {
-            hl->paths[hl->count] = file_list_path(hfl, i);
-            hl->inodes[hl->count] = inode;
-            hl->nlinks[hl->count] = 1;
-            hl->count++;
+    /* each run of one inode is a group and its first entry comes first in the file list */
+    for (i = 0; i < n; i++) {
+        if (i == 0 || sorted[i].inode != sorted[i - 1].inode) {
+            first[sorted[i].index] = sorted[i].index;
+        } else {
+            first[sorted[i].index] = first[sorted[i - 1].index];
         }
     }
 
+    /* number the groups in file list order */
+    for (i = 0; i < numfiles; i++) {
+        if (first[i] == SIZE_MAX) {
+            continue;
+        }
+
+        if (first[i] == i) {
+            g = hl->count;
+            hl->inodes[g] = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
+            hl->count++;
+        } else {
+            g = hl->group[first[i]];
+        }
+
+        hl->group[i] = g;
+        hl->nlinks[g]++;
+        last[g] = i;
+    }
+
+    for (g = 0; g < hl->count; g++) {
+        hl->paths[g] = file_list_path(hfl, last[g]);
+    }
+
+    free(sorted);
+    free(first);
+    free(last);
     return;
 }
 
@@ -868,6 +921,7 @@ free_hardlink_groups(struct hardlink_groups *hl)
 
     free(hl->inodes);
     free(hl->nlinks);
+    free(hl->group);
 
     return;
 }
@@ -883,11 +937,9 @@ static size_t
 order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, const struct hardlink_groups *hl, size_t *order)
 {
     size_t i = 0;
-    size_t j = 0;
+    size_t g = 0;
     size_t ordered = 0;
-    uint32_t inode = 0;
-    uint16_t mode = 0;
-    bool found = false;
+    size_t *next = NULL;
 
     if (hfl == NULL || hl == NULL || order == NULL) {
         return 0;
@@ -898,43 +950,34 @@ order_payload_files(const struct hdr_file_lists *hfl, const size_t numfiles, con
             continue;
         }
 
-        inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
-        mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
-        found = false;
+        g = hl->group[i];
 
-        if (S_ISREG(mode)) {
-            for (j = 0; j < hl->count; j++) {
-                if (hl->inodes[j] == inode && hl->nlinks[j] > 1) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        if (!found) {
+        if (g == SIZE_MAX || hl->nlinks[g] < 2) {
             order[ordered++] = i;
         }
     }
 
-    for (j = 0; j < hl->count; j++) {
-        if (hl->nlinks[j] < 2) {
-            continue;
-        }
+    /* each group gets a run of slots after the files with no group */
+    next = xcalloc(hl->count + 1, sizeof(size_t));
 
-        for (i = 0; i < numfiles; i++) {
-            if (is_ghost_file(hfl, i)) {
-                continue;
-            }
+    for (g = 0; g < hl->count; g++) {
+        next[g] = ordered;
 
-            inode = (uint32_t) json_object_get_int64(json_object_array_get_idx(hfl->fileinodes, i));
-            mode = (uint16_t) json_object_get_int(json_object_array_get_idx(hfl->filemodes, i));
-
-            if (S_ISREG(mode) && inode == hl->inodes[j]) {
-                order[ordered++] = i;
-            }
+        if (hl->nlinks[g] > 1) {
+            ordered += hl->nlinks[g];
         }
     }
 
+    /* ghost files have no group, so they stay out */
+    for (i = 0; i < numfiles; i++) {
+        g = hl->group[i];
+
+        if (g != SIZE_MAX && hl->nlinks[g] > 1) {
+            order[next[g]++] = i;
+        }
+    }
+
+    free(next);
     return ordered;
 }
 
@@ -1002,7 +1045,6 @@ create_payload(struct json_object *header, const char *payload_dir)
     int payloadfd = -1;
     int tmp_payloadfd = -1;
     int dirindex = 0;
-    bool need_free_tags = false;
     bool stripped = false;
     bool failed = false;
     size_t i = 0;
@@ -1023,9 +1065,6 @@ create_payload(struct json_object *header, const char *payload_dir)
     struct file_params params;
     struct archive_entry *entry = NULL;
     struct json_object *tags = NULL;
-    struct json_object *files = NULL;
-    struct json_object *dependencies = NULL;
-    struct json_object *tags_with_files = NULL;
 
     if (header == NULL || payload_dir == NULL) {
         return -1;
@@ -1051,57 +1090,21 @@ create_payload(struct json_object *header, const char *payload_dir)
     memset(&zstd, '\0', sizeof(zstd));
     zstd.level = 3;
 
-    /* Check if there's a files array that needs to be converted to tags */
-    if (json_object_object_get_ex(header, RPM_FILES_DESC, &files)) {
-        /* Create a mutable copy of the tags array */
-        tags_with_files = json_object_new_array();
-
-        for (i = 0; i < json_object_array_length(tags); i++) {
-            json_object_array_add(tags_with_files, json_object_get(json_object_array_get_idx(tags, i)));
-        }
-
-        /*
-         * Add the file list tags to the copy.  The dependencies go in
-         * as well because the depends dictionary rebuilt there holds
-         * indexes in to them.
-         */
-        if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {
-            dependencies = NULL;
-        }
-
-        if (add_file_list_tags(tags_with_files, files, payload_dir, dependencies, rpmformat) != 0) {
-            json_object_put(tags_with_files);
-            return -1;
-        }
-
-        /* Use the copy for processing */
-        tags = tags_with_files;
-        need_free_tags = true;
-    }
-
     /*
-     * Get file lists from header.  add_file_list_tags() generated
-     * these from the "files" array, so anything wrong here is a tarpm
-     * bug and not bad input.
+     * Get file lists from header.  create_rpm() generated these from
+     * the "files" array with add_file_list_tags(), so anything wrong
+     * here is a tarpm bug and not bad input.
      */
     collect_file_list_tags(tags, &hfl);
 
     if (!valid_file_list(&hfl, &numfiles)) {
         warnx(_("*** generated file list tags are inconsistent"));
 
-        if (need_free_tags) {
-            json_object_put(tags);
-        }
-
         return -1;
     }
 
     if (numfiles > 0 && (!hfl.filesizes || !hfl.filemodes || !hfl.filerdevs || !hfl.filemtimes || !hfl.filelinktos || !hfl.fileinodes)) {
         warnx(_("*** missing generated file metadata tags in header data"));
-
-        if (need_free_tags) {
-            json_object_put(tags);
-        }
 
         return -1;
     }
@@ -1120,10 +1123,6 @@ create_payload(struct json_object *header, const char *payload_dir)
     if (payloadfd == -1) {
         warn("memfd_create");
         free(template);
-
-        if (need_free_tags) {
-            json_object_put(tags);
-        }
 
         return -1;
     }
@@ -1372,24 +1371,21 @@ create_payload(struct json_object *header, const char *payload_dir)
         params.hardlink = NULL;
         params.index = i;
 
-        if (S_ISREG(params.mode)) {
-            /* find the first occurrence of this inode */
-            for (j = 0; j < hl.count; j++) {
-                if (hl.inodes[j] == params.inode) {
-                    params.nlink = hl.nlinks[j];
+        /* the group find_hardlink_groups() put this file in */
+        j = hl.group[i];
 
-                    /* build current file path */
-                    current_path = payload_path(params.dirname, params.basename);
+        if (S_ISREG(params.mode) && j != SIZE_MAX) {
+            params.nlink = hl.nlinks[j];
 
-                    /* set hardlink target */
-                    if (strcmp(current_path, hl.paths[j]) != 0) {
-                        params.hardlink = hl.paths[j];
-                    }
+            /* build current file path */
+            current_path = payload_path(params.dirname, params.basename);
 
-                    free(current_path);
-                    break;
-                }
+            /* set hardlink target */
+            if (strcmp(current_path, hl.paths[j]) != 0) {
+                params.hardlink = hl.paths[j];
             }
+
+            free(current_path);
         }
 
         /* the header lists every file, so a missing one is fatal */
@@ -1448,11 +1444,6 @@ close_payload:
             warnx(_("*** zstd compression child failed"));
             failed = true;
         }
-    }
-
-    /* cleanup temporary tags array if we created one */
-    if (need_free_tags) {
-        json_object_put(tags);
     }
 
     /* a payload missing anything does not match the header */
@@ -2003,11 +1994,12 @@ check_kept_signatures(struct json_object *kept, const char *sha256)
 
 /*
  * Update the digests and sizes in the signature using the header and
- * payload data.  A digest kept carries goes in place of the computed
- * one.  Returns non-zero on failure.
+ * payload data.  archivesize is the uncompressed payload size that
+ * update_payload_tags() measured.  A digest kept carries goes in
+ * place of the computed one.  Returns non-zero on failure.
  */
 static int
-update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd, const int format, struct json_object *kept)
+update_signature(struct json_object *signature, struct json_object *header, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const int payloadfd, const int format, struct json_object *kept, const uint64_t archivesize)
 {
     int i = 0;
     unsigned char *digest = NULL;
@@ -2018,7 +2010,6 @@ update_signature(struct json_object *signature, struct json_object *header, cons
     struct json_object *tags = NULL;
     off_t payload_off = 0;
     uint64_t payloadsize = 0;
-    uint64_t archivesize = 0;
     uint64_t totalsize = 0;
     uint64_t hdrsize = 0;
     uint64_t nentries = 0;
@@ -2064,20 +2055,6 @@ update_signature(struct json_object *signature, struct json_object *header, cons
      * header and nothing else.
      */
     if (format == RPM_FORMAT_V4) {
-        /*
-         * measure the uncompressed payload, which is what the
-         * Payloadsize tag records rather than what we write in to the
-         * RPM
-         */
-        buf = archive_digest(TARPM_DIGEST_SHA256, payloadfd, &archivesize);
-
-        if (buf == NULL) {
-            warnx(_("*** failed to measure the uncompressed payload"));
-            return -1;
-        }
-
-        free(buf);
-
         /* a package too big for the 32-bit tags gets the 64-bit ones */
         if (totalsize >= UINT32_MAX || archivesize >= UINT32_MAX) {
             sizetag = sig_tag_name(RPMSIGTAG_LONGSIZE);
@@ -2475,6 +2452,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     FILE *rpm = NULL;
     int payloadfd = -1;
     uint32_t keptpayload = 0;
+    uint64_t archivesize = 0;
     struct stat sb;
     char *tmpname = NULL;
     char *header_dir = NULL;
@@ -2622,6 +2600,16 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
+    /*
+     * Build the file list tags once.  Both header passes and the
+     * payload read them, and building them again would repeat the
+     * digest and libmagic work and the warnings.  The dependencies go
+     * in because the depends dictionary holds indexes in to them.
+     */
+    if (files != NULL && add_file_list_tags(tags, files, payload_dir, dependencies, rpmformat) != 0) {
+        goto create_cleanup;
+    }
+
     /* create the header (the main header) */
     if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to construct RPM header"));
@@ -2643,7 +2631,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* work out the payload digests and sizes the format calls for */
-    if (update_payload_tags(header, payloadfd, rpmformat, keptpayload) != 0) {
+    if (update_payload_tags(header, payloadfd, rpmformat, keptpayload, &archivesize) != 0) {
         warnx("update_payload_tags");
         goto create_cleanup;
     }
@@ -2665,7 +2653,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* recalculate the digests and update the signature data using the updated header */
-    if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat, keptsig) != 0) {
+    if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat, keptsig, archivesize) != 0) {
         warnx("update_signature");
         goto create_cleanup;
     }

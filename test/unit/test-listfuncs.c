@@ -71,7 +71,23 @@ test_list_to_string(void)
     r = strcmp(s, "foo,bar,baz,qux");
     TARPM_ASSERT_TRUE(r == 0);
     free(s);
+
+    /* a longer delimiter, and none at all */
+    s = list_to_string(list, " | ");
+    TARPM_ASSERT_STRING_EQUAL(s, "foo | bar | baz | qux");
+    free(s);
+    s = list_to_string(list, NULL);
+    TARPM_ASSERT_STRING_EQUAL(s, "foobarbazqux");
+    free(s);
     list_free(list, free);
+
+    /* one entry gets no delimiter and an empty list gives nothing back */
+    list = list_add(NULL, "only");
+    s = list_to_string(list, ",");
+    TARPM_ASSERT_STRING_EQUAL(s, "only");
+    free(s);
+    list_free(list, free);
+    TARPM_ASSERT_PTR_NULL(list_to_string(NULL, ","));
 
     return;
 }

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <stdlib.h>
 #include <unistd.h>
 #include <err.h>
 #include <string.h>
@@ -90,45 +91,129 @@ nul_digest(const int type)
     return hexdigest(digest, (unsigned int) len);
 }
 
+/* Free the digest contexts new_digest_contexts() made */
+static void
+free_digest_contexts(EVP_MD_CTX **ctx, const size_t n)
+{
+    size_t i = 0;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    for (i = 0; i < n; i++) {
+        EVP_MD_CTX_free(ctx[i]);
+    }
+
+    free(ctx);
+    return;
+}
+
+/*
+ * Start one digest context for each of the n types.  Returns the
+ * array, or NULL when a type is unknown or OpenSSL fails.
+ */
+static EVP_MD_CTX **
+new_digest_contexts(const int *types, const size_t n)
+{
+    size_t i = 0;
+    EVP_MD_CTX **ctx = NULL;
+
+    ctx = xcalloc(n + 1, sizeof(*ctx));
+
+    for (i = 0; i < n; i++) {
+        ctx[i] = EVP_MD_CTX_new();
+
+        if (ctx[i] == NULL || EVP_DigestInit(ctx[i], digest_algorithm(types[i])) == 0) {
+            warn("EVP_DigestInit");
+            free_digest_contexts(ctx, n);
+            return NULL;
+        }
+    }
+
+    return ctx;
+}
+
+/* Feed one block to every context, returns -1 on failure */
+static int
+update_digest_contexts(EVP_MD_CTX **ctx, const size_t n, const void *buf, const size_t len)
+{
+    size_t i = 0;
+
+    for (i = 0; i < n; i++) {
+        if (EVP_DigestUpdate(ctx[i], buf, len) == 0) {
+            warn("EVP_DigestUpdate");
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Finish every context and put its hex digest in out.  Returns -1 on
+ * failure with nothing left allocated in out.
+ */
+static int
+finish_digest_contexts(EVP_MD_CTX **ctx, const size_t n, char **out)
+{
+    size_t i = 0;
+    unsigned int digestlen = 0;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+
+    for (i = 0; i < n; i++) {
+        if (EVP_DigestFinal_ex(ctx[i], digest, &digestlen) == 0) {
+            warn("EVP_DigestFinal_ex");
+
+            while (i > 0) {
+                i--;
+                free(out[i]);
+                out[i] = NULL;
+            }
+
+            return -1;
+        }
+
+        out[i] = hexdigest(digest, digestlen);
+    }
+
+    return 0;
+}
+
 /*
  * Digest everything the file descriptor holds, which is the payload as
- * it lands in the package.  The size the payload takes up goes in size
- * if the caller asked for it.  Returns an allocated hex string or NULL
- * on failure.  Caller must free the string.
+ * it lands in the package.  We read it once and compute a digest for
+ * each of the n types, so out needs room for n strings.  The size the
+ * payload takes up goes in size if the caller asked for it.  Returns
+ * 0, or -1 on failure.  Caller must free the strings.
  */
-char *
-payload_digest(const int type, const int payloadfd, uint64_t *size)
+int
+payload_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size)
 {
-    char *r = NULL;
+    int r = -1;
     ssize_t len = 0;
     uint64_t total = 0;
-    unsigned int digestlen = 0;
     unsigned char buf[BUFSIZ];
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    EVP_MD_CTX *ctx = NULL;
+    EVP_MD_CTX **ctx = NULL;
 
-    if (payloadfd == -1) {
-        return NULL;
+    if (payloadfd == -1 || (n > 0 && (types == NULL || out == NULL))) {
+        return -1;
     }
 
     if (lseek(payloadfd, 0, SEEK_SET) == -1) {
         warn("lseek");
-        return NULL;
+        return -1;
     }
 
-    ctx = EVP_MD_CTX_new();
+    ctx = new_digest_contexts(types, n);
 
-    if (ctx == NULL || EVP_DigestInit(ctx, digest_algorithm(type)) == 0) {
-        warn("EVP_DigestInit");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+    if (ctx == NULL) {
+        return -1;
     }
 
     while ((len = read(payloadfd, buf, sizeof(buf))) > 0) {
-        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
-            warn("EVP_DigestUpdate");
-            EVP_MD_CTX_free(ctx);
-            return NULL;
+        if (update_digest_contexts(ctx, n, buf, len) != 0) {
+            goto cleanup_payload_digest_list;
         }
 
         total += len;
@@ -136,53 +221,68 @@ payload_digest(const int type, const int payloadfd, uint64_t *size)
 
     if (len == -1) {
         warn("read");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+        goto cleanup_payload_digest_list;
     }
 
-    if (EVP_DigestFinal_ex(ctx, digest, &digestlen) == 0) {
-        warn("EVP_DigestFinal_ex");
-        EVP_MD_CTX_free(ctx);
-        return NULL;
+    if (finish_digest_contexts(ctx, n, out) != 0) {
+        goto cleanup_payload_digest_list;
     }
-
-    r = hexdigest(digest, digestlen);
 
     if (size != NULL) {
         *size = total;
     }
 
-    EVP_MD_CTX_free(ctx);
+    r = 0;
+
+cleanup_payload_digest_list:
+    free_digest_contexts(ctx, n);
+
+    return r;
+}
+
+/*
+ * Digest the payload as it lands in the package.  The size goes in
+ * size if the caller asked for it.  Returns an allocated hex string or
+ * NULL on failure.  Caller must free the string.
+ */
+char *
+payload_digest(const int type, const int payloadfd, uint64_t *size)
+{
+    char *r = NULL;
+
+    if (payload_digest_list(&type, 1, payloadfd, &r, size) != 0) {
+        return NULL;
+    }
 
     return r;
 }
 
 /*
  * Digest the payload with the compression taken back off, which is
- * what the ALT tags in the main header record.  The uncompressed size
- * goes in size if the caller asked for it.  Returns an allocated hex
- * string or NULL on failure.  Caller must free the string.
+ * what the ALT tags in the main header record.  We decompress it once
+ * and compute a digest for each of the n types, so out needs room for
+ * n strings.  With n of 0 we only measure it.  The uncompressed size
+ * goes in size if the caller asked for it.  Returns 0, or -1 on
+ * failure.  Caller must free the strings.
  */
-char *
-archive_digest(const int type, const int payloadfd, uint64_t *size)
+int
+archive_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size)
 {
-    char *r = NULL;
+    int r = -1;
     ssize_t len = 0;
     uint64_t total = 0;
-    unsigned int digestlen = 0;
     struct archive *raw = NULL;
     struct archive_entry *entry = NULL;
-    EVP_MD_CTX *ctx = NULL;
-    unsigned char digest[EVP_MAX_MD_SIZE];
+    EVP_MD_CTX **ctx = NULL;
     char buf[BUFSIZ];
 
-    if (payloadfd == -1) {
-        return NULL;
+    if (payloadfd == -1 || (n > 0 && (types == NULL || out == NULL))) {
+        return -1;
     }
 
     if (lseek(payloadfd, 0, SEEK_SET) == -1) {
         warn("lseek");
-        return NULL;
+        return -1;
     }
 
     raw = archive_read_new();
@@ -192,25 +292,23 @@ archive_digest(const int type, const int payloadfd, uint64_t *size)
     if (archive_read_open_fd(raw, payloadfd, BUFSIZ) != ARCHIVE_OK) {
         warnx("archive_read_open_fd: %s", archive_error_string(raw));
         archive_read_free(raw);
-        return NULL;
+        return -1;
     }
 
-    ctx = EVP_MD_CTX_new();
+    ctx = new_digest_contexts(types, n);
 
-    if (ctx == NULL || EVP_DigestInit(ctx, digest_algorithm(type)) == 0) {
-        warn("EVP_DigestInit");
-        goto cleanup_archive_digest;
+    if (ctx == NULL) {
+        goto cleanup_archive_digest_list;
     }
 
     if (archive_read_next_header(raw, &entry) != ARCHIVE_OK) {
         warnx("archive_read_next_header: %s", archive_error_string(raw));
-        goto cleanup_archive_digest;
+        goto cleanup_archive_digest_list;
     }
 
     while ((len = archive_read_data(raw, buf, sizeof(buf))) > 0) {
-        if (EVP_DigestUpdate(ctx, buf, len) == 0) {
-            warn("EVP_DigestUpdate");
-            goto cleanup_archive_digest;
+        if (update_digest_contexts(ctx, n, buf, len) != 0) {
+            goto cleanup_archive_digest_list;
         }
 
         total += len;
@@ -218,23 +316,40 @@ archive_digest(const int type, const int payloadfd, uint64_t *size)
 
     if (len < 0) {
         warnx("archive_read_data: %s", archive_error_string(raw));
-        goto cleanup_archive_digest;
+        goto cleanup_archive_digest_list;
     }
 
-    if (EVP_DigestFinal_ex(ctx, digest, &digestlen) == 0) {
-        warn("EVP_DigestFinal_ex");
-        goto cleanup_archive_digest;
+    if (finish_digest_contexts(ctx, n, out) != 0) {
+        goto cleanup_archive_digest_list;
     }
-
-    r = hexdigest(digest, digestlen);
 
     if (size != NULL) {
         *size = total;
     }
 
-cleanup_archive_digest:
-    EVP_MD_CTX_free(ctx);
+    r = 0;
+
+cleanup_archive_digest_list:
+    free_digest_contexts(ctx, n);
     archive_read_free(raw);
+
+    return r;
+}
+
+/*
+ * Digest the payload with the compression taken back off.  The
+ * uncompressed size goes in size if the caller asked for it.  Returns
+ * an allocated hex string or NULL on failure.  Caller must free the
+ * string.
+ */
+char *
+archive_digest(const int type, const int payloadfd, uint64_t *size)
+{
+    char *r = NULL;
+
+    if (archive_digest_list(&type, 1, payloadfd, &r, size) != 0) {
+        return NULL;
+    }
 
     return r;
 }

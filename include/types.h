@@ -136,6 +136,7 @@ struct hardlink_groups {
     uint32_t *inodes;
     uint32_t *nlinks;
     size_t count;
+    size_t *group;              /* per file, the group index or SIZE_MAX */
 };
 
 /*

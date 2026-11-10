@@ -26,24 +26,47 @@ char *
 list_to_string(const str_list_t *list, const char *delimiter)
 {
     size_t pos = 0;
+    size_t len = 0;
+    size_t dlen = 0;
     char *s = NULL;
+    char *p = NULL;
     str_entry_t *entry = NULL;
 
     if (list == NULL || TAILQ_EMPTY(list)) {
         return NULL;
     }
 
-    s = xstrdup("");
+    if (delimiter != NULL) {
+        dlen = strlen(delimiter);
+    }
 
+    /* size the result first so we allocate once */
     TAILQ_FOREACH(entry, list, items) {
-        if (pos > 0 && delimiter != NULL) {
-            s = strappend(s, delimiter, NULL);
+        if (pos > 0) {
+            len += dlen;
         }
 
-        s = strappend(s, entry->str, NULL);
+        len += strlen(entry->str);
         pos++;
     }
 
+    s = xalloc(len + 1);
+    p = s;
+    pos = 0;
+
+    TAILQ_FOREACH(entry, list, items) {
+        if (pos > 0 && dlen > 0) {
+            memcpy(p, delimiter, dlen);
+            p += dlen;
+        }
+
+        len = strlen(entry->str);
+        memcpy(p, entry->str, len);
+        p += len;
+        pos++;
+    }
+
+    *p = '\0';
     return s;
 }
 

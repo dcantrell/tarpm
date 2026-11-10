@@ -690,6 +690,8 @@ void
 test_update_payload_tags_v4(void)
 {
     int fd = -1;
+    uint64_t size = 0;
+    uint64_t uncompressed = 0;
     char *digest = NULL;
     struct json_object *header = NULL;
 
@@ -703,7 +705,7 @@ test_update_payload_tags_v4(void)
 
     header = make_test_header("gzip", "9");
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
-    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0, &uncompressed), 0);
 
     /* the digest of the payload as it lands in the package */
     digest = payload_digest(TARPM_DIGEST_SHA256, fd, NULL);
@@ -711,10 +713,12 @@ test_update_payload_tags_v4(void)
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256_VALUE)), digest);
     free(digest);
 
-    /* and the digest of the same payload uncompressed */
-    digest = archive_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    /* and the digest of the same payload uncompressed, with its size */
+    digest = archive_digest(TARPM_DIGEST_SHA256, fd, &size);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256ALT_VALUE)), digest);
+    TARPM_ASSERT_TRUE(uncompressed == size);
+    TARPM_ASSERT_TRUE(uncompressed > 0);
     free(digest);
 
     json_object_put(header);
@@ -739,7 +743,7 @@ test_update_payload_tags_v6(void)
 
     header = make_test_header("zstd", "19");
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V6), 0);
-    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V6, 0), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V6, 0, NULL), 0);
 
     /* every digest in the v6 group describes the payload we have */
     digest = payload_digest(TARPM_DIGEST_SHA512, fd, &payloadsize);
@@ -822,7 +826,7 @@ test_update_payload_tags_kept(void)
     keep_digests = false;
 
     TARPM_ASSERT_EQUAL(apply_rpmformat(header, RPM_FORMAT_V4), 0);
-    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, kept), 0);
+    TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, kept, NULL), 0);
 
     /* the digest header.json carried stays */
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256_VALUE)), "dead");
@@ -848,14 +852,14 @@ test_update_payload_tags_bad_input(void)
     fd = make_test_payload("payload data");
     TARPM_ASSERT_TRUE(fd != -1);
 
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(NULL, fd, RPM_FORMAT_V4, 0), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(NULL, fd, RPM_FORMAT_V4, 0, NULL), 0);
 
     header = make_test_header("gzip", "9");
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, -1, RPM_FORMAT_V4, 0), 0);
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, 5, 0), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, -1, RPM_FORMAT_V4, 0, NULL), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, 5, 0, NULL), 0);
 
     /* the format tags have to be there before we can fill them in */
-    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0), 0);
+    TARPM_ASSERT_NOT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0, NULL), 0);
 
     json_object_put(header);
     close(fd);

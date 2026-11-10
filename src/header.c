@@ -1523,7 +1523,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     struct json_object *tags = NULL;
     struct json_object *changelog = NULL;
     struct json_object *dependencies = NULL;
-    struct json_object *files = NULL;
     struct json_object *tags_copy = NULL;
     struct tagfile *tagfiles = NULL;
     size_t ntags = 0;
@@ -1591,21 +1590,6 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     /* Check if there's a dependencies object that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_DEPENDENCIES_DESC, &dependencies)) {
         add_dependency_tags(tags_copy, dependencies);
-    }
-
-    /* Check if there's a files array that needs to be converted to tags */
-    if (json_object_object_get_ex(data, RPM_FILES_DESC, &files)) {
-        /*
-         * Add the file list tags to the copy.  The dependencies go in
-         * as well because the depends dictionary rebuilt here holds
-         * indexes in to them.
-         */
-        if (add_file_list_tags(tags_copy, files, payload_dir, dependencies, rpmformat) != 0) {
-            json_object_put(tags);
-            free(s);
-            free(v);
-            return -1;
-        }
     }
 
     /*

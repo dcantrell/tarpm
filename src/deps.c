@@ -416,63 +416,145 @@ dependency_type_abbrev(const char *key)
 }
 
 /*
+ * Give back the key index_dependencies() files a dependency under.
+ * The length of the name goes first so no name and version pair can
+ * run together in to another.  Caller must free the string.
+ */
+static char *
+dependency_key(struct json_object *entry)
+{
+    char *key = NULL;
+    const char *name = NULL;
+    const char *version = NULL;
+
+    name = dependency_string(entry, RPM_DEPENDENCY_NAME_DESC);
+    version = dependency_string(entry, RPM_DEPENDENCY_VERSION_DESC);
+    xasprintf(&key, "%zu %s%s", strlen(name), name, version);
+
+    return key;
+}
+
+/*
+ * Build a lookup for lookup_dependency() out of the "dependencies"
+ * object.  Each dependency type maps the name and version of its
+ * entries to the indexes that carry them, so a file with many
+ * provides does not search the whole array for each one.  Returns
+ * NULL when there are no dependencies.  Caller must release it with
+ * json_object_put().
+ */
+struct json_object *
+index_dependencies(struct json_object *dependencies)
+{
+    size_t i = 0;
+    size_t count = 0;
+    char *key = NULL;
+    struct json_object *lookup = NULL;
+    struct json_object *bytype = NULL;
+    struct json_object *indexes = NULL;
+    struct json_object *candidate = NULL;
+
+    if (dependencies == NULL || json_object_get_type(dependencies) != json_type_object) {
+        return NULL;
+    }
+
+    lookup = json_object_new_object();
+
+    json_object_object_foreach(dependencies, type, deps) {
+        if (json_object_get_type(deps) != json_type_array) {
+            continue;
+        }
+
+        bytype = json_object_new_object();
+        json_object_object_add(lookup, type, bytype);
+        count = json_object_array_length(deps);
+
+        for (i = 0; i < count; i++) {
+            candidate = json_object_array_get_idx(deps, i);
+
+            if (candidate == NULL) {
+                continue;
+            }
+
+            key = dependency_key(candidate);
+
+            if (!json_object_object_get_ex(bytype, key, &indexes)) {
+                indexes = json_object_new_array();
+                json_object_object_add(bytype, key, indexes);
+            }
+
+            json_object_array_add(indexes, json_object_new_int((int) i));
+            free(key);
+        }
+    }
+
+    return lookup;
+}
+
+/*
  * Find the entry in dependencies[key] that matches the given
- * dependency entry and return its index.  The name, version, and flag
- * word are everything the header records about a dependency, so
- * entries that agree on all three are the same dependency.
- * Returns -1 if there is no match.
+ * dependency entry and return its index.  The lookup comes from
+ * index_dependencies() on the same dependencies.  The name, version,
+ * and flag word are everything the header records about a
+ * dependency, so entries that agree on all three are the same
+ * dependency.  Returns -1 if there is no match.
+ */
+int
+lookup_dependency(struct json_object *dependencies, struct json_object *lookup, const char *key, struct json_object *entry)
+{
+    size_t i = 0;
+    int idx = 0;
+    uint32_t flags = 0;
+    char *depkey = NULL;
+    struct json_object *bytype = NULL;
+    struct json_object *indexes = NULL;
+    struct json_object *deps = NULL;
+
+    if (dependencies == NULL || lookup == NULL || key == NULL || entry == NULL) {
+        return -1;
+    }
+
+    if (!json_object_object_get_ex(lookup, key, &bytype) || !json_object_object_get_ex(dependencies, key, &deps)) {
+        return -1;
+    }
+
+    depkey = dependency_key(entry);
+
+    if (!json_object_object_get_ex(bytype, depkey, &indexes)) {
+        free(depkey);
+        return -1;
+    }
+
+    free(depkey);
+    flags = dependency_entry_flags(entry);
+
+    /* the flags only get read for entries with the same name and version */
+    for (i = 0; i < json_object_array_length(indexes); i++) {
+        idx = json_object_get_int(json_object_array_get_idx(indexes, i));
+
+        if (flags == dependency_entry_flags(json_object_array_get_idx(deps, idx))) {
+            return idx;
+        }
+    }
+
+    return -1;
+}
+
+/*
+ * Find the entry in dependencies[key] that matches the given
+ * dependency entry and return its index, or -1 if there is no match.
+ * For many lookups use index_dependencies() and lookup_dependency().
  */
 int
 dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry)
 {
-    size_t i = 0;
-    size_t count = 0;
-    uint32_t flags = 0;
-    const char *name = NULL;
-    const char *version = NULL;
-    struct json_object *deps = NULL;
-    struct json_object *candidate = NULL;
+    int idx = -1;
+    struct json_object *lookup = NULL;
 
-    if (dependencies == NULL || key == NULL || entry == NULL) {
-        return -1;
-    }
+    lookup = index_dependencies(dependencies);
+    idx = lookup_dependency(dependencies, lookup, key, entry);
+    json_object_put(lookup);
 
-    if (!json_object_object_get_ex(dependencies, key, &deps)) {
-        return -1;
-    }
-
-    if (json_object_get_type(deps) != json_type_array) {
-        return -1;
-    }
-
-    name = dependency_string(entry, RPM_DEPENDENCY_NAME_DESC);
-    version = dependency_string(entry, RPM_DEPENDENCY_VERSION_DESC);
-    flags = dependency_entry_flags(entry);
-    count = json_object_array_length(deps);
-
-    for (i = 0; i < count; i++) {
-        candidate = json_object_array_get_idx(deps, i);
-
-        if (candidate == NULL) {
-            continue;
-        }
-
-        if (strcmp(name, dependency_string(candidate, RPM_DEPENDENCY_NAME_DESC))) {
-            continue;
-        }
-
-        if (strcmp(version, dependency_string(candidate, RPM_DEPENDENCY_VERSION_DESC))) {
-            continue;
-        }
-
-        if (flags != dependency_entry_flags(candidate)) {
-            continue;
-        }
-
-        return (int) i;
-    }
-
-    return -1;
+    return idx;
 }
 
 /*

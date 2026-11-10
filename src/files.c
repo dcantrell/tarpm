@@ -97,6 +97,8 @@ struct file_cursors {
  */
 struct payload_scan {
     struct json_object *files;
+    struct json_object *names;          /* paths the list names */
+    struct json_object *parents;        /* directories leading to them */
     uint32_t digestalgo;
     bool source_package;
 };
@@ -136,14 +138,17 @@ struct file_list_tags {
     /* the directory names, in the order they first show up */
     char **dirs;
     size_t ndirs;
+    struct json_object *dirlookup;
 
     /* the class strings, in the order they first show up */
     char **classes;
     size_t nclasses;
+    struct json_object *classlookup;
 
     /* the MIME types, in the order they first show up */
     char **mimes;
     size_t nmimes;
+    struct json_object *mimelookup;
 
     /* what each hard link group carried and the number rpm gives it */
     int64_t *inodes;
@@ -165,6 +170,7 @@ struct file_list_tags {
 struct file_list_build {
     struct file_list_tags *out;
     struct json_object *dependencies;
+    struct json_object *deplookup;
     const char *payload_dir;
     int format;
     uint32_t digestalgo;
@@ -1398,39 +1404,78 @@ missing_from_payload(struct json_object *file, const char *path, const char *pay
  * package never owned them.
  */
 static bool
-new_in_payload(struct json_object *files, const char *path, const struct stat *sb)
+new_in_payload(const struct payload_scan *scan, const char *path, const struct stat *sb)
+{
+    /* the list already names it */
+    if (json_object_object_get_ex(scan->names, path, NULL)) {
+        return false;
+    }
+
+    /* a directory on the way to something the list names */
+    if (S_ISDIR(sb->st_mode) && json_object_object_get_ex(scan->parents, path, NULL)) {
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * Fill in the lookups new_in_payload() goes by.  We take every path
+ * the list names and every directory leading to one, so a payload
+ * walk does not search the whole list once per file.  Entries we add
+ * during the walk sit below what we already checked, so the lookups
+ * do not need them.
+ */
+static void
+index_payload_paths(struct payload_scan *scan)
 {
     size_t i = 0;
     size_t len = 0;
     size_t count = 0;
+    char *dir = NULL;
     const char *s = NULL;
-    struct json_object *file = NULL;
     struct json_object *entry_path = NULL;
 
-    count = json_object_array_length(files);
-    len = strlen(path);
+    scan->names = json_object_new_object();
+    scan->parents = json_object_new_object();
+    count = json_object_array_length(scan->files);
 
     for (i = 0; i < count; i++) {
-        file = json_object_array_get_idx(files, i);
-
-        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &entry_path)) {
+        if (!json_object_object_get_ex(json_object_array_get_idx(scan->files, i), RPM_FILE_PATH_DESC, &entry_path)) {
             continue;
         }
 
         s = str_or_empty(json_object_get_string(entry_path));
 
-        /* the list already names it */
-        if (!strcmp(s, path)) {
-            return false;
+        if (!json_object_object_get_ex(scan->names, s, NULL)) {
+            json_object_object_add(scan->names, s, NULL);
         }
 
-        /* a directory on the way to something the list names */
-        if (S_ISDIR(sb->st_mode) && !strncmp(s, path, len) && s[len] == '/') {
-            return false;
+        /* each prefix that ends at a slash is a directory leading to it */
+        dir = strdup(s);
+
+        if (dir == NULL) {
+            continue;
         }
+
+        for (len = 0; s[len] != '\0'; len++) {
+            if (s[len] != '/') {
+                continue;
+            }
+
+            dir[len] = '\0';
+
+            if (!json_object_object_get_ex(scan->parents, dir, NULL)) {
+                json_object_object_add(scan->parents, dir, NULL);
+            }
+
+            dir[len] = '/';
+        }
+
+        free(dir);
     }
 
-    return true;
+    return;
 }
 
 /*
@@ -1621,7 +1666,7 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
         if (lstat(file_path, &sb) == -1) {
             warn("lstat");
         } else {
-            if (new_in_payload(scan->files, path, &sb)) {
+            if (new_in_payload(scan, path, &sb)) {
                 warnx_escaped(_("*** %s is new in the payload, adding it to the file list"), path);
                 json_object_array_add(scan->files, mkfileentry(scan, path, file_path, &sb));
             }
@@ -1683,7 +1728,10 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
         scan.source_package = true;
     }
 
+    index_payload_paths(&scan);
     scan_payload_dir(&scan, payload_dir, "");
+    json_object_put(scan.names);
+    json_object_put(scan.parents);
 
     return;
 }
@@ -1986,20 +2034,21 @@ key_number(struct json_object *obj, const char *key)
 /*
  * Find where a string sits in the dictionary we are building.  One we
  * have not seen yet goes on the end.  rpm keeps the directory names
- * and the file classes this way and has each file point at one.
+ * and the file classes this way and has each file point at one.  The
+ * lookup maps each string to its place so we do not search the
+ * dictionary for every file.
  */
 static int
-dict_index(char **strings, size_t *count, const char *str)
+dict_index(char **strings, size_t *count, struct json_object *lookup, const char *str)
 {
-    size_t i = 0;
+    struct json_object *idx = NULL;
 
-    for (i = 0; i < *count; i++) {
-        if (!strcmp(strings[i], str)) {
-            return (int) i;
-        }
+    if (json_object_object_get_ex(lookup, str, &idx)) {
+        return json_object_get_int(idx);
     }
 
     strings[*count] = strdup(str);
+    json_object_object_add(lookup, str, json_object_new_int((int) *count));
     *count += 1;
 
     return (int) (*count - 1);
@@ -2033,6 +2082,9 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
     out->dirs = xcalloc(count, sizeof(char *));
     out->classes = xcalloc(count, sizeof(char *));
     out->mimes = xcalloc(count, sizeof(char *));
+    out->dirlookup = json_object_new_object();
+    out->classlookup = json_object_new_object();
+    out->mimelookup = json_object_new_object();
     out->inodes = xcalloc(count, sizeof(*out->inodes));
     out->mapped = xcalloc(count, sizeof(int));
     out->devs = xcalloc(count, sizeof(dev_t));
@@ -2095,6 +2147,9 @@ finish_file_list_arrays(struct file_list_tags *out)
     free(out->dirs);
     free(out->classes);
     free(out->mimes);
+    json_object_put(out->dirlookup);
+    json_object_put(out->classlookup);
+    json_object_put(out->mimelookup);
     free(out->inodes);
     free(out->mapped);
     free(out->devs);
@@ -2156,7 +2211,7 @@ add_file_path(struct file_list_tags *out, const char *path)
     }
 
     json_object_array_add(out->basenames, json_object_new_string(basename));
-    json_object_array_add(out->dirindexes, json_object_new_int(dict_index(out->dirs, &out->ndirs, dirname)));
+    json_object_array_add(out->dirindexes, json_object_new_int(dict_index(out->dirs, &out->ndirs, out->dirlookup, dirname)));
 
     free(dirname);
 
@@ -2578,7 +2633,7 @@ add_file_provides(struct file_list_build *build, struct json_object *file, const
             continue;
         }
 
-        depindex = dependency_index(build->dependencies, str, ref);
+        depindex = lookup_dependency(build->dependencies, build->deplookup, str, ref);
 
         if (depindex < 0) {
             warnx_escaped(_("*** no matching %s dependency for the provides of %s"), str, path);
@@ -2749,8 +2804,8 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     }
 
     /* entries with no class or MIME type point at an empty string */
-    json_object_array_add(out->fileclass, json_object_new_int(dict_index(out->classes, &out->nclasses, key_string(file, RPM_FILE_CLASS_DESC, ""))));
-    json_object_array_add(out->filemimeindex, json_object_new_int(dict_index(out->mimes, &out->nmimes, key_string(file, RPM_FILE_MIME_DESC, ""))));
+    json_object_array_add(out->fileclass, json_object_new_int(dict_index(out->classes, &out->nclasses, out->classlookup, key_string(file, RPM_FILE_CLASS_DESC, ""))));
+    json_object_array_add(out->filemimeindex, json_object_new_int(dict_index(out->mimes, &out->nmimes, out->mimelookup, key_string(file, RPM_FILE_MIME_DESC, ""))));
 
     str = file_langs_value(file);
     json_object_array_add(out->filelangs, json_object_new_string(str));
@@ -2912,6 +2967,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     build.dependencies = dependencies;
     build.payload_dir = payload_dir;
     build.format = format;
+    build.deplookup = index_dependencies(dependencies);
 
     /*
      * We read the digests back out of the payload, so we need the
@@ -2922,6 +2978,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     /* walk the files and fill in the lists */
     build_file_lists(&build, files);
     finish_file_list_arrays(&out);
+    json_object_put(build.deplookup);
 
     /*
      * We build every file list tag from the files array, so any copy

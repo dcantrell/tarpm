@@ -874,6 +874,79 @@ class TestCreateRenumbersHardLinkInodes(RoundTrip, TestUnpackRPM):
         self.assertVerifies(recreated)
 
 
+class TestCreateOrdersHardLinkGroups(RoundTrip, TestUnpackRPM):
+    """Two hard link groups come out in the payload order rpmbuild uses"""
+
+    # rpm sorts the file list, so p1 and p3 are one group, p2 and p4 the other
+    CONTENT = {
+        "p0.txt": b"by itself\n",
+        "p1.txt": b"group one\n",
+        "p2.txt": b"group two\n",
+        "p3.txt": b"group one\n",
+        "p4.txt": b"group two\n",
+    }
+
+    def setUp(self):
+        super().setUp()
+
+        for name in sorted(self.CONTENT):
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, self.CONTENT[name]),
+            )
+
+        for src, dest in [("p1.txt", "p3.txt"), ("p2.txt", "p4.txt")]:
+            self.rpm.section_install += (
+                "ln -f $RPM_BUILD_ROOT/usr/share/%s/%s "
+                "$RPM_BUILD_ROOT/usr/share/%s/%s\n" % (NAME, src, NAME, dest)
+            )
+
+    def payload_names(self, pkg):
+        """Return the member names of a payload in the order they appear"""
+        proc = subprocess.Popen(
+            ["cpio", "-t", "--quiet"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate(payload_bytes(pkg))
+
+        return out.decode().splitlines()
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+        names = self.payload_names(original)
+        self.assertEqual(len(names), 5, names)
+
+        extract_dir = self.extract(original)
+        recreated = self.create(extract_dir)
+
+        self.assertEqual(self.payload_names(recreated), names)
+        self.assertVerifies(recreated)
+
+        # every link still holds its data
+        again = self.extract(recreated, subdir="again")
+
+        for name in sorted(self.CONTENT):
+            f = open(self.payload_path(again, "/usr/share/%s/%s" % (NAME, name)), "rb")
+            self.assertEqual(f.read(), self.CONTENT[name])
+            f.close()
+
+        # and the links share an inode number
+        inodes = dict(inode_list(recreated))
+        path = "/usr/share/%s/%s"
+        self.assertEqual(
+            inodes[path % (NAME, "p1.txt")], inodes[path % (NAME, "p3.txt")]
+        )
+        self.assertEqual(
+            inodes[path % (NAME, "p2.txt")], inodes[path % (NAME, "p4.txt")]
+        )
+        self.assertNotEqual(
+            inodes[path % (NAME, "p1.txt")], inodes[path % (NAME, "p2.txt")]
+        )
+
+
 class TestCreateGroupsHardLinksAddedToPayload(RoundTrip, TestUnpackRPM):
     """Hard links added to the payload tree become one group of their own"""
 

@@ -678,6 +678,62 @@ test_dependency_index(void)
     return;
 }
 
+/* Test index_dependencies() and lookup_dependency() */
+void
+test_lookup_dependency(void)
+{
+    struct json_object *dependencies = NULL;
+    struct json_object *provides = NULL;
+    struct json_object *lookup = NULL;
+    struct json_object *entry = NULL;
+
+    dependencies = json_object_new_object();
+    provides = json_object_new_array();
+
+    add_dependency(provides, "ab", "=", "c");
+    add_dependency(provides, "a", "=", "bc");
+    add_dependency(provides, "glibc", "=", "2.43");
+    add_dependency(provides, "glibc", "<", "2.43");
+    add_dependency(provides, "glibc", "=", "2.43");
+
+    json_object_object_add(dependencies, "provides", provides);
+    json_object_object_add(dependencies, "requires", json_object_new_string("not an array"));
+
+    /* nothing to index */
+    TARPM_ASSERT_PTR_NULL(index_dependencies(NULL));
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, NULL, "provides", provides), -1);
+
+    lookup = index_dependencies(dependencies);
+    TARPM_ASSERT_PTR_NOT_NULL(lookup);
+
+    /* a name and version do not run together in to another pair */
+    entry = add_dependency(NULL, "a", "=", "bc");
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, lookup, "provides", entry), 1);
+    json_object_put(entry);
+
+    entry = add_dependency(NULL, "abc", "=", NULL);
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, lookup, "provides", entry), -1);
+    json_object_put(entry);
+
+    /* the flags pick between entries with one name and version, the first one wins */
+    entry = add_dependency(NULL, "glibc", "<", "2.43");
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, lookup, "provides", entry), 3);
+    json_object_put(entry);
+
+    entry = add_dependency(NULL, "glibc", "=", "2.43");
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, lookup, "provides", entry), 2);
+    TARPM_ASSERT_EQUAL(dependency_index(dependencies, "provides", entry), 2);
+
+    /* a type that is not an array has nothing in it */
+    TARPM_ASSERT_EQUAL(lookup_dependency(dependencies, lookup, "requires", entry), -1);
+    json_object_put(entry);
+
+    json_object_put(lookup);
+    json_object_put(dependencies);
+
+    return;
+}
+
 /* Test check_dependencies() with good and bad shapes */
 void
 test_check_dependencies(void)
@@ -782,6 +838,7 @@ get_suite(void)
         CU_add_test(pSuite, "test dependency_type_key()", test_dependency_type_key) == NULL ||
         CU_add_test(pSuite, "test dependency_type_abbrev()", test_dependency_type_abbrev) == NULL ||
         CU_add_test(pSuite, "test dependency_index()", test_dependency_index) == NULL ||
+        CU_add_test(pSuite, "test lookup_dependency()", test_lookup_dependency) == NULL ||
         CU_add_test(pSuite, "test check_dependencies()", test_check_dependencies) == NULL) {
         return NULL;
     }

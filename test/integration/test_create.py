@@ -1363,6 +1363,30 @@ class CreateWarnsAboutUnknownDependencyType(RequiresTarpm):
         self.assertNotIn("typo", query_rpm(pkg, "[%{requirename}\n]"))
 
 
+class CreateBuildsFileListOnce(RequiresTarpm):
+    """The file list tags are built once, so their warnings print once"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        sharedir = os.path.join(tree, "payload", "usr", "share")
+        os.makedirs(sharedir)
+
+        f = open(os.path.join(sharedir, "one"), "w")
+        f.write("one\n")
+        f.close()
+
+        files = [{"path": "/usr/share/one", "type": "file", "verifyflags": ["bogus"]}]
+
+        f = open(os.path.join(tree, "header.json"), "w")
+        json.dump({"tags": MINIMAL_TAGS, "files": files}, f)
+        f.close()
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(err.count("unknown file verify flag: bogus"), 1, err)
+
+
 class CreateRefusesWideRdev(RequiresTarpm):
     """A device number that does not fit in Filerdevs is an error"""
 

@@ -308,6 +308,83 @@ test_payload_digest_sha256(void)
     return;
 }
 
+/* Test payload_digest_list() and archive_digest_list() match one digest at a time */
+void
+test_digest_lists(void)
+{
+    int fd = -1;
+    uint64_t size = 0;
+    uint64_t single = 0;
+    char *one = NULL;
+    char *digests[2] = { NULL, NULL };
+    const int types[2] = { TARPM_DIGEST_SHA256, TARPM_DIGEST_SHA512 };
+    struct archive *out = NULL;
+    struct archive_entry *entry = NULL;
+    const char *content = "payload data for several digests";
+
+    fd = memfd_create("test-digest", MFD_CLOEXEC);
+    TARPM_ASSERT_TRUE(fd != -1);
+
+    out = archive_write_new();
+    TARPM_ASSERT_TRUE(archive_write_set_format_cpio_newc(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_add_filter_gzip(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_open_fd(out, fd) == ARCHIVE_OK);
+
+    entry = archive_entry_new();
+    archive_entry_set_pathname(entry, "./payload");
+    archive_entry_set_filetype(entry, AE_IFREG);
+    archive_entry_set_perm(entry, 0644);
+    archive_entry_set_size(entry, strlen(content));
+    TARPM_ASSERT_TRUE(archive_write_header(out, entry) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_data(out, content, strlen(content)) == (ssize_t) strlen(content));
+    archive_entry_free(entry);
+
+    TARPM_ASSERT_TRUE(archive_write_close(out) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_free(out) == ARCHIVE_OK);
+
+    /* one read gives both digests of the payload as it is */
+    TARPM_ASSERT_EQUAL(payload_digest_list(types, 2, fd, digests, &size), 0);
+    one = payload_digest(TARPM_DIGEST_SHA256, fd, &single);
+    TARPM_ASSERT_STRING_EQUAL(digests[0], one);
+    TARPM_ASSERT_TRUE(size == single);
+    free(one);
+    one = payload_digest(TARPM_DIGEST_SHA512, fd, NULL);
+    TARPM_ASSERT_STRING_EQUAL(digests[1], one);
+    TARPM_ASSERT_TRUE(strlen(digests[1]) == (SHA512_DIGEST_LENGTH * 2));
+    free(one);
+    free(digests[0]);
+    free(digests[1]);
+
+    /* and one decompression gives both digests of the uncompressed payload */
+    TARPM_ASSERT_EQUAL(archive_digest_list(types, 2, fd, digests, &size), 0);
+    one = archive_digest(TARPM_DIGEST_SHA256, fd, &single);
+    TARPM_ASSERT_STRING_EQUAL(digests[0], one);
+    TARPM_ASSERT_TRUE(size == single);
+    free(one);
+    one = archive_digest(TARPM_DIGEST_SHA512, fd, NULL);
+    TARPM_ASSERT_STRING_EQUAL(digests[1], one);
+    free(one);
+    free(digests[0]);
+    free(digests[1]);
+
+    /* with no digests it only measures the uncompressed payload */
+    size = 0;
+    TARPM_ASSERT_EQUAL(archive_digest_list(NULL, 0, fd, NULL, &size), 0);
+    TARPM_ASSERT_TRUE(size == single);
+
+    /* an unknown type fails the whole list and leaves nothing behind */
+    digests[0] = NULL;
+    digests[1] = NULL;
+    TARPM_ASSERT_NOT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA256, -1 }, 2, fd, digests, NULL), 0);
+    TARPM_ASSERT_PTR_NULL(digests[0]);
+    TARPM_ASSERT_PTR_NULL(digests[1]);
+    TARPM_ASSERT_NOT_EQUAL(payload_digest_list(types, 2, -1, digests, NULL), 0);
+
+    close(fd);
+
+    return;
+}
+
 void
 test_nul_digest(void)
 {
@@ -510,6 +587,7 @@ get_suite(void)
         CU_add_test(pSuite, "test mksigdigest() SHA-256", test_mksigdigest_sha256) == NULL ||
         CU_add_test(pSuite, "test payload_digest() SHA-256", test_payload_digest_sha256) == NULL ||
         CU_add_test(pSuite, "test archive_digest() gzip", test_archive_digest_gzip) == NULL ||
+        CU_add_test(pSuite, "test payload_digest_list() and archive_digest_list()", test_digest_lists) == NULL ||
         CU_add_test(pSuite, "test nul_digest()", test_nul_digest) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() empty payload", test_mksigdigest_empty_payload) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() large payload", test_mksigdigest_large_payload) == NULL) {
