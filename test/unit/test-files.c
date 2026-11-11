@@ -458,6 +458,118 @@ test_generate_files_types(void)
     return;
 }
 
+/*
+ * Offsets past DATA_SIZE for the dictionary test.  A second Dirnames
+ * tag adds "/usr/sbin/" so the dictionary spans two tags.  Fileclass
+ * is 1 and 7 against a two entry Classdict.  The depends slices are
+ * 0+1 and 1+3 against a two entry Dependsdict.
+ */
+#define DICT_DIRNAMES_OFFSET   (DATA_SIZE)
+#define DICT_FILECLASS_OFFSET  (DICT_DIRNAMES_OFFSET + 11)
+#define DICT_CLASSDICT_OFFSET  (DICT_FILECLASS_OFFSET + 8)
+#define DICT_DEPENDSX_OFFSET   (DICT_CLASSDICT_OFFSET + 10)
+#define DICT_DEPENDSN_OFFSET   (DICT_DEPENDSX_OFFSET + 8)
+#define DICT_DEPENDS_OFFSET    (DICT_DEPENDSN_OFFSET + 8)
+#define DICT_DATA_SIZE         (DICT_DEPENDS_OFFSET + 8)
+#define DICT_NUM_ENTRIES       (NUM_ENTRIES + 6)
+
+/* Store two 32-bit numbers in network order */
+static void
+set_pair(uint8_t *p, uint32_t first, uint32_t second)
+{
+    uint32_t val32 = 0;
+
+    val32 = htonl(first);
+    memcpy(p, &val32, sizeof(val32));
+    val32 = htonl(second);
+    memcpy(p + sizeof(val32), &val32, sizeof(val32));
+    return;
+}
+
+/* Test generate_files() looks up dirnames, classes and depends by index */
+void
+test_generate_files_dictionaries(void)
+{
+    uint32_t provides = 0;
+    struct rpmhdr hdr;
+    struct rpmhdrinfo hdrinfo;
+    struct rpmhdrentry entries[DICT_NUM_ENTRIES];
+    uint8_t data[DICT_DATA_SIZE];
+    struct json_object *deps = NULL;
+    struct json_object *dep = NULL;
+    struct json_object *dependencies = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+
+    build_header(&hdr, &hdrinfo, entries, data);
+    memset(entries + NUM_ENTRIES, 0, sizeof(*entries) * (DICT_NUM_ENTRIES - NUM_ENTRIES));
+    memset(data + DATA_SIZE, 0, DICT_DATA_SIZE - DATA_SIZE);
+
+    /* the second file is in the directory from the second Dirnames tag */
+    memcpy(data + DICT_DIRNAMES_OFFSET, "/usr/sbin/", 11);
+    set_pair(data + DIRINDEXES_OFFSET, 0, 1);
+
+    /* class 7 is past the end of Classdict and gets no key */
+    set_pair(data + DICT_FILECLASS_OFFSET, 1, 7);
+    memcpy(data + DICT_CLASSDICT_OFFSET, "\0ELF text", 10);
+
+    /* the second slice runs two entries past the end of Dependsdict */
+    provides = (uint32_t) dependency_type_abbrev("provides") << DEPENDS_DICT_TYPE_SHIFT;
+    set_pair(data + DICT_DEPENDSX_OFFSET, 0, 1);
+    set_pair(data + DICT_DEPENDSN_OFFSET, 1, 3);
+    set_pair(data + DICT_DEPENDS_OFFSET, provides | 0, provides | 1);
+
+    set_entry(&entries[NUM_ENTRIES], RPMTAG_DIRNAMES, RPM_STRING_ARRAY_TYPE, DICT_DIRNAMES_OFFSET, 1);
+    set_entry(&entries[NUM_ENTRIES + 1], RPMTAG_FILECLASS, RPM_INT32_TYPE, DICT_FILECLASS_OFFSET, 2);
+    set_entry(&entries[NUM_ENTRIES + 2], RPMTAG_CLASSDICT, RPM_STRING_ARRAY_TYPE, DICT_CLASSDICT_OFFSET, 2);
+    set_entry(&entries[NUM_ENTRIES + 3], RPMTAG_FILEDEPENDSX, RPM_INT32_TYPE, DICT_DEPENDSX_OFFSET, 2);
+    set_entry(&entries[NUM_ENTRIES + 4], RPMTAG_FILEDEPENDSN, RPM_INT32_TYPE, DICT_DEPENDSN_OFFSET, 2);
+    set_entry(&entries[NUM_ENTRIES + 5], RPMTAG_DEPENDSDICT, RPM_INT32_TYPE, DICT_DEPENDS_OFFSET, 2);
+    hdr.nentries = DICT_NUM_ENTRIES;
+
+    /* two provides for the depends dictionary to point at */
+    dependencies = json_object_new_object();
+    deps = json_object_new_array();
+    dep = json_object_new_object();
+    json_object_object_add(dep, RPM_DEPENDENCY_NAME_DESC, json_object_new_string("one"));
+    json_object_array_add(deps, dep);
+    dep = json_object_new_object();
+    json_object_object_add(dep, RPM_DEPENDENCY_NAME_DESC, json_object_new_string("two"));
+    json_object_array_add(deps, dep);
+    json_object_object_add(dependencies, "provides", deps);
+
+    files = generate_files(&hdr, &hdrinfo, dependencies);
+    TARPM_ASSERT_PTR_NOT_NULL(files);
+    TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
+
+    file = json_object_array_get_idx(files, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "path", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "/usr/bin/ls");
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "class", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "ELF text");
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "provides", &value));
+    TARPM_ASSERT_EQUAL(json_object_array_length(value), 1);
+    dep = json_object_array_get_idx(value, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(dep, RPM_DEPENDENCY_NAME_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "one");
+
+    file = json_object_array_get_idx(files, 1);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "path", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "/usr/sbin/cat");
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(file, "class", &value));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(file, "provides", &value));
+    TARPM_ASSERT_EQUAL(json_object_array_length(value), 1);
+    dep = json_object_array_get_idx(value, 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(dep, RPM_DEPENDENCY_NAME_DESC, &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "two");
+
+    json_object_put(files);
+    json_object_put(dependencies);
+
+    return;
+}
+
 /* Test add_file_list_tags() with NULL inputs */
 void
 test_add_file_list_tags_null(void)
@@ -3476,6 +3588,7 @@ get_suite(void)
         CU_add_test(pSuite, "test generate_files() with an invalid dirindex", test_generate_files_invalid_dirindex) == NULL ||
         CU_add_test(pSuite, "test generate_files() with a valid file list", test_generate_files_valid) == NULL ||
         CU_add_test(pSuite, "test generate_files() with each file type", test_generate_files_types) == NULL ||
+        CU_add_test(pSuite, "test generate_files() dictionary lookups", test_generate_files_dictionaries) == NULL ||
         CU_add_test(pSuite, "test generate_files() with Longfilesizes", test_generate_files_long_sizes) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with NULL", test_add_file_list_tags_null) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with empty files", test_add_file_list_tags_empty) == NULL ||

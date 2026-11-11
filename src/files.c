@@ -61,6 +61,20 @@ struct file_metadata {
      * the length of each file's slice of it.
      */
     uint32_list_t *dependsdict;
+
+    /*
+     * Arrays over the lists files look up by number, so each lookup
+     * is an index and not a walk from the head.  The strings belong
+     * to the lists above.
+     */
+    const char **dirs;
+    uint32_t ndirs;
+    const char **classes;
+    uint32_t nclasses;
+    const char **mimes;
+    uint32_t nmimes;
+    uint32_t *depends;
+    uint32_t ndepends;
 };
 
 /*
@@ -370,6 +384,10 @@ free_file_metadata(struct file_metadata *fmd)
     uint32_list_free(fmd->filedependsx);
     uint32_list_free(fmd->filedependsn);
     uint32_list_free(fmd->dependsdict);
+    free(fmd->dirs);
+    free(fmd->classes);
+    free(fmd->mimes);
+    free(fmd->depends);
     return;
 }
 
@@ -704,24 +722,24 @@ dependency_ref(struct json_object *dependencies, const uint32_t value)
  * out, and then the caller leaves the key off.
  */
 static struct json_object *
-file_dependencies(struct json_object *dependencies, const uint32_list_t *dependsdict, uint32_t start, uint32_t count)
+file_dependencies(struct json_object *dependencies, const uint32_t *depends, uint32_t ndepends, uint32_t start, uint32_t count)
 {
     uint32_t i = 0;
-    uint32_t value = 0;
     struct json_object *ref = NULL;
     struct json_object *refs = NULL;
 
-    if (dependencies == NULL || dependsdict == NULL) {
+    if (dependencies == NULL || depends == NULL) {
         return NULL;
     }
 
     for (i = 0; i < count; i++) {
-        if (!uint32_list_nth(dependsdict, start + i, &value)) {
+        /* 64-bit sum so a large start cannot wrap past the check */
+        if ((uint64_t) start + i >= ndepends) {
             warnx(_("*** depends dictionary index %u is out of range"), start + i);
             continue;
         }
 
-        ref = dependency_ref(dependencies, value);
+        ref = dependency_ref(dependencies, depends[start + i]);
 
         if (ref == NULL) {
             continue;
@@ -825,8 +843,79 @@ read_uint16_list(uint32_list_t *list, const uint8_t *data, const uint32_t count)
 }
 
 /*
+ * Build an array of the strings in a list and give its length in
+ * count.  Returns NULL for a NULL or empty list.  The caller frees
+ * the array but not the strings.
+ */
+static const char **
+str_list_array(const str_list_t *list, uint32_t *count)
+{
+    uint32_t i = 0;
+    const char **array = NULL;
+    str_entry_t *entry = NULL;
+
+    *count = 0;
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    TAILQ_FOREACH(entry, list, items) {
+        (*count)++;
+    }
+
+    if (*count == 0) {
+        return NULL;
+    }
+
+    array = xcalloc(*count, sizeof(*array));
+
+    TAILQ_FOREACH(entry, list, items) {
+        array[i++] = entry->str;
+    }
+
+    return array;
+}
+
+/*
+ * Build an array of the numbers in a list and give its length in
+ * count.  Returns NULL for a NULL or empty list.  The caller frees
+ * the array.
+ */
+static uint32_t *
+uint32_list_array(const uint32_list_t *list, uint32_t *count)
+{
+    uint32_t i = 0;
+    uint32_t *array = NULL;
+    uint32_entry_t *entry = NULL;
+
+    *count = 0;
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    TAILQ_FOREACH(entry, list, items) {
+        (*count)++;
+    }
+
+    if (*count == 0) {
+        return NULL;
+    }
+
+    array = xcalloc(*count, sizeof(*array));
+
+    TAILQ_FOREACH(entry, list, items) {
+        array[i++] = entry->value;
+    }
+
+    return array;
+}
+
+/*
  * Read the file lists we need out of the header data.  Tags the
- * header does not carry leave their list NULL.
+ * header does not carry leave their list NULL.  The dictionaries
+ * files look up by number also get an array.
  */
 static void
 collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct file_metadata *fmd)
@@ -904,6 +993,12 @@ collect_file_metadata(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
             fmd->dependsdict = read_uint32_list(fmd->dependsdict, data, count);
         }
     }
+
+    /* after the loop, since a tag can show up more than once */
+    fmd->dirs = str_list_array(fmd->dirnames, &fmd->ndirs);
+    fmd->classes = str_list_array(fmd->classdict, &fmd->nclasses);
+    fmd->mimes = str_list_array(fmd->mimedict, &fmd->nmimes);
+    fmd->depends = uint32_list_array(fmd->dependsdict, &fmd->ndepends);
 
     return;
 }
@@ -1096,10 +1191,10 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
      * descriptions), so resolve the index to its string here.  Skip
      * the key when the resolved class is an empty string.
      */
-    if (fc->fileclass != NULL) {
-        classname = str_list_nth(fmd->classdict, fc->fileclass->value);
+    if (fc->fileclass != NULL && fc->fileclass->value < fmd->nclasses) {
+        classname = fmd->classes[fc->fileclass->value];
 
-        if (classname != NULL && classname[0] != '\0') {
+        if (classname[0] != '\0') {
             json_object_object_add(file, RPM_FILE_CLASS_DESC, json_object_new_string(classname));
         }
     }
@@ -1110,10 +1205,10 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
      * is the index to the MIMEDICT string array the same way
      * FILECLASS does for CLASSDICT.
      */
-    if (fc->filemimeindex != NULL) {
-        mimename = str_list_nth(fmd->mimedict, fc->filemimeindex->value);
+    if (fc->filemimeindex != NULL && fc->filemimeindex->value < fmd->nmimes) {
+        mimename = fmd->mimes[fc->filemimeindex->value];
 
-        if (mimename != NULL && mimename[0] != '\0') {
+        if (mimename[0] != '\0') {
             json_object_object_add(file, RPM_FILE_MIME_DESC, json_object_new_string(mimename));
         }
     }
@@ -1188,7 +1283,7 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
      * off for them.
      */
     if (fc->filedependsx != NULL && fc->filedependsn != NULL && fc->filedependsn->value > 0) {
-        provides_array = file_dependencies(dependencies, fmd->dependsdict, fc->filedependsx->value, fc->filedependsn->value);
+        provides_array = file_dependencies(dependencies, fmd->depends, fmd->ndepends, fc->filedependsx->value, fc->filedependsn->value);
 
         if (provides_array != NULL) {
             json_object_object_add(file, RPM_FILE_PROVIDES_DESC, provides_array);
@@ -1207,9 +1302,7 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
 struct json_object *
 generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies)
 {
-    uint32_t ndirnames = 0;
     char *path = NULL;
-    const char *dirname = NULL;
     struct file_metadata fmd;
     struct file_cursors fc;
     struct json_object *files = NULL;
@@ -1240,22 +1333,19 @@ generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struc
 
     /* Build the files array */
     files = json_object_new_array();
-    ndirnames = str_list_len(fmd.dirnames);
     first_file_cursors(&fmd, &fc);
 
     while (fc.basename != NULL && fc.dirindex != NULL) {
         /* Verify dirindex is valid */
-        dirname = str_list_nth(fmd.dirnames, fc.dirindex->value);
-
-        if (dirname == NULL) {
-            warnx(_("*** invalid dirindex %u (max %u)"), fc.dirindex->value, ndirnames - 1);
+        if (fc.dirindex->value >= fmd.ndirs) {
+            warnx(_("*** invalid dirindex %u (max %u)"), fc.dirindex->value, fmd.ndirs - 1);
             json_object_put(files);
             free_file_metadata(&fmd);
             return NULL;
         }
 
         /* Combine dirname and basename */
-        xasprintf(&path, "%s%s", dirname, fc.basename->str);
+        xasprintf(&path, "%s%s", fmd.dirs[fc.dirindex->value], fc.basename->str);
 
         json_object_array_add(files, file_entry(&fmd, &fc, dependencies, path));
 

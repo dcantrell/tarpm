@@ -364,6 +364,54 @@ class TestRoundTripBinaryRPM(RoundTrip, TestUnpackRPM):
         self.assertIdentical(original, recreated)
 
 
+class TestRoundTripManyFiles(RoundTrip, TestUnpackRPM):
+    """A package with thousands of files in many directories comes back"""
+
+    def setUp(self):
+        super().setUp()
+
+        # 50 directories of 40 files, each with a script that requires /bin/sh
+        self.rpm.section_install += (
+            "for d in $(seq 1 50) ; do\n"
+            "    mkdir -p $RPM_BUILD_ROOT/usr/share/%s/dir$d\n"
+            "    for f in $(seq 1 40) ; do\n"
+            "        echo $d $f > $RPM_BUILD_ROOT/usr/share/%s/dir$d/file$f\n"
+            "    done\n"
+            "    printf '#!/bin/sh\\nexit 0\\n' > $RPM_BUILD_ROOT/usr/share/%s/dir$d/run\n"
+            "    chmod 755 $RPM_BUILD_ROOT/usr/share/%s/dir$d/run\n"
+            "done\n" % (NAME, NAME, NAME, NAME)
+        )
+        self.rpm.get_subpackage(None).section_files += "/usr/share/%s\n" % NAME
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        extract_dir = self.extract(original)
+        files = {}
+
+        for entry in read_header(extract_dir)["files"]:
+            files[entry["path"]] = entry
+
+        # every file lands under its own directory
+        for d in [1, 25, 50]:
+            for f in [1, 40]:
+                path = "/usr/share/%s/dir%d/file%d" % (NAME, d, f)
+                self.assertIn(path, files)
+
+                # newer rpm writes a MIME type in place of the class
+                keys = files[path].keys()
+                self.assertTrue("class" in keys or "mime" in keys, msg=path)
+
+        # the last script still finds its slice of the depends dictionary
+        run = files["/usr/share/%s/dir50/run" % NAME]
+        self.assertIn("provides", run)
+
+        recreated = self.create(extract_dir)
+
+        self.assertIdentical(original, recreated)
+
+
 class TestRoundTripSourceRPM(RoundTrip, TestUnpackSRPM):
     """An unmodified source RPM comes back carrying the same sources"""
 
