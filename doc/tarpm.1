@@ -22,7 +22,7 @@ rpmbuild(1)
 [\f[B]\-H\f[R] \f[I]PATH\f[R]] [\f[B]\-P\f[R] \f[I]DIRNAME\f[R]]
 [\f[B]\-F\f[R] \f[I]NUMBER\f[R]]
 [\f[B]\-m\f[R]] [\f[B]\-u\f[R]] [\f[B]\-g\f[R]] [\f[B]\-l\f[R]]
-[\f[B]\-a\f[R]] \f[I]DIRECTORY\f[R]
+[\f[B]\-a\f[R]] [\f[B]\-D\f[R]] [\f[B]\-k\f[R]] \f[I]DIRECTORY\f[R]
 .SH DESCRIPTION
 \f[B]tarpm\f[R] is a command line tool for working with RPM package
 files. The interface is intended to mimic the command line program
@@ -54,19 +54,54 @@ Display version information.
 \f[B]\-t\f[R], \f[B]\-\-list\f[R]
 List the contents of the RPM package without metadata (cannot be used
 with \f[B]\-c\f[R] or \f[B]\-x\f[R]).
+If the package or its payload cannot be read, \f[B]tarpm\f[R] exits
+non\-zero.
+Control characters in a path are printed as \f[C]\\ooo\f[R] octal
+escapes and a backslash is printed as \f[C]\\\\\f[R], the same as
+\f[B]ls \-b\f[R].
+The same goes for the paths that \f[B]\-v\f[R] prints and the paths
+in warnings.
 .TP
 \f[B]\-x\f[R], \f[B]\-\-extract\f[R]
 Extract the named RPM package on the command line (cannot be used with
 \f[B]\-t\f[R] or \f[B]\-c\f[R]).
+If the file list or changelog tags do not agree with each other,
+\f[B]tarpm\f[R] keeps them as raw tags in \f[B]header.json\f[R] and
+exits non\-zero.
 .TP
 \f[B]\-c\f[R], \f[B]\-\-create\f[R]
 Create the named RPM package on the command line from the named
 DIRECTORY contents (cannot be used with \f[B]\-t\f[R] or
 \f[B]\-x\f[R]).  The DIRECTORY must contain RPM package metadata in
 JSON format, like what you see when you extract an RPM.
+A DIRECTORY that is missing or cannot be read is an error.
+So is a \f[B]header.json\f[R] with file list tags in its tags array,
+or changelog tags there that hold different numbers of values.
+If writing the package fails, \f[B]tarpm\f[R] exits non\-zero and
+removes the partly written file.
+A package that was already there stays as it was.
+A payload file that cannot be read, or that changes size during the
+build, is also an error.
 .TP
 \f[B]\-v\f[R], \f[B]\-\-verbose\f[R]
-Verbose progress output.
+Print each stage of the work on standard output.
+Each stage line starts with \f[B]>>>\f[R] and the details of each stage
+are indented two spaces under it.
+With \f[B]\-x\f[R] the stages are the package, the lead, the signature
+header, the main header, the JSON files written, and the payload.
+Each payload entry gets a line as it is unpacked.
+When \f[B]\-L\f[R], \f[B]\-S\f[R], or \f[B]\-H\f[R] sends JSON to
+standard output, the status lines go to standard error instead.
+With \f[B]\-c\f[R] the details name the tags filled in, the files new
+in the payload tree, the files gone from it, the data used as\-is, the
+tags the format adds or drops, the files whose size or contents
+changed, the payload digests, and the size of each header.
+Each payload entry gets a line as it is added.
+The lines for new and gone files take the place of the warnings
+\f[B]\-c\f[R] prints for them without \f[B]\-v\f[R].
+\f[B]\-t\f[R] always prints the long listing, so \f[B]\-v\f[R]
+changes nothing there.
+Other warnings go to standard error with or without \f[B]\-v\f[R].
 .TP
 \f[B]\-f\f[R] FILENAME, \f[B]\-\-filename\f[R]=FILENAME
 The name of the input or output RPM file.
@@ -75,6 +110,8 @@ The name of the input or output RPM file.
 The name of the output directory when extracting an RPM.  Without this
 option the extracted package goes in to a subdirectory of the
 directory you are in named after the NEVRA of the package.
+A NEVRA that holds a slash or a control character, or is \f[C].\f[R]
+or \f[C]..\f[R], is refused and this option is required.
 .RS
 .PP
 The directory is only made when a file actually goes in it.  Send
@@ -100,6 +137,9 @@ PATH works the same way it does for \f[B]\-\-lead\f[R].  A PATH of a
 single hyphen may only be used when extracting an RPM.  The signature
 header is generated, so this is not read when creating an RPM and
 \f[B]tarpm\f[R] says so on standard error if you give it anyway.
+With \f[B]\-D\f[R] or \f[B]\-k\f[R] this names the
+\f[B]signature.json\f[R] to take the signature digests or package
+signatures from.
 .TP
 \f[B]\-H\f[R] PATH, \f[B]\-\-header\f[R]=PATH
 Where \f[B]header.json\f[R] is written when extracting an RPM and
@@ -142,6 +182,13 @@ A package carrying device nodes cannot be extracted by an ordinary
 user, because writing the nodes means calling mknod(2).  Reading the
 metadata out of one with \f[B]\-n\f[R] works fine.
 .PP
+The setuid and setgid bits are not restored in the payload tree, and
+device nodes get mode 0600.  The full modes stay in
+\f[B]header.json\f[R].
+.PP
+A JSON or tag value file that is already a symlink in the output
+directory is not written through, and \f[B]tarpm\f[R] exits non\-zero.
+.PP
 \f[B]\-P\f[R] has nothing to say when there is no payload to write, so
 \f[B]tarpm\f[R] says so on standard error and carries on.
 .RE
@@ -149,18 +196,21 @@ metadata out of one with \f[B]\-n\f[R] works fine.
 \f[B]\-F\f[R] NUMBER, \f[B]\-\-format\f[R]=NUMBER
 The RPM format to write the package as, which is either 4 or 6.  The
 default is 4.  May only be used when creating an RPM.  This is the
-same thing rpm(8) does with its %_rpmformat macro.
+same thing rpm(8) does with its %_rpmformat macro.  The default does
+not follow the format of the package a tree came out of, so pass
+\f[B]\-F 6\f[R] to write a tree from a v6 format package back out in
+the v6 format.
 .RS
 .PP
-A v4 signature header carries the Sha1, Sha256, Size, Md5, and
-Payloadsize tags along with the reserved space rpmsign(1) writes in
-to.  A v6 one carries the Sha256 and Sha3_256 digests of the main
-header and the reserved space, and nothing else.
+A v4 format signature header carries the Sha1, Sha256, Size, Md5,
+and Payloadsize tags along with the reserved space rpmsign(1) writes
+in to.  A v6 format one carries the Sha256 and Sha3_256 digests of
+the main header and the reserved space, and nothing else.
 .PP
 The main header carries the payload digests the format calls for.  A
-v4 package gets Payloadsha256, Payloadsha256alt, and the
-Payloaddigestalgo tag naming the algorithm.  A v6 package gets the
-Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
+v4 format package gets Payloadsha256, Payloadsha256alt, and the
+Payloaddigestalgo tag naming the algorithm.  A v6 format package gets
+the Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
 Payloadsha256, Payloadsha512, and Payloadsha3_256 digests along with
 the alt form of each.  The alt digests cover the payload with the
 compression taken back off, the others cover the payload as it lands
@@ -170,37 +220,47 @@ nothing behind.
 .PP
 Each format has main header tags the other one never uses.  tarpm
 takes out the ones that do not belong, so you do not have to edit
-\f[B]header.json\f[R] yourself before switching formats.  The v4 tags
-are Payloaddigestalgo, Fileclass, Classdict, Size, Filesizes,
-Archivesize, Filesignatures, and Filesignaturelength.  The v6 tags
-are Rpmformat, Payloadsize, Payloadsizealt, Filemimeindex, Mimedict,
+\f[B]header.json\f[R] yourself before switching formats.  The v4
+format tags are Payloaddigestalgo, Fileclass, Classdict, Size, Filesizes,
+Archivesize, Filesignatures, and Filesignaturelength.  The v6 format
+tags are Rpmformat, Payloadsize, Payloadsizealt, Filemimeindex, Mimedict,
 Sourcenevr, Payloadsha512, Payloadsha512alt, Payloadsha3_256, and
 Payloadsha3_256alt.
 .PP
-File sizes survive the switch.  A v4 package counts them in Size and
-Filesizes and a v6 package counts them in Longsize and
-Longfilesizes.  tarpm writes whichever pair the format wants and the
-numbers stay the same.  A v4 package uses the 64 bit tags when a size
-is too large for the 32 bit ones, the same as rpm(8).
+File sizes survive the switch.  A v4 format package counts them in
+Size and Filesizes and a v6 format package counts them in Longsize
+and Longfilesizes.  tarpm writes whichever pair the format wants and the
+numbers stay the same.  A v4 format package uses the 64 bit tags when
+a size is too large for the 32 bit ones, the same as rpm(8).  rpm(8)
+counts a size of 4294967295 or more as too large.  Longsize depends on
+the total size and Longfilesizes on the largest file.  A header with a
+\f[B]files\f[R] array and neither Size nor Longsize gets the one the
+total fits in.  A v4 format
+package with Longfilesizes gets a stripped payload.  A v4 format
+package too large for the 32 bit signature size tags gets Longsize and
+Longarchivesize there, and the reserved space shrinks so the signature
+header keeps the same size.
 .PP
-Two things do not survive.  A v4 package describes each file with a
-Fileclass and a v6 package describes it with a MIME type, and neither
-one can be turned into the other, so the new package goes without.
-The rpmlib() entries in \f[B]dependencies\f[R] are left alone as
-well, so a package you convert to v6 keeps the ones rpm(8) only adds
-for v4.  Edit \f[B]dependencies\f[R] yourself if you do not want
-them.
+A v4 format package describes each file with a class and a v6 format
+package describes it with a MIME type.  \f[B]tarpm\f[R] works out the
+one the new format needs from the file in the payload tree.  See FILE CLASSES
+and MIME TYPES below.
 .PP
-Sourcenevr does survive, even though it is a v6 tag a v4 package
-cannot carry.  It is the Sourcerpm value with the \(dq.src.rpm\(dq
+One thing does not survive.  The rpmlib() entries in
+\f[B]dependencies\f[R] are left alone, so a package you convert to
+v6 format keeps the ones rpm(8) only adds for v4 format.  Edit
+\f[B]dependencies\f[R] yourself if you do not want them.
+.PP
+Sourcenevr does survive, even though it is a v6 format tag a v4
+format package cannot carry.  It is the Sourcerpm value with the \(dq.src.rpm\(dq
 ending taken off, so \f[B]tarpm\f[R] works it out again on the way
-back to v6.
+back to the v6 format.
 .PP
-The lead records the format in its major version, which is 3 for v4
-and 4 for v6.  A v6 package is compressed with zstd at level 19, which
-is what rpm(8) picks from v6 on.  A package whose metadata already
-names zstd keeps the level it came with.  Nothing else about the
-payload changes.
+The lead records the format in its major version, which is 3 for the
+v4 format and 4 for the v6 format.  Switching formats does not change a payload compressor
+the metadata names.  A package whose metadata names none gets the
+rpm(8) default for the format.  The payload of a v6 format package is
+a stripped cpio archive.  See PAYLOAD below.
 .RE
 .TP
 \f[B]\-m\f[R], \f[B]\-\-payload\-mtime\f[R]
@@ -236,17 +296,57 @@ payload tree, such as a %ghost, is left as \f[B]header.json\f[R] has
 it.  \f[B]tarpm\f[R] says so on standard error each time it takes a
 value off a file, but only when the file and \f[B]header.json\f[R] do
 not already agree.
+.TP
+\f[B]\-D\f[R], \f[B]\-\-keep\-digests\f[R]
+Use the digests in \f[B]header.json\f[R] and
+\f[B]signature.json\f[R] as they are instead of recomputing them.
+This covers the file digests in the file list, the Payloadsha256 family
+of tags in \f[B]header.json\f[R], and the Md5, Sha1, Sha256, and
+Sha3_256 tags in \f[B]signature.json\f[R].  The values are not
+checked, so whatever digest the JSON carries goes straight in to the
+package.  A digest missing from the JSON still gets one computed.  A
+DIRECTORY with no \f[B]signature.json\f[R] gets every signature
+digest computed.  A signature digest is only kept when the format puts
+that tag in the signature header.  \f[B]\-S\f[R] names a
+\f[B]signature.json\f[R] outside the DIRECTORY.  This is for producing
+packages with known bad digests to test tools that verify them.  May
+only be used when creating an RPM.
+.TP
+\f[B]\-k\f[R], \f[B]\-\-keep\-signatures\f[R]
+Copy the package signatures in \f[B]signature.json\f[R] in to the
+package.  These are the Dsa, Rsa, Openpgp, Pgp, Gpg, and Pgp5 tags.
+A tag with no value is left out.  If a tag appears more than once,
+\f[B]tarpm\f[R] warns and keeps the first.  Pgp, Gpg, and Pgp5 are
+left out of a v6 format package with a warning.  The values are
+copied as they are and not checked.  The room they take comes out of
+the reserved space in the signature header, the same as rpmsign(1).  A
+DIRECTORY with no
+\f[B]signature.json\f[R] gets no package signatures.
+\f[B]\-S\f[R] names a \f[B]signature.json\f[R] outside the
+DIRECTORY.  A signature only verifies if the header and payload it
+covers come out byte for byte the same as in the signed package.
+\f[B]tarpm\f[R] warns when the Sha256 of the new main header differs
+from the one in \f[B]signature.json\f[R].
+Without \f[B]\-D\f[R] the signature digests are still computed.  May
+only be used when creating an RPM.
 .PP
 Similar to tar(1), you may run options together, such as
 \f[B]\-xvf\f[R] or \f[B]\-cvf\f[R]. Likewise, the leading hyphen on
 combined options like this is optional (in order to make
 \f[B]tarpm\f[R] more syntax compatible with tar(1)).
+Without the hyphen, the combined options must be the first argument,
+such as \f[B]tarpm xvf\f[R] FILENAME.  A letter that is not an option
+is an error.
+.PP
+An empty DIRNAME for \f[B]\-O\f[R] or \f[B]\-P\f[R] is an error.
 .SH METADATA
 RPM metadata is extracted by \f[B]tarpm\f[R] and written to JSON
 files.  When you create a package with \f[B]tarpm\f[R], only
 \f[B]header.json\f[R] must be present in the DIRECTORY serving as the
 source for the package.  \f[B]lead.json\f[R] and
-\f[B]signature.json\f[R] are optional because we never read them.
+\f[B]signature.json\f[R] are optional.  We never read
+\f[B]lead.json\f[R] and only \f[B]\-D\f[R] and \f[B]\-k\f[R] read
+\f[B]signature.json\f[R].
 Fields that are read\-only are marked with a read\-only string set to
 true. The JSON files are:
 .TP
@@ -277,20 +377,32 @@ The tags in \f[B]signature.json\f[R] are presented for informational
 purposes only.  When you create an RPM with \f[B]tarpm\f[R], we build
 the signature header from scratch for the format you ask for with
 \f[B]\-F\f[R], so the DIRECTORY does not need a
-\f[B]signature.json\f[R] at all and we do not read one that is there.
-Just like the lead.  To reiterate this point, the tags in
+\f[B]signature.json\f[R] at all and we do not read one that is there,
+unless \f[B]\-D\f[R] asks for the digests it carries or
+\f[B]\-k\f[R] asks for the package signatures.  Otherwise it is
+just like the lead.  To reiterate this point, the tags in
 \f[B]signature.json\f[R] carry a read\-only marker, the same as in the
 \f[B]lead.json\f[R] file.
 .PP
 A package built by rpmbuild(1) and then signed by rpmsign(1) carries
 signature tags that only rpmsign(1) can make, which are Dsa, Rsa,
-Pgp, Gpg, Pgp5, Openpgp, Filesignatures, Filesignaturelength,
-Veritysignatures, and Veritysignaturealgo.  \f[B]tarpm\f[R] reads all
+Pgp, Gpg, Pgp5, and Openpgp.  \f[B]tarpm\f[R] reads all
 of them out of a package and writes them to \f[B]signature.json\f[R]
 so you can see what the package carries, but it leaves every one of
 them out of a package it creates because making them takes the
 private signing key.  Run rpmsign(1) on the new package to sign it
-again.
+again.  \f[B]\-k\f[R] copies them from \f[B]signature.json\f[R] in
+to the new package as they are.
+.PP
+The file signatures rpmsign(1) makes are different.  Filesignatures,
+Filesignaturelength, Veritysignatures, and Veritysignaturealgo sign
+each file and not the package, so they still hold after a rebuild.
+\f[B]tarpm\f[R] does not write them to \f[B]signature.json\f[R].  The
+per-file lists go to the signature and verity keys of the
+\f[B]files\f[R] array in \f[B]header.json\f[R], and
+Veritysignaturealgo goes to its \f[B]tags\f[R] array.  We work
+Filesignaturelength out again from the signatures.  A package we
+create gets them back in its signature header, in either format.
 .RE
 .TP
 \f[B]header.json\f[R]
@@ -326,6 +438,18 @@ type, and value or file. The tag corresponds to an RPMTAG_ value from
 /usr/include/rpm/rpmtag.h. The value is the actual information. The
 type corresponds to the types defined in /usr/include/rpm/rpmtag.h. If
 the type is an array, the value will be an array of that type.
+A string tag needs a JSON string for its value. tarpm will not create
+a package from one holding a number, a boolean, or null. An i18n string
+tag holds the same, or an object of locale to string when it has
+translations, such as {\(dqC\(dq: \(dqhello\(dq, \(dqde\(dq: \(dqhallo\(dq}. Every locale
+has to be in the Headeri18ntable tag. A translated Description keeps
+each string in a file, so its \f[B]file\f[R] key holds the object,
+with \f[B]description.txt\f[R] for the first locale and
+\f[B]description.\f[R]\f[I]locale\f[R]\f[B].txt\f[R] for the others.
+A char tag holds a string of one or more characters. tarpm will not
+create a package from a type it does not know. That includes (null)
+and (unknown), which it writes on extract for an RPM_NULL_TYPE tag or
+a type rpm does not define.
 .PP
 If an entry in the tags array contains a file key rather than value,
 then that key corresponds to a text file in the extracted RPM
@@ -339,7 +463,8 @@ instead and keep the text in the JSON file.
 RPM dependency information is written to the \f[B]dependencies\f[R]
 dict. There is one dict entry (key) for each type of dependency which
 is any of provides, requires, conflicts, obsoletes, recommends,
-suggests, supplements, and enhances. The value for each key is an
+suggests, supplements, and enhances. Any other key is left out of the
+package with a warning. The value for each key is an
 array of dicts where each array entry is a dict consisting of at least
 name and optionally comparison, version, and sense_flags. The
 structure looks like this:
@@ -392,7 +517,9 @@ are dependency flags found in the header that do not strictly map to a
 comparison operator. \f[B]tarpm\f[R] converts these to string
 representation and places them in the sense_flags array. You can find
 a list of these in /usr/include/rpm/rpmds.h as the RPMSENSE_
-macros. Most of these are autogenerated by rpmbuild.
+macros. Most of these are autogenerated by rpmbuild. Bits with no
+name go in the array as one decimal number so a round trip keeps
+them.
 .PP
 You may change these dependency values in the JSON metadata, but keep
 in mind that \f[B]tarpm\f[R] does no validation or checking other
@@ -421,7 +548,11 @@ inside the \f[B]payload\f[R] subdirectory.
 .TP
 \f[B]size\f[R]
 The number of bytes in a regular file, or the length of the target of
-a symlink. Other kinds of file do not carry this.
+a symlink. Other kinds of file do not carry this. It comes from
+Filesizes or Longfilesizes, whichever the package has. On create,
+tarpm writes Longfilesizes for a v6 format package and for a v4 format
+package with a file of 4294967295 bytes or more, and Filesizes
+otherwise.
 .TP
 \f[B]mode\f[R]
 The permission bits as a four digit octal string, such as
@@ -443,6 +574,7 @@ differently.
 .TP
 \f[B]rdev\f[R]
 The device number, for character and block device nodes only.
+RPM stores it in 16 bits, so a number above 65535 is an error.
 .TP
 \f[B]device\f[R]
 The device the file came off when the package was built. This is
@@ -459,12 +591,22 @@ The target of a symlink.
 \f[B]inode\f[R]
 A number RPM gives out itself starting at 1. Files that share a number
 are hard links of one another. These are not real inode numbers.
+A file with no inode key is a hard link of the files it is linked to
+in the payload tree. When one of those files has an inode key, the new
+file joins its group. Two files with different inode keys are never
+hard links of each other, even when they are linked in the payload
+tree.
 .TP
 \f[B]class\f[R]
 What kind of thing the file holds, in the style of file(1), such as
 \(dqASCII text\(dq or a long ELF description. RPM only records a class
-for files it recognizes, so plenty of entries do not carry this. See
-FILE CLASSES below.
+for files it recognizes, so plenty of entries do not carry this. Only
+a v4 format package records classes. See FILE CLASSES below.
+.TP
+\f[B]mime\f[R]
+The MIME type of the file, such as \(dqtext/plain\(dq or
+\(dqinode/directory\(dq. Only a v6 format package records MIME types. See
+MIME TYPES below.
 .TP
 \f[B]langs\f[R]
 An array of the languages of the file, such as the language of a
@@ -488,7 +630,8 @@ filedigest, filesize, mtime, mode, user, group, linkto, rdev, and
 caps.  RPM stores these as a bitfield too.  An entry carrying no
 verifyflags key at all gets every check, which is where rpmbuild
 starts each file.  Write an empty array for a file that should be
-checked for none of these.
+checked for none of these.  tarpm writes an empty array when it
+extracts a file like that.
 .TP
 \f[B]provides\f[R]
 An array of the dependencies this one file generated. Each entry looks
@@ -497,6 +640,37 @@ added saying which kind it is. Despite the name, requires show up here
 as well as provides, because rpm records both against the file the
 generators read them out of. The order matters and \f[B]tarpm\f[R]
 keeps it, since rpm points at a run of these per file.
+.TP
+\f[B]signature\f[R]
+The IMA file signature rpmsign(1) made for the file, as a hex string.
+RPM keeps these in the Filesignatures tag of the signature header.
+.TP
+\f[B]verity\f[R]
+The fs\-verity signature rpmsign(1) made for the file, as a base64
+string. RPM keeps these in the Veritysignatures tag of the signature
+header. The hash algorithm is the Veritysignaturealgo tag in the
+\f[B]tags\f[R] array, 1 for sha256 and 2 for sha512. Without it
+\f[B]tarpm\f[R] writes 1, the same as rpmsign(1). A value that is
+not a number gets a warning and \f[B]tarpm\f[R] writes 1.
+.PP
+A file with no signature has neither key. \f[B]tarpm\f[R] writes these
+to the signature header in both formats. The room they take comes out
+of the reserved space, so the signature header keeps its size, the
+same as rpmsign(1) does. Signatures too large for the reserved space
+leave it alone and the signature header grows. A file whose contents
+changed loses both, because they sign the old contents. A source
+package never gets them.
+.PP
+An older rpmsign(1) put the file signatures in the main header of a v4
+format package. Extracting one of those moves them to the signature
+keys as well, and drops Filesignatures and Filesignaturelength from the
+\f[B]tags\f[R] array. A package \f[B]tarpm\f[R] creates from it has
+them in the signature header, in either format.
+.PP
+rpm(8) turns away a package with file signatures in both headers. If
+you put a Filesignatures tag in the \f[B]tags\f[R] array yourself, a
+v4 format package keeps it and \f[B]tarpm\f[R] leaves the signature
+keys out of the signature header.
 .RE
 .TP
 \f[B]changelog\f[R]
@@ -505,8 +679,10 @@ the \f[B]header.json\f[R] file. It is an array of dicts and each dict
 corresponds to one changelog block from the spec file. Each dict
 contains a timestamp key, a name key, and a text key. The timestamp
 value is the date you would see on the changelog line, such as \(lqTue
-Jul 21 2026\(rq. Internally these are stored as time_t values in the
-header, but tarpm converts them to the human readable format. The name
+Jul 21 2026\(rq. A time other than noon UTC is written with the time
+of day, such as \(lqThu Oct 06 06:48:39 UTC 2016\(rq. Internally these
+are stored as time_t values in the header, but tarpm converts them to
+the human readable format. The name
 value is a string containing everything after the date on the
 changelog line. Usually this is the packager\(cqs name, email address,
 a hyphen, and the version\-release value of that update (but without
@@ -514,8 +690,9 @@ the dist tag), but this is just a common convention. The text value is
 an array of strings containing everything for that changelog
 entry. The actual value in the header is one long string, but tarpm
 splits that on newlines and presents it as an array in the JSON file
-for easier editing. The entire array is joined together when
-constructing an RPM.
+for easier editing. A blank line is an empty string in the array. The
+entire array is joined together with newlines when constructing an
+RPM, so the text comes back exactly as it was.
 .SH MINIMAL PACKAGES
 You do not have to extract a package to create one.  A directory
 holding a \f[B]header.json\f[R] file that you construct and a
@@ -544,14 +721,36 @@ The machine name from uname(2), or src for a source package
 cpio, which is the only format rpm accepts (for now)
 .TP
 \f[B]Payloadcompressor\f[R], \f[B]Payloadflags\f[R]
-gzip at level 9 for a v4 package, zstd at level 19 for v6
+gzip at level 9 for a v4 format package or a source package, zstd at
+level 19 for a v6 format binary package.
+These match the rpm(8) defaults.
+A compressor the metadata names is kept in either format.
+A v6 format package that names a compressor other than zstd gets
+level 9.
+The names are gzip, bzip2, xz, lzma, zstd, and none.
+\f[B]tarpm\f[R] refuses any other name.
+none gives an uncompressed payload.
+rpm(8) has no name for this, so the package carries no
+Payloadcompressor tag and Payloadflags is 0, the same as rpmbuild(8)
+writes.
+Extracting an uncompressed package writes none to
+\f[B]header.json\f[R].
+A gzip payload carries an mtime of 0 in its gzip header, the same as
+rpm writes.
+An xz payload carries a SHA-256 check, the same as rpm writes.
+xz takes levels 0 to 9.
+Payloadflags is the compression level, with an optional T and thread
+count after it, such as 3T or 19T8.
+\f[B]tarpm\f[R] uses the level and ignores the thread count.
+Any other value is an error, and so is a level the compressor does not
+take.
 .TP
 \f[B]Sourcerpm\f[R]
 (none) for a binary package, left off for a source package
 .TP
 \f[B]Sourcenevr\f[R]
 The Sourcerpm value with the \(dq.src.rpm\(dq ending taken off.  Only
-a v6 binary package gets this, and only when there is a source
+a v6 format binary package gets this, and only when there is a source
 package to name
 .TP
 \f[B]Filedigestalgo\f[R]
@@ -568,8 +767,10 @@ The name from gethostname(2)
 The Name value
 .TP
 \f[B]Headerimmutable\f[R]
-The region trailer, without which rpm reads the package as a v3 one
-and says v3 is deprecated
+The region trailer, without which rpm reads the package as a v3
+format one and says the v3 format is deprecated.
+tarpm refuses a header with more than one region tag, or with a
+\f[B]Headersignatures\f[R] tag, which belongs in the signature header.
 .PP
 The package also gets a Provide dependency for itself, which is its
 name at its own EVR, unless the \f[B]dependencies\f[R] dict already
@@ -611,14 +812,20 @@ two ways.  The usual one is newc, which every cpio tool reads.  A
 package whose header carries Longfilesizes gets what rpm calls a
 stripped archive instead, with a magic of 07070X and a file index in
 each entry in place of the name, the mode, and the timestamps, since
-the main header already holds all of that.  Every v6 package is
-written that way, and so is a v4 package holding a file too large to
-count in 32 bits.
+the main header already holds all of that.  Every v6 format package
+is written that way, and so is a v4 format package holding a file too
+large to count in 32 bits.
 .PP
-\f[B]tarpm\f[R] reads both.  It hands the package to libarchive
-first, which is quick but only knows newc, and falls back to librpm,
-which knows both.  A payload that fails to unpack can therefore
-complain twice, once per reader.  \f[B]tarpm\f[R] always writes newc.
+\f[B]tarpm\f[R] reads both.  libarchive is quick but only knows
+newc, and librpm knows both.  A package whose header carries
+Longfilesizes goes straight to librpm.  Any other package goes to
+libarchive first, and to librpm only when libarchive cannot read a
+single entry.  Each entry librpm reads is written straight to the
+payload tree, so nothing goes to \f[B]$TMPDIR\f[R].  An entry that fails after others went in is reported once
+and \f[B]tarpm\f[R] exits non-zero without trying the second
+reader.  \f[B]tarpm\f[R] writes a stripped
+archive whenever the header carries Longfilesizes and newc otherwise,
+the same as rpm(8).
 .PP
 When you create a package, \f[B]tarpm\f[R] walks the payload tree and
 the file list together and reconciles them:
@@ -637,8 +844,8 @@ never owned them.
 .TP
 Files you changed
 The type, the size, the symlink target, the device number, the digest,
-and the class are taken from the file on disk rather than from the
-entry. Swapping a file for a symlink, or for any other kind of thing,
+the class, and the MIME type are taken from the file on disk rather
+than from the entry. Swapping a file for a symlink, or for any other kind of thing,
 rewrites the rest of the entry to suit the new type.
 .TP
 Keys you left out
@@ -694,11 +901,36 @@ package is empty, making one up from the file mode or, for a symlink,
 from the link target. An empty class is therefore not always what
 \(dqrpm \-qp \-\-queryformat\(dq shows you.
 .PP
-All of this is v4 only.  A v6 package records a MIME type per file in
-the Mimedict and Filemimeindex tags rather than a class, and
-\f[B]tarpm\f[R] leaves those two in the \f[B]tags\f[R] array instead
-of folding them in to the file list.  A file list out of a v6 package
-therefore carries no \f[B]class\f[R] key at all.
+All of this is v4 format only.  A v6 format package records a MIME
+type per file rather than a class, so a file list out of a v6 format
+package carries no \f[B]class\f[R] key at all.  When you write a v4
+format package from it,
+\f[B]tarpm\f[R] works out the class of each entry that has a
+\f[B]mime\f[R] key and no \f[B]class\f[R] key.
+.SH MIME TYPES
+A v6 format package records the MIME type of each file in place of a
+class,
+and \f[B]tarpm\f[R] shows it as the \f[B]mime\f[R] key on a file
+list entry. Internally this is the Mimedict table of the MIME types in
+the package and the Filemimeindex index per file in to that table.
+\f[B]tarpm\f[R] builds both of those for you. A source package
+carries neither.
+.PP
+The MIME type is worked out the same way rpmbuild(1) works it out. A
+regular file or a symlink with one of the path endings that gets a
+class without looking at the file gets a MIME type the same way, such
+as text/x-c for .h. Everything else goes to libmagic, including
+directories, symlinks, and the files under /dev/. Every MIME type is
+kept. A file that is not there has none and a file libmagic cannot
+read is application/octet-stream.
+.PP
+\f[B]tarpm\f[R] works the MIME type out again under the same
+conditions as the class. A file you did not touch keeps the MIME type
+the original package gave it.
+.PP
+A file list out of a v4 format package carries no \f[B]mime\f[R]
+key. When you write a v6 format package from it, \f[B]tarpm\f[R] works out the MIME
+type of each entry that has no \f[B]mime\f[R] key.
 .SH SEE ALSO
 \f[B]rpmbuild\f[R](1), \f[B]rpmsign\f[R](1), \f[B]tar\f[R](1),
 \f[B]file\f[R](1), \f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)
