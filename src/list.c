@@ -14,105 +14,58 @@
 
 static rpmVSFlags vsflags = RPMVSF_MASK_NODIGESTS | RPMVSF_MASK_NOSIGNATURES | RPMVSF_NOHDRCHK;
 
-#define COLUMN_OWNERSHIP 0
-#define COLUMN_SIZE      1
+/* the widest the ownership and size columns get */
+#define MAX_COLUMN_WIDTH 25
 
-static int
-max_column_strlen(const char *rpm, const int standard, const int column)
+/*
+ * Work out the widths of the ownership and size columns from the file
+ * list in the header, so we read the payload only once.  A %ghost file
+ * is in the header but not the payload, so it does not count.  The
+ * widths start at ownerlen and sizelen.
+ */
+static void
+column_widths(rpmfiles files, int *ownerlen, int *sizelen)
 {
-    int r = standard;
     int l = 0;
-    char *buf = NULL;
-    int rc = 0;
-    rpmts ts;
-    Header hdr;
-    const char *compr = NULL;
-    char *rpmio_flags = NULL;
-    FD_t fdi = NULL;
-    FD_t gzdi = NULL;
-    rpmfiles files = NULL;
+    char buf[32];
     rpmfi fi = NULL;
 
-    if (rpm == NULL) {
-        return -1;
-    }
-
-    /* create librpm widgets */
-    ts = rpmtsCreate();
-    rpmtsSetVSFlags(ts, vsflags);
-
-    /* open the package */
-    fdi = Fopen(rpm, "r.ufdio");
-    rc = rpmReadPackageFile(ts, fdi, COMMAND_NAME, &hdr);
-
-    if (rc == RPMRC_NOTFOUND || rc == RPMRC_FAIL) {
-        warn("*** rpmReadPackageFile");
-        Fclose(fdi);
-        rpmtsFree(ts);
-        return -1;
-    }
-
-    /* determine how to read the payload */
-    compr = headerGetString(hdr, RPMTAG_PAYLOADCOMPRESSOR);
-
-    if (compr == NULL) {
-        compr = "gzip";
-    }
-
-    xasprintf(&rpmio_flags, "r.%s", compr);
-
-    /* open the payload */
-    gzdi = Fdopen(fdi, rpmio_flags);
-    free(rpmio_flags);
-
-    if (gzdi == NULL) {
-        warnx("*** Fdopen: %s", Fstrerror(fdi));
-        Fclose(fdi);
-        headerFree(hdr);
-        rpmtsFree(ts);
-        return -1;
-    }
-
-    /* get an iterator over the payload */
-    files = rpmfilesNew(NULL, hdr, 0, RPMFI_KEEPHEADER);
-    fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
+    fi = rpmfilesIter(files, RPMFI_ITER_FWD);
 
     if (fi == NULL) {
-        Fclose(gzdi);
-        rpmfilesFree(files);
-        headerFree(hdr);
-        rpmtsFree(ts);
-        return -1;
+        return;
     }
 
-    /* find the maximum column width we need */
     while (rpmfiNext(fi) >= 0) {
-        if (column == COLUMN_OWNERSHIP) {
-            l = strlen(str_or_empty(rpmfiFUser(fi))) + strlen(str_or_empty(rpmfiFGroup(fi))) + 1;
-        } else if (column == COLUMN_SIZE) {
-            xasprintf(&buf, "%" PRIu64 "", rpmfiFSize(fi));
-            l = strlen(buf) + 1;
-            free(buf);
+        if (rpmfiFFlags(fi) & RPMFILE_GHOST) {
+            continue;
         }
 
-        if (l > r) {
-            r = l;
+        l = strlen(str_or_empty(rpmfiFUser(fi))) + strlen(str_or_empty(rpmfiFGroup(fi))) + 1;
+
+        if (l > *ownerlen) {
+            *ownerlen = l;
+        }
+
+        l = snprintf(buf, sizeof(buf), "%" PRIu64, rpmfiFSize(fi)) + 1;
+
+        if (l > *sizelen) {
+            *sizelen = l;
         }
     }
 
-    /* put a reasonable limit on the column width */
-    if (r > 25) {
-        r = 25;
-    }
-
-    /* clean up */
-    Fclose(gzdi);
-    rpmfilesFree(files);
     rpmfiFree(fi);
-    headerFree(hdr);
-    rpmtsFree(ts);
 
-    return r;
+    /* put a reasonable limit on the column widths */
+    if (*ownerlen > MAX_COLUMN_WIDTH) {
+        *ownerlen = MAX_COLUMN_WIDTH;
+    }
+
+    if (*sizelen > MAX_COLUMN_WIDTH) {
+        *sizelen = MAX_COLUMN_WIDTH;
+    }
+
+    return;
 }
 
 /*
@@ -126,8 +79,8 @@ list_rpm(const char *rpm)
     const char *dn = NULL;
     char *filename = NULL;
     char *escaped = NULL;
-    int ownerlen = 0;
-    int sizelen = 0;
+    int ownerlen = 14;
+    int sizelen = 4;
     char modebuf[BUFSIZ];
     char timebuf[BUFSIZ];
     time_t mtime;
@@ -149,21 +102,6 @@ list_rpm(const char *rpm)
         return -1;
     }
 
-    /* get the max string lengths for the username+groupname and file size */
-    ownerlen = max_column_strlen(rpm, 14, COLUMN_OWNERSHIP);
-
-    if (ownerlen == -1) {
-        warnx("max_column_strlen: ownership");
-        return -1;
-    }
-
-    sizelen = max_column_strlen(rpm, 4, COLUMN_SIZE);
-
-    if (sizelen == -1) {
-        warnx("max_column_strlen: size");
-        return -1;
-    }
-
     /* create librpm widgets */
     ts = rpmtsCreate();
     rpmtsSetVSFlags(ts, vsflags);
@@ -200,8 +138,11 @@ list_rpm(const char *rpm)
         return -1;
     }
 
-    /* get an iterator over the payload */
+    /* the widths for the username+groupname and file size come from the header */
     files = rpmfilesNew(NULL, hdr, 0, RPMFI_KEEPHEADER);
+    column_widths(files, &ownerlen, &sizelen);
+
+    /* get an iterator over the payload */
     fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
 
     if (fi == NULL) {

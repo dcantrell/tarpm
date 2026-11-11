@@ -2604,10 +2604,14 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
     const char *path = NULL;
     struct json_object *files = NULL;
     struct json_object *value = NULL;
+    struct json_object *seen = NULL;
 
     if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files) || json_object_get_type(files) != json_type_array) {
         return 0;
     }
+
+    /* the files share their directories, so we check each of those once */
+    seen = json_object_new_object();
 
     for (i = 0; i < json_object_array_length(files); i++) {
         if (!json_object_object_get_ex(json_object_array_get_idx(files, i), RPM_FILE_PATH_DESC, &value)) {
@@ -2620,12 +2624,13 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
             continue;
         }
 
-        if (!path_beneath(payload_dir, path, true)) {
+        if (!path_beneath_seen(payload_dir, path, true, seen)) {
             warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
             r = -1;
         }
     }
 
+    json_object_put(seen);
     return r;
 }
 
@@ -2816,12 +2821,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
-    /* create the signature */
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
-        warnx(_("*** unable to construct RPM signature"));
-        goto create_cleanup;
-    }
-
     /* work out the payload digests and sizes the format calls for */
     if (update_payload_tags(header, payloadfd, rpmformat, keptpayload, &archivesize) != 0) {
         warnx("update_payload_tags");
@@ -2864,14 +2863,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
-    /* free the old signature structures before regenerating */
-    free_header(sig, siginfo);
-    sig = NULL;
-    siginfo = NULL;
-
-    /* regenerate the signature with updated digests */
+    /* build the signature once everything it carries is in */
     if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
-        warnx(_("*** unable to reconstruct RPM signature"));
+        warnx(_("*** unable to construct RPM signature"));
         goto create_cleanup;
     }
 

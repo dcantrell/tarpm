@@ -386,3 +386,34 @@ class VerifyListWithoutOwnerNames(TestUnpackRPM):
 
         if proc.returncode == 0:
             self.assertIn(b"/usr/share/", out)
+
+
+class VerifyListColumnWidths(TestUnpackRPM):
+    """The columns fit the payload entries and a %ghost file does not widen them"""
+
+    def setUp(self):
+        super().setUp()
+        self.mode = "-t"
+
+        self.rpm.section_install += (
+            "mkdir -p $RPM_BUILD_ROOT/usr/share/%s\n"
+            "echo hi > $RPM_BUILD_ROOT/usr/share/%s/file\n"
+            "touch $RPM_BUILD_ROOT/usr/share/%s/ghost\n" % (NAME, NAME, NAME)
+        )
+        self.rpm.get_subpackage(None).section_files += (
+            "%%attr(0644,uuuuuuuuuu,gggggggggg) /usr/share/%s/file\n"
+            "%%ghost %%attr(0644,longghostuser1,longghostgrp12) /usr/share/%s/ghost\n"
+            % (NAME, NAME)
+        )
+
+    def runTest(self):
+        super().runTest()
+
+        lines = self.out.decode("utf-8").splitlines()
+        self.assertEqual(len(lines), 1, msg=lines)
+
+        # the owner fills its column and the size is right aligned in four
+        self.assertTrue(
+            lines[0].startswith("-rw-r--r-- uuuuuuuuuu/gggggggggg   3 "), msg=lines[0]
+        )
+        self.assertTrue(lines[0].endswith(" ./usr/share/%s/file" % NAME), msg=lines[0])

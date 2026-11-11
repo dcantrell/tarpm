@@ -31,7 +31,6 @@
 /* Local prototypes */
 static int copy_data(struct archive *, struct archive *);
 static int extract_entry(struct archive *, struct archive *, struct archive_entry *);
-static void restrict_mode(struct archive_entry *);
 
 /*
  * From:
@@ -67,7 +66,7 @@ copy_data(struct archive *ar, struct archive *aw)
  * Drop the setuid and setgid bits and limit device nodes to 0600.  The
  * full modes stay in header.json.
  */
-static void
+void
 restrict_mode(struct archive_entry *entry)
 {
     mode_t mode = 0;
@@ -85,6 +84,63 @@ restrict_mode(struct archive_entry *entry)
     }
 
     archive_entry_set_mode(entry, mode);
+    return;
+}
+
+/*
+ * Make the libarchive writer both payload readers unpack with.  It
+ * restores the times and modes and refuses a path that leaves the
+ * current directory or goes through a symlink.
+ */
+struct archive *
+new_disk_writer(void)
+{
+    int flags = 0;
+    struct archive *output = NULL;
+
+    /* attributes to restore */
+    flags = ARCHIVE_EXTRACT_TIME;
+    flags |= ARCHIVE_EXTRACT_PERM;
+    flags |= ARCHIVE_EXTRACT_ACL;
+    flags |= ARCHIVE_EXTRACT_FFLAGS;
+    flags |= ARCHIVE_EXTRACT_UNLINK;
+    flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
+    flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    flags |= ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS;
+
+    output = archive_write_disk_new();
+    archive_write_disk_set_options(output, flags);
+    archive_write_disk_set_standard_lookup(output);
+
+    return output;
+}
+
+/*
+ * Print the path of an entry for -v the way tar(1) does.  We take off
+ * one leading "./" or "/" so a dotfile keeps its dot.
+ */
+void
+print_entry_path(struct archive_entry *entry)
+{
+    char *name = NULL;
+    const char *p = NULL;
+
+    p = archive_entry_pathname(entry);
+
+    if (p == NULL) {
+        return;
+    }
+
+    if (!strncmp(p, "./", 2)) {
+        p += 2;
+    } else if (*p == '/') {
+        p++;
+    }
+
+    name = escape_name(p);
+    printf("./%s\n", name);
+    free(name);
+
     return;
 }
 
@@ -127,13 +183,10 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
 int
 unpack_archive(const char *archive, const char *dest, const bool verbose)
 {
-    int flags = 0;
     int r = 0;
     int ret = 0;
     size_t nread = 0;
     char cwd[PATH_MAX + 1];
-    const char *p = NULL;
-    char *name = NULL;
     struct archive *input = NULL;
     struct archive *output = NULL;
     struct archive_entry *entry = NULL;
@@ -143,16 +196,6 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     }
 
     memset(cwd, '\0', sizeof(cwd));
-
-    /* attributes to restore */
-    flags = ARCHIVE_EXTRACT_TIME;
-    flags |= ARCHIVE_EXTRACT_PERM;
-    flags |= ARCHIVE_EXTRACT_ACL;
-    flags |= ARCHIVE_EXTRACT_FFLAGS;
-    flags |= ARCHIVE_EXTRACT_UNLINK;
-    flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
-    flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
-    flags |= ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS;
 
     /* archive reader */
     input = archive_read_new();
@@ -179,9 +222,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     }
 
     /* handler to write archive members to disk */
-    output = archive_write_disk_new();
-    archive_write_disk_set_options(output, flags);
-    archive_write_disk_set_standard_lookup(output);
+    output = new_disk_writer();
 
     /* extract each archive member */
     while ((r = archive_read_next_header(input, &entry)) != ARCHIVE_EOF) {
@@ -204,20 +245,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
         nread++;
 
         if (verbose) {
-            p = archive_entry_pathname(entry);
-
-            if (p != NULL) {
-                /* take off one leading "./" or "/" so a dotfile keeps its dot */
-                if (!strncmp(p, "./", 2)) {
-                    p += 2;
-                } else if (*p == '/') {
-                    p++;
-                }
-
-                name = escape_name(p);
-                printf("./%s\n", name);
-                free(name);
-            }
+            print_entry_path(entry);
         }
 
         restrict_mode(entry);

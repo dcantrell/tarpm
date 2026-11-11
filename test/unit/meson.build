@@ -165,6 +165,7 @@ if cunit.found()
         [ 'test-rpm.c',
           'test-main.c',
           rpm_src,
+          unpack_src,
           strfuncs_src,
           listfuncs_src,
           xalloc_src,

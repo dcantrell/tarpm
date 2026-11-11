@@ -1449,6 +1449,15 @@ cleanup_mkfiledigest:
     return r;
 }
 
+/* Returns true if an entry in the "files" array is a %ghost file */
+static bool
+is_ghost(struct json_object *file)
+{
+    struct json_object *flags = NULL;
+
+    return (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags) && (flag_value(flags) & RPMFILE_GHOST));
+}
+
 /*
  * Returns true if the file an entry in the "files" array names is
  * gone from the payload tree.  %ghost files are never in the payload,
@@ -1462,14 +1471,13 @@ missing_from_payload(struct json_object *file, const char *path, const char *pay
     char *file_path = NULL;
     const char *relpath = NULL;
     bool missing = false;
-    struct json_object *flags = NULL;
     struct stat sb;
 
     if (file == NULL || path == NULL || payload_dir == NULL) {
         return false;
     }
 
-    if (json_object_object_get_ex(file, RPM_FILE_FLAGS_DESC, &flags) && (flag_value(flags) & RPMFILE_GHOST)) {
+    if (is_ghost(file)) {
         return false;
     }
 
@@ -2812,18 +2820,9 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     out = build->out;
 
     /*
-     * Files that have been removed from the payload tree since the
-     * package was unpacked do not go in to the header.
-     */
-    if (missing_from_payload(file, path, build->payload_dir)) {
-        warnx_escaped(_("*** %s is not in the payload, leaving it out of the file list"), path);
-        return;
-    }
-
-    /*
      * Where this entry lands in the payload tree and what is there
-     * now.  The type, the size and the digest all come from it below,
-     * so we look it up once.
+     * now.  Whether it is missing, the type, the size and the digest
+     * all come from it below, so we look it up once.
      */
     if (build->payload_dir != NULL) {
         /* the payload tree holds the paths without a leading slash */
@@ -2838,6 +2837,17 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
         if (lstat(file_path, &sb) == 0) {
             psb = &sb;
         }
+    }
+
+    /*
+     * Files that have been removed from the payload tree since the
+     * package was unpacked do not go in to the header.  This is
+     * missing_from_payload() with the lstat() we already made.
+     */
+    if (build->payload_dir != NULL && psb == NULL && !is_ghost(file)) {
+        warnx_escaped(_("*** %s is not in the payload, leaving it out of the file list"), path);
+        free(file_path);
+        return;
     }
 
     /*

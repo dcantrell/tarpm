@@ -1263,6 +1263,40 @@ class LibrpmPayload(RequiresTarpm):
         return (proc.returncode, err.decode())
 
 
+class VerifyLibrpmPayloadNeedsNoTmpdir(LibrpmPayload):
+    """The librpm reader writes straight to the payload tree and nowhere else"""
+
+    def runTest(self):
+        pkg = self.build()
+
+        # a TMPDIR that is not there would fail any temporary file
+        self.tmpdir = os.path.join(self.output_dir, "missing")
+        tree = os.path.join(self.output_dir, "out")
+
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-v", "-f", pkg, "-O", tree],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=dict(os.environ, TMPDIR=self.tmpdir),
+        )
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, msg=err.decode())
+
+        sharedir = os.path.join(tree, "payload", "usr", "share", "hello")
+
+        for i in range(4):
+            f = open(os.path.join(sharedir, "file%d" % i))
+            self.assertEqual(len(f.read()), 1024 * (i + 1))
+            f.close()
+
+        # -v names each entry once, the way the libarchive reader does
+        lines = out.decode().splitlines()
+        self.assertEqual(lines.count("./usr/share/hello/big"), 1, msg=lines)
+        self.assertEqual(lines.count("./usr/share/hello"), 1, msg=lines)
+        self.assertNotIn("./usr/share/hello/", lines)
+        self.assertFalse(os.path.exists(self.tmpdir))
+
+
 class VerifyCorruptPayloadFails(LibrpmPayload):
     """A payload only librpm can read fails when one of its entries is bad"""
 

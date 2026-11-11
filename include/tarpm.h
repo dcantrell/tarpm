@@ -22,7 +22,7 @@ char *abspath(const char *path);
 char *xdirname(const char *path);
 
 /* rpm.c */
-char *convert_payload(const char *rpm);
+int unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose);
 Header get_header(const char *pkg);
 char *get_rpmtag_str(Header h, rpmTagVal tag);
 const char *get_header_arch(Header h);
@@ -68,7 +68,12 @@ int mkdirp_for_file(const char *path);
 FILE *fopen_output(const char *path);
 
 /* unpack.c */
+struct archive;
+struct archive_entry;
 int unpack_archive(const char *archive, const char *dest, const bool verbose);
+void restrict_mode(struct archive_entry *entry);
+struct archive *new_disk_writer(void);
+void print_entry_path(struct archive_entry *entry);
 
 /* lead.c */
 struct json_object *read_lead(const int fd);
@@ -165,6 +170,7 @@ void close_magic(void);
 /* joinpath.c */
 char *joinpath(const char *path, ...);
 bool path_beneath(const char *base, const char *path, const bool allow_last_link);
+bool path_beneath_seen(const char *base, const char *path, const bool allow_last_link, struct json_object *seen);
 int open_beneath_walk(const char *base, const char *path);
 int open_beneath(const char *base, const char *path);
 

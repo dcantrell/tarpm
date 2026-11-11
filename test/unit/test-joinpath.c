@@ -101,6 +101,7 @@ test_path_beneath(void)
 {
     char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
     char *path = NULL;
+    struct json_object *seen = NULL;
 
     /* the don't crash case */
     TARPM_ASSERT_FALSE(path_beneath(NULL, "usr", false));
@@ -149,6 +150,20 @@ test_path_beneath(void)
     TARPM_ASSERT_TRUE(path_beneath(tmpdir, "lib", true));
     TARPM_ASSERT_FALSE(path_beneath(tmpdir, "usr/bin/link", false));
     TARPM_ASSERT_TRUE(path_beneath(tmpdir, "usr/bin/link", true));
+
+    /* the seen form gives the same answers and keys only the directories it passed */
+    seen = json_object_new_object();
+    TARPM_ASSERT_TRUE(path_beneath_seen(tmpdir, "/usr/bin/missing", false, seen));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(seen, "usr", NULL));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(seen, "usr/bin", NULL));
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(seen, "usr/bin/missing", NULL));
+    TARPM_ASSERT_TRUE(path_beneath_seen(tmpdir, "usr/bin/link", true, seen));
+    TARPM_ASSERT_FALSE(path_beneath_seen(tmpdir, "usr/bin/link", false, seen));
+    TARPM_ASSERT_FALSE(path_beneath_seen(tmpdir, "lib/link", true, seen));
+    TARPM_ASSERT_FALSE(json_object_object_get_ex(seen, "lib", NULL));
+    TARPM_ASSERT_FALSE(path_beneath_seen(tmpdir, "usr/../etc/passwd", false, seen));
+    TARPM_ASSERT_EQUAL(json_object_object_length(seen), 2);
+    json_object_put(seen);
 
     /* clean up */
     xasprintf(&path, "%s/usr/bin/link", tmpdir);

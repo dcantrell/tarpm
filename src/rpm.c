@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <err.h>
-#include <locale.h>
+#include <limits.h>
 #include <archive.h>
 #include <archive_entry.h>
 #include <rpm/rpmlib.h>
@@ -18,19 +18,59 @@
 #include "tarpm.h"
 
 /*
- * Given a path to an RPM package, convert the payload to a tar file
- * for later use with extract_rpm().  This happens in cases where
- * libarchive cannot detect the cpio stream in an opened RPM file.
- * The tar file is a new file under $TMPDIR, or /tmp if that is not
- * set.  The caller must unlink the file and free the returned path
- * string.
+ * Write the data of a regular file entry to disk.  We read all of it
+ * even when a write fails so the iterator stays in step with the
+ * payload.  Returns 0 on success, -1 when the write failed and -2
+ * when the payload could not be read, which ends the unpack.
+ */
+static int
+write_payload_file(rpmfi fi, struct archive *output, char *buf, const bool writing)
+{
+    int r = 0;
+    bool ok = writing;
+    rpm_loff_t left = 0;
+    size_t len = 0;
+
+    left = rpmfiFSize(fi);
+
+    while (left) {
+        if (left > BUFSIZ) {
+            len = BUFSIZ;
+        } else {
+            len = left;
+        }
+
+        if (rpmfiArchiveRead(fi, buf, len) != (ssize_t) len) {
+            warnx(_("*** error reading file from RPM payload"));
+            return -2;
+        }
+
+        if (ok && archive_write_data(output, buf, len) != (ssize_t) len) {
+            warnx_escaped("archive_write_data: %s", archive_error_string(output));
+            ok = false;
+            r = -1;
+        }
+
+        left -= len;
+    }
+
+    return r;
+}
+
+/*
+ * Unpack the payload of an RPM in to dest with librpm.  This is the
+ * reader for the stripped cpio archive libarchive cannot read, which
+ * is every v6 format payload and a v4 format one with Longfilesizes.
+ * The entries go straight to the same libarchive disk writer
+ * unpack_archive() uses, so nothing is written anywhere else.  An
+ * entry that fails is skipped like unpack_archive() does.  Returns 0
+ * if every entry went in and -1 otherwise.
  *
  * A lot of this is adapted from rpm2archive.c from the rpm sources.
  */
-char *
-convert_payload(const char *rpm)
+int
+unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
 {
-    char *payload = NULL;
     rpmts ts;
     rpmVSFlags vsflags = RPMVSF_MASK_NODIGESTS | RPMVSF_MASK_NOSIGNATURES | RPMVSF_NOHDRCHK;
     Header hdr = NULL;
@@ -40,27 +80,27 @@ convert_payload(const char *rpm)
     char *rpmio_flags = NULL;
     rpmfiles files = NULL;
     rpmfi fi = NULL;
-    struct archive *archive = NULL;
+    struct archive *output = NULL;
     struct archive_entry *entry = NULL;
+    char cwd[PATH_MAX + 1];
     char *buf = NULL;
     rpm_mode_t mode = 0;
     int nlink = 0;
     int rc = 0;
+    int r = 0;
+    int ret = -1;
+    bool writing = false;
+    bool changed_dir = false;
     const char *dn = NULL;
     char *filename = NULL;
     char *hardlink = NULL;
-    char *ctype = NULL;
     char *errstr = NULL;
-    rpm_loff_t left;
-    size_t len = 0;
-    size_t rd = 0;
-    int fd = -1;
-    const char *tmpdir = NULL;
-    bool failed = false;
 
-    if (rpm == NULL) {
-        return NULL;
+    if (rpm == NULL || dest == NULL) {
+        return -1;
     }
+
+    memset(cwd, '\0', sizeof(cwd));
 
     /* create librpm widgets */
     ts = rpmtsCreate();
@@ -104,7 +144,7 @@ convert_payload(const char *rpm)
         goto cleanup;
     }
 
-    /* a tar hardlink names an earlier entry, so the content comes first */
+    /* a hardlink names an earlier entry, so the content comes first */
     fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
 
     if (fi == NULL) {
@@ -112,63 +152,25 @@ convert_payload(const char *rpm)
         goto cleanup;
     }
 
-    /* create a new archive with the payload data */
-    archive = archive_write_new();
-
-    /* extract.c unpacks the tar file right away, so we leave it uncompressed */
-
-    /*
-     * Write pax the way rpm2archive does.  newc cannot hold a file of
-     * 4 GiB or more, which a package carrying Longfilesizes can have.
-     * The paths are UTF-8.
-     */
-    if (archive_write_set_format_pax_restricted(archive) != ARCHIVE_OK) {
-        warnx("*** archive_write_set_format_pax_restricted: %s", archive_error_string(archive));
+    /* the entry paths are relative, so we work from dest */
+    if (getcwd(cwd, PATH_MAX) == NULL) {
+        warn("getcwd");
         goto cleanup;
     }
 
-    ctype = setlocale(LC_CTYPE, NULL);
-
-    if (ctype != NULL) {
-        ctype = strdup(ctype);
-    }
-
-    setlocale(LC_CTYPE, "C");
-    (void) archive_write_set_options(archive, "hdrcharset=UTF-8");
-
-    if (ctype != NULL) {
-        setlocale(LC_CTYPE, ctype);
-        free(ctype);
-    }
-
-    /* mkstemp() makes a new file, so we never write through a symlink */
-    tmpdir = getenv("TMPDIR");
-
-    if (tmpdir == NULL || *tmpdir == '\0') {
-        tmpdir = "/tmp";
-    }
-
-    xasprintf(&payload, "%s/%s-payload-XXXXXX", tmpdir, COMMAND_NAME);
-    fd = mkstemp(payload);
-
-    if (fd == -1) {
-        warn("*** mkstemp %s", payload);
-        free(payload);
-        payload = NULL;
+    if (chdir(dest) != 0) {
+        warn("chdir");
         goto cleanup;
     }
 
-    if (archive_write_open_fd(archive, fd) != ARCHIVE_OK) {
-        warnx("*** archive_write_open_fd: %s", archive_error_string(archive));
-        failed = true;
-        goto cleanup;
-    }
-
-    /* iterate over every entry in the payload */
+    changed_dir = true;
+    ret = 0;
+    output = new_disk_writer();
     entry = archive_entry_new();
     buf = xalloc(BUFSIZ);
 
-    while (rc >= 0) {
+    /* iterate over every entry in the payload */
+    while (true) {
         rc = rpmfiNext(fi);
 
         if (rc == RPMERR_ITER_END) {
@@ -180,8 +182,8 @@ convert_payload(const char *rpm)
             errstr = rpmfileStrerror(rc);
             warnx(_("*** error reading RPM payload: %s"), errstr);
             free(errstr);
-            failed = true;
-            goto cleanup;
+            ret = -1;
+            break;
         }
 
         mode = rpmfiFMode(fi);
@@ -216,52 +218,63 @@ convert_payload(const char *rpm)
         if (nlink > 1) {
             if (rpmfiArchiveHasContent(fi)) {
                 free(hardlink);
-                hardlink = strdup(archive_entry_pathname(entry));
-            } else {
+                hardlink = xstrdup(archive_entry_pathname(entry));
+            } else if (hardlink != NULL) {
                 archive_entry_set_hardlink(entry, hardlink);
                 archive_entry_set_size(entry, 0);
             }
         }
 
-        if (archive_write_header(archive, entry) != ARCHIVE_OK) {
-            warnx(_("archive_write_header: %s"), archive_error_string(archive));
-            failed = true;
-            goto cleanup;
+        if (verbose) {
+            print_entry_path(entry);
+        }
+
+        restrict_mode(entry);
+        writing = true;
+
+        if (archive_write_header(output, entry) != ARCHIVE_OK) {
+            warnx_escaped("archive_write_header: %s", archive_error_string(output));
+            writing = false;
+            ret = -1;
         }
 
         if (S_ISREG(mode) && (nlink == 1 || rpmfiArchiveHasContent(fi))) {
-            left = rpmfiFSize(fi);
+            r = write_payload_file(fi, output, buf, writing);
 
-            while (left) {
-                if (left > BUFSIZ) {
-                    len = BUFSIZ;
-                } else {
-                    len = left;
-                }
-
-                rd = rpmfiArchiveRead(fi, buf, len);
-
-                if (rd == len) {
-                    if (archive_write_data(archive, buf, len) != (ssize_t) len) {
-                        warnx(_("archive_write_data: %s"), archive_error_string(archive));
-                        failed = true;
-                        goto cleanup;
-                    }
-                } else {
-                    warnx(_("*** error reading file from RPM payload"));
-                    failed = true;
-                    goto cleanup;
-                }
-
-                left -= len;
+            if (r == -2) {
+                ret = -1;
+                break;
             }
+
+            if (r != 0) {
+                ret = -1;
+            }
+        }
+
+        r = archive_write_finish_entry(output);
+
+        if (r < ARCHIVE_WARN) {
+            ret = -1;
+        } else if (r != ARCHIVE_OK) {
+            warnx_escaped("archive_write_finish_entry: %s", archive_error_string(output));
+        }
+    }
+
+    /* closing sets the directory modes and times libarchive held back */
+    r = archive_write_close(output);
+
+    if (r != ARCHIVE_OK) {
+        warnx_escaped("archive_write_close: %s", archive_error_string(output));
+
+        if (r < ARCHIVE_WARN) {
+            ret = -1;
         }
     }
 
 cleanup:
     if (gzdi) {
         Fclose(gzdi);
-    } else {
+    } else if (fdi) {
         Fclose(fdi);
     }
 
@@ -272,20 +285,8 @@ cleanup:
         archive_entry_free(entry);
     }
 
-    if (archive) {
-        /* the tar file is not done until the close flushes it */
-        if (archive_write_close(archive) != ARCHIVE_OK && payload != NULL && !failed) {
-            warnx(_("archive_write_close: %s"), archive_error_string(archive));
-            failed = true;
-        }
-
-        archive_write_free(archive);
-    }
-
-    /* archive_write_open_fd() leaves the descriptor open */
-    if (fd != -1 && close(fd) == -1) {
-        warn("close");
-        failed = true;
+    if (output) {
+        archive_write_free(output);
     }
 
     rpmfilesFree(files);
@@ -293,16 +294,13 @@ cleanup:
     headerFree(hdr);
     rpmtsFree(ts);
 
-    if (failed) {
-        if (unlink(payload) == -1) {
-            warn("unlink");
-        }
-
-        free(payload);
-        payload = NULL;
+    /* change back to original directory */
+    if (changed_dir && chdir(cwd) != 0) {
+        warn("chdir");
+        ret = -1;
     }
 
-    return payload;
+    return ret;
 }
 
 /*

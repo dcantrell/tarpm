@@ -175,6 +175,17 @@ char *joinpath(const char *path, ...)
  */
 bool path_beneath(const char *base, const char *path, const bool allow_last_link)
 {
+    return path_beneath_seen(base, path, allow_last_link, NULL);
+}
+
+/*
+ * path_beneath() for a caller checking many paths under one base.
+ * seen keys the leading components we found are not symlinks, so each
+ * directory gets one lstat() however many files are below it.  The
+ * last component is always looked at.  seen may be NULL.
+ */
+bool path_beneath_seen(const char *base, const char *path, const bool allow_last_link, struct json_object *seen)
+{
     size_t len = 0;
     bool last = false;
     bool exists = true;
@@ -216,17 +227,28 @@ bool path_beneath(const char *base, const char *path, const bool allow_last_link
             prefix = xalloc(end - path + 1);
             memcpy(prefix, path, end - path);
             prefix[end - path] = '\0';
+
+            /* a directory we already passed is still not a symlink */
+            if (!last && seen != NULL && json_object_object_get_ex(seen, prefix, NULL)) {
+                free(prefix);
+                start = end + 1;
+                continue;
+            }
+
             sub = joinpath(base, prefix, NULL);
-            free(prefix);
 
             if (lstat(sub, &sb) == -1) {
                 exists = false;
             } else if (S_ISLNK(sb.st_mode) && (!last || !allow_last_link)) {
                 free(sub);
+                free(prefix);
                 return false;
+            } else if (!last && seen != NULL) {
+                json_object_object_add(seen, prefix, NULL);
             }
 
             free(sub);
+            free(prefix);
         }
 
         start = end + 1;

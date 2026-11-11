@@ -21,9 +21,11 @@ clean_test_rpm(void)
 }
 
 void
-test_convert_payload(void)
+test_unpack_rpm_payload(void)
 {
-    TARPM_ASSERT_TRUE(convert_payload(NULL) == NULL);
+    TARPM_ASSERT_EQUAL(unpack_rpm_payload(NULL, NULL, false), -1);
+    TARPM_ASSERT_EQUAL(unpack_rpm_payload("x.rpm", NULL, false), -1);
+    TARPM_ASSERT_EQUAL(unpack_rpm_payload(NULL, "/tmp", true), -1);
 
     return;
 }
@@ -81,7 +83,7 @@ get_suite(void)
     }
 
     /* add tests to the suite */
-    if (CU_add_test(pSuite, "test convert_payload()", test_convert_payload) == NULL ||
+    if (CU_add_test(pSuite, "test unpack_rpm_payload()", test_unpack_rpm_payload) == NULL ||
         CU_add_test(pSuite, "test get_header()", test_get_header) == NULL ||
         CU_add_test(pSuite, "test get_rpmtag_str()", test_get_rpmtag_str) == NULL ||
         CU_add_test(pSuite, "test get_header_arch()", test_get_header_arch) == NULL ||

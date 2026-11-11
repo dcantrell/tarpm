@@ -320,54 +320,36 @@ make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mo
 }
 
 /*
- * Unpack the RPM payload in to payload_dir.  We hand the RPM to
- * libarchive first and pull the payload out to a file of its own if
- * libarchive cannot read it at all.  Returns 0 if it worked and -1 if
- * it did not.
+ * Unpack the RPM payload in to payload_dir.  libarchive reads a newc
+ * payload straight from the RPM, so we try it first.  A header with
+ * Longfilesizes means a stripped archive, which only librpm reads, so
+ * that one goes to unpack_rpm_payload() right away.  So does a payload
+ * libarchive cannot read at all.  Returns 0 if it worked and -1 if it
+ * did not.
  */
 static int
-extract_payload(const char *filename, const char *payload_dir, const bool verbose)
+extract_payload(const char *filename, const char *payload_dir, const bool verbose, const bool stripped)
 {
-    int r = -1;
-    char *payload_file = NULL;
+    int r = 0;
 
     /*
-     * Try to extract straight from the RPM with libarchive.  We
-     * still go through the Fdopen() call in librpm, which can fail
-     * on some compression types depending on the librpm version.  An
-     * entry that fails after others were written is a real failure
+     * An entry that fails after others were written is a real failure
      * and unpacking again would only write it all a second time.
      */
-    r = unpack_archive(filename, payload_dir, verbose);
+    if (!stripped) {
+        r = unpack_archive(filename, payload_dir, verbose);
 
-    if (r != UNPACK_UNREADABLE) {
-        return r;
+        if (r != UNPACK_UNREADABLE) {
+            return r;
+        }
     }
 
-    r = -1;
-
-    /* direct extraction failed, so fall back to convert_payload() */
-    payload_file = convert_payload(filename);
-
-    if (payload_file == NULL) {
-        warnx("convert_payload");
+    if (unpack_rpm_payload(filename, payload_dir, verbose) != 0) {
+        warnx("unpack_rpm_payload");
         return -1;
     }
 
-    if (unpack_archive(payload_file, payload_dir, verbose) != 0) {
-        warnx("unpack_archive");
-    } else {
-        r = 0;
-    }
-
-    if (unlink(payload_file) == -1) {
-        warn("unlink");
-        r = -1;
-    }
-
-    free(payload_file);
-
-    return r;
+    return 0;
 }
 
 /* Handler for -x mode (extract) */
@@ -448,7 +430,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
             goto cleanup;
         }
 
-        if (extract_payload(filename, payload_dir, verbose) != 0) {
+        if (extract_payload(filename, payload_dir, verbose, headerIsEntry(h, RPMTAG_LONGFILESIZES)) != 0) {
             goto cleanup;
         }
     }
