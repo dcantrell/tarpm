@@ -1,6 +1,6 @@
 Core functionality that still needs to happen:
 
-[ ] Create mode
+[*] Create mode
     [*] Regenerate digests for payload members.  Each file needs to
         have a freshly computed message digest in the header data.
         This can be done with an nftw() callback that updates the
@@ -47,9 +47,9 @@ Core functionality that still needs to happen:
         [*] group
         [*] Linkto
 
-    [ ] Improved verbose mode output
-        [ ] Note what is happening in different stages
-        [ ] Note added and removed files from the payload
+    [*] Improved verbose mode output
+        [*] Note what is happening in different stages
+        [*] Note added and removed files from the payload
 
     [*] What is minimally needed for creating an RPM from scratch
         [*] Missing lead.json creates lead
@@ -142,7 +142,7 @@ Core functionality that still needs to happen:
         [ ] RHEL 6 + EPEL?
 
 [ ] Followups
-    [ ] Verbose messages.  Restrict informational messages to -v being
+    [*] Verbose messages.  Restrict informational messages to -v being
         specified and make sure output goes to stdout, not warnx().
 
     [ ] Add command line option to suppress writing some tag values to
@@ -152,7 +152,7 @@ Core functionality that still needs to happen:
         [ ] Suppress by tag number.
         [ ] Suppress by tag name (symbolic name, case insensitive).
 
-    [ ] Command line option to use provided tag values as-is on create
+    [*] Command line option to use provided tag values as-is on create
         for anything that is recomputed at create time.  Meant to
         allow constructing known bad RPMs (e.g., incorrect digests).
 
@@ -165,13 +165,13 @@ Core functionality that still needs to happen:
     [*] Exclude all signature tags that rpmsign(1) generates when
         creating an RPM
 
-[ ] CI jobs on GitHub
-    [ ] Get 'make check' CI jobs implemented (copy over from
+[*] CI jobs on GitHub
+    [*] Get 'make check' CI jobs implemented (copy over from
         rpminspect)
 
-    [ ] Shellcheck CI jobs for scripts
+    [*] Shellcheck CI jobs for scripts
 
-    [ ] Python black and flake8 for Python code
+    [*] Python black and flake8 for Python code
 
 [*] Documentation
     [*] Basic info
