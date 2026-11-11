@@ -322,7 +322,8 @@ make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mo
 /*
  * Unpack the RPM payload in to payload_dir.  We hand the RPM to
  * libarchive first and pull the payload out to a file of its own if
- * that does not work.  Returns 0 if it worked and -1 if it did not.
+ * libarchive cannot read it at all.  Returns 0 if it worked and -1 if
+ * it did not.
  */
 static int
 extract_payload(const char *filename, const char *payload_dir, const bool verbose)
@@ -333,11 +334,17 @@ extract_payload(const char *filename, const char *payload_dir, const bool verbos
     /*
      * Try to extract straight from the RPM with libarchive.  We
      * still go through the Fdopen() call in librpm, which can fail
-     * on some compression types depending on the librpm version.
+     * on some compression types depending on the librpm version.  An
+     * entry that fails after others were written is a real failure
+     * and unpacking again would only write it all a second time.
      */
-    if (unpack_archive(filename, payload_dir, verbose) == 0) {
-        return 0;
+    r = unpack_archive(filename, payload_dir, verbose);
+
+    if (r != UNPACK_UNREADABLE) {
+        return r;
     }
+
+    r = -1;
 
     /* direct extraction failed, so fall back to convert_payload() */
     payload_file = convert_payload(filename);

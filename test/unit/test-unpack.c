@@ -101,6 +101,79 @@ test_unpack_archive_modes(void)
     return;
 }
 
+/* Test unpack_archive() tells an unreadable archive from a failed entry */
+void
+test_unpack_archive_failures(void)
+{
+    char tmpdir[] = "/tmp/tarpm-test-unpack-XXXXXX";
+    char *cpio = NULL;
+    char *junk = NULL;
+    char *dest = NULL;
+    char *path = NULL;
+    FILE *fp = NULL;
+    struct archive *a = NULL;
+    struct stat sb;
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+    cpio = joinpath(tmpdir, "payload.cpio", NULL);
+    junk = joinpath(tmpdir, "junk", NULL);
+    dest = joinpath(tmpdir, "dest", NULL);
+    TARPM_ASSERT_TRUE(mkdir(dest, 0755) == 0);
+
+    /* nothing can be read from a missing file or one that is not an archive */
+    TARPM_ASSERT_EQUAL(unpack_archive(junk, dest, false), UNPACK_UNREADABLE);
+    fp = fopen(junk, "w");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    fputs("this is not an archive\n", fp);
+    fclose(fp);
+    TARPM_ASSERT_EQUAL(unpack_archive(junk, dest, false), UNPACK_UNREADABLE);
+
+    a = archive_write_new();
+    TARPM_ASSERT_TRUE(a != NULL);
+    TARPM_ASSERT_TRUE(archive_write_set_format_cpio_newc(a) == ARCHIVE_OK);
+    TARPM_ASSERT_TRUE(archive_write_open_filename(a, cpio) == ARCHIVE_OK);
+    add_entry(a, "./a", S_IFREG | 0644);
+    add_entry(a, "./b", S_IFREG | 0644);
+    add_entry(a, "./c", S_IFREG | 0644);
+    TARPM_ASSERT_TRUE(archive_write_close(a) == ARCHIVE_OK);
+    archive_write_free(a);
+
+    /* a non-empty directory where b goes makes that one entry fail */
+    path = joinpath(dest, "b", NULL);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    path = joinpath(dest, "b", "blocker", NULL);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+
+    TARPM_ASSERT_EQUAL(unpack_archive(cpio, dest, false), -1);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+
+    /* the entries on either side still went in */
+    path = joinpath(dest, "a", NULL);
+    TARPM_ASSERT_TRUE(stat(path, &sb) == 0 && S_ISREG(sb.st_mode));
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+
+    path = joinpath(dest, "c", NULL);
+    TARPM_ASSERT_TRUE(stat(path, &sb) == 0 && S_ISREG(sb.st_mode));
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+
+    path = joinpath(dest, "b", NULL);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+
+    TARPM_ASSERT_TRUE(rmdir(dest) == 0);
+    TARPM_ASSERT_TRUE(unlink(cpio) == 0);
+    TARPM_ASSERT_TRUE(unlink(junk) == 0);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+    free(dest);
+    free(junk);
+    free(cpio);
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -119,6 +192,10 @@ get_suite(void)
     }
 
     if (CU_add_test(pSuite, "test unpack_archive() modes", test_unpack_archive_modes) == NULL) {
+        return NULL;
+    }
+
+    if (CU_add_test(pSuite, "test unpack_archive() failures", test_unpack_archive_failures) == NULL) {
         return NULL;
     }
 

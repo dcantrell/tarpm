@@ -119,7 +119,10 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
 
 /*
  * Unpack an archive file to a destination directory.  The directory must
- * exist before calling this function.
+ * exist before calling this function.  Returns 0 if every entry went
+ * in and -1 if one failed after the others were written.  Returns
+ * UNPACK_UNREADABLE when libarchive could not read a single entry,
+ * which is the one case a second try with another reader can fix.
  */
 int
 unpack_archive(const char *archive, const char *dest, const bool verbose)
@@ -127,6 +130,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     int flags = 0;
     int r = 0;
     int ret = 0;
+    size_t nread = 0;
     char cwd[PATH_MAX + 1];
     const char *p = NULL;
     char *name = NULL;
@@ -158,7 +162,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
 
     if (r != ARCHIVE_OK) {
         archive_read_free(input);
-        return -1;
+        return UNPACK_UNREADABLE;
     }
 
     /* change to dest */
@@ -196,6 +200,8 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
                 continue;
             }
         }
+
+        nread++;
 
         if (verbose) {
             p = archive_entry_pathname(entry);
@@ -239,6 +245,11 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     if (chdir(cwd) != 0) {
         warn("chdir");
         return -1;
+    }
+
+    /* nothing came out, so nothing was written for a second try to repeat */
+    if (ret != 0 && nread == 0) {
+        return UNPACK_UNREADABLE;
     }
 
     return ret;

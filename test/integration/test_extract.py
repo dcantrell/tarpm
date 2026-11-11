@@ -396,6 +396,47 @@ class VerifyPayloadExtractSpecialChars(TestUnpackRPM):
             self.assertEqual(os.path.getsize(filepath), 100)
 
 
+class VerifyFailedEntryIsExtractedOnce(TestUnpackRPM):
+    """One entry that fails does not make the whole payload go in twice"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v"]
+        self.exitcode = 1
+
+        # libarchive reads a v4 format package straight from the RPM
+        self.rpm.header += "\n%global _rpmformat 4\n"
+
+        for name in ["a.txt", "b.txt", "c.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"%s\n" % name.encode("utf-8")),
+            )
+
+        # a non-empty directory where b.txt goes makes that entry fail
+        self.blocker = os.path.join(
+            self.output_dir, "payload", "usr", "share", NAME, "b.txt", "blocker"
+        )
+        os.makedirs(self.blocker)
+
+    def runTest(self):
+        super().runTest()
+
+        out = self.out.decode("utf-8").splitlines()
+        err = self.err.decode("utf-8")
+
+        # each path comes out once and the failure is reported once
+        for name in ["a.txt", "b.txt", "c.txt"]:
+            self.assertEqual(out.count("./usr/share/%s/%s" % (NAME, name)), 1, msg=out)
+
+        self.assertEqual(err.count("Could not unlink"), 1, msg=err)
+
+        # the entries around the failed one still went in
+        for name in ["a.txt", "c.txt"]:
+            path = os.path.join(self.output_dir, "payload", "usr", "share", NAME, name)
+            self.assertTrue(os.path.isfile(path), msg=path)
+
+
 class VerifyNoPayloadSkipsThePayload(TestUnpackRPM):
     """Test -n writes the metadata and leaves the payload alone"""
 

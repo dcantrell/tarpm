@@ -18,6 +18,9 @@
 /* the subdirectory where the RPM payload is unpacked */
 #define PAYLOAD_SUBDIR                 "payload"
 
+/* unpack_archive() read no entry, so another reader may do better */
+#define UNPACK_UNREADABLE              (-2)
+
 /* the path meaning stdout rather than a file */
 #define OUTPUT_STDOUT                  "-"
 
