@@ -1091,6 +1091,71 @@ class CreateRejectsEmptyArray(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsNumberOutOfRange(RequiresTarpm):
+    """A number too big or too small for its type is turned away"""
+
+    def runTest(self):
+        cases = [
+            ("Epoch", "int32", 4294967297),
+            ("Epoch", "int32", "4294967296"),
+            ("#5999", "int32", -2147483649),
+            ("#5999", "int32", [1, 4294967296]),
+            ("#5999", "int16", 65536),
+            ("#5999", "int16", -32769),
+            ("#5999", "int8", 256),
+            ("#5999", "int8", -129),
+        ]
+
+        for i, (name, tagtype, value) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": name, "type": tagtype, "value": value})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0, msg="%s %r" % (name, value))
+            self.assertIn("does not fit in its %s type" % tagtype, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateAcceptsNumberAtTypeLimits(RequiresTarpm):
+    """The ends of each number type's range still go in"""
+
+    def runTest(self):
+        cases = [
+            ("int32", [4294967295, -2147483648]),
+            ("int16", [65535, -32768]),
+            ("int8", [255, -128]),
+        ]
+
+        for i, (tagtype, value) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.append({"tag": "#5999", "type": tagtype, "value": value})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 0, msg=err)
+            self.assertNotIn("does not fit", err)
+
+
+class CreateRejectsTagEntryNotAnObject(RequiresTarpm):
+    """A null or other non-object in the tags array is named and refused"""
+
+    def runTest(self):
+        for i, bad in enumerate([None, "Name"]):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+            tags.insert(1, bad)
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertNotEqual(rc, 0, msg=repr(bad))
+            self.assertIn("entry 1 of the tags in header.json is not an object", err)
+            self.assertNotIn("missing Name, Version, or Release", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateReadsTagNameInAnyCase(RequiresTarpm):
     """A tag named in another case is the tag the defaults and the payload look for"""
 

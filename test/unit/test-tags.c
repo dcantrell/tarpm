@@ -473,6 +473,14 @@ test_get_tag_value(void)
 
     json_object_put(tags);
 
+    /* a null entry does not hide the tags after it */
+    tags = json_object_new_array();
+    json_object_array_add(tags, NULL);
+    add_test_tag(tags, "Name", "afternull");
+    TARPM_ASSERT_TRUE(has_tag(tags, RPMTAG_NAME, false));
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_NAME, false), "afternull");
+    json_object_put(tags);
+
     /* signature tags go by the signature tag numbers */
     tags = json_object_new_array();
     add_test_tag(tags, "Md5", "digest");
@@ -529,6 +537,14 @@ test_set_tag_value(void)
     ret = set_tag_value(tags, RPMTAG_RELEASE, false, "value");
     TARPM_ASSERT_TRUE(ret == -1);
 
+    json_object_put(tags);
+
+    /* a null entry does not hide the tags after it */
+    tags = json_object_new_array();
+    json_object_array_add(tags, NULL);
+    add_test_tag(tags, "Release", "1");
+    TARPM_ASSERT_EQUAL(set_tag_value(tags, RPMTAG_RELEASE, false, "2"), 0);
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_RELEASE, false), "2");
     json_object_put(tags);
 
     return;

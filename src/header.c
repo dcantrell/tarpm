@@ -607,6 +607,66 @@ valid_number_value(const rpmTagType type, const rpmTagVal tag, struct json_objec
     return true;
 }
 
+/*
+ * True if a number fits in an int8, int16 or int32 tag.  rpm reads
+ * these unsigned and put_number() writes a negative value as the
+ * same bits, so a type takes its signed low end up to its unsigned
+ * high end.  A name the lookups turn in to a number always fits, and
+ * so does any int64.
+ */
+static bool
+number_fits(const rpmTagType type, struct json_object *value)
+{
+    int64_t n = 0;
+    int64_t low = 0;
+    int64_t high = 0;
+
+    if (!is_number(value)) {
+        return true;
+    }
+
+    if (type == RPM_INT8_TYPE) {
+        low = INT8_MIN;
+        high = UINT8_MAX;
+    } else if (type == RPM_INT16_TYPE) {
+        low = INT16_MIN;
+        high = UINT16_MAX;
+    } else if (type == RPM_INT32_TYPE) {
+        low = INT32_MIN;
+        high = UINT32_MAX;
+    } else {
+        return true;
+    }
+
+    /* json-c gives back INT64_MAX for a number past it, which is still too big */
+    if (json_object_get_type(value) == json_type_string) {
+        n = strtoll(json_object_get_string(value), NULL, 10);
+    } else {
+        n = json_object_get_int64(value);
+    }
+
+    return (n >= low && n <= high);
+}
+
+/* True if every number a tag holds fits in its type */
+static bool
+valid_number_range(const rpmTagType type, struct json_object *value)
+{
+    size_t i = 0;
+
+    if (json_object_get_type(value) != json_type_array) {
+        return number_fits(type, value);
+    }
+
+    for (i = 0; i < json_object_array_length(value); i++) {
+        if (!number_fits(type, json_object_array_get_idx(value, i))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /* True if a binary tag holds a base64 string */
 static bool
 valid_binary_value(struct json_object *value)
@@ -694,6 +754,9 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
         } else if (entry_type == RPM_INT8_TYPE || entry_type == RPM_INT16_TYPE || entry_type == RPM_INT32_TYPE || entry_type == RPM_INT64_TYPE) {
             if (!valid_number_value(entry_type, tag_number, key)) {
                 warnx(_("*** the %s tag has a number type but its value is not a number or an array of numbers"), name);
+                r = -1;
+            } else if (!valid_number_range(entry_type, key)) {
+                warnx(_("*** the %s tag has a value that does not fit in its %s type"), name, strtagtype(entry_type));
                 r = -1;
             }
         } else if (entry_type == RPM_BIN_TYPE) {

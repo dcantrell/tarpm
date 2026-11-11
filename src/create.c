@@ -2511,6 +2511,33 @@ compare_tag_value(const void *a, const void *b)
 }
 
 /*
+ * Every element of the "tags" array in header.json has to be an
+ * object.  The lookups go past anything else, so a null or a string
+ * there would be dropped without a word.  Returns 0 if they all are,
+ * -1 otherwise.
+ */
+static int
+check_tag_entries(struct json_object *header)
+{
+    int r = 0;
+    size_t i = 0;
+    struct json_object *tags = NULL;
+
+    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
+        return 0;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        if (json_object_get_type(json_object_array_get_idx(tags, i)) != json_type_object) {
+            warnx(_("*** entry %zu of the tags in %s is not an object"), i, OUTPUT_HEADER);
+            r = -1;
+        }
+    }
+
+    return r;
+}
+
+/*
  * Warn about a tag that header.json carries more than once.  Names
  * in another case or the numeric form count as the same tag.  The
  * lookups only see the first copy.  A package can carry a tag twice
@@ -2700,6 +2727,10 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     if (header == NULL) {
         warnx(_("*** missing header data"));
+        goto create_cleanup;
+    }
+
+    if (check_tag_entries(header) != 0) {
         goto create_cleanup;
     }
 

@@ -683,10 +683,7 @@ get_tag_value(const struct json_object *tags, const rpmTagVal tag, const bool si
         value = NULL;
         entry = json_object_array_get_idx(tags, i);
 
-        if (entry == NULL) {
-            break;
-        }
-
+        /* is_tag_entry() turns away a null entry, so we go past it */
         if (!is_tag_entry(entry, tag, signature)) {
             continue;
         }
@@ -723,10 +720,6 @@ set_tag_value(struct json_object *tags, const rpmTagVal tag, const bool signatur
 
     for (i = 0; i < json_object_array_length(tags); i++) {
         entry = json_object_array_get_idx(tags, i);
-
-        if (entry == NULL) {
-            break;
-        }
 
         if (is_tag_entry(entry, tag, signature)) {
             json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(new_value));
