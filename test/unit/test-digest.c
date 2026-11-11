@@ -291,7 +291,9 @@ test_payload_digest_sha256(void)
     TARPM_ASSERT_TRUE(fd != -1);
     TARPM_ASSERT_TRUE(write(fd, test_payload, strlen(test_payload)) == (ssize_t)strlen(test_payload));
 
-    digest = payload_digest(TARPM_DIGEST_SHA256, fd, &size);
+    digest = NULL;
+
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &digest, &size), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
     TARPM_ASSERT_TRUE(size == strlen(test_payload));
@@ -299,7 +301,8 @@ test_payload_digest_sha256(void)
     free(digest);
 
     /* an unknown digest type gives us nothing */
-    digest = payload_digest(-1, fd, NULL);
+    digest = NULL;
+    TARPM_ASSERT_NOT_EQUAL(payload_digest_list((const int[]) { -1 }, 1, fd, &digest, NULL), 0);
     TARPM_ASSERT_PTR_NULL(digest);
 
     /* clean up */
@@ -344,11 +347,13 @@ test_digest_lists(void)
 
     /* one read gives both digests of the payload as it is */
     TARPM_ASSERT_EQUAL(payload_digest_list(types, 2, fd, digests, &size), 0);
-    one = payload_digest(TARPM_DIGEST_SHA256, fd, &single);
+    one = NULL;
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &one, &single), 0);
     TARPM_ASSERT_STRING_EQUAL(digests[0], one);
     TARPM_ASSERT_TRUE(size == single);
     free(one);
-    one = payload_digest(TARPM_DIGEST_SHA512, fd, NULL);
+    one = NULL;
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA512 }, 1, fd, &one, NULL), 0);
     TARPM_ASSERT_STRING_EQUAL(digests[1], one);
     TARPM_ASSERT_TRUE(strlen(digests[1]) == (SHA512_DIGEST_LENGTH * 2));
     free(one);
@@ -357,11 +362,13 @@ test_digest_lists(void)
 
     /* and one decompression gives both digests of the uncompressed payload */
     TARPM_ASSERT_EQUAL(archive_digest_list(types, 2, fd, digests, &size), 0);
-    one = archive_digest(TARPM_DIGEST_SHA256, fd, &single);
+    one = NULL;
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &one, &single), 0);
     TARPM_ASSERT_STRING_EQUAL(digests[0], one);
     TARPM_ASSERT_TRUE(size == single);
     free(one);
-    one = archive_digest(TARPM_DIGEST_SHA512, fd, NULL);
+    one = NULL;
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA512 }, 1, fd, &one, NULL), 0);
     TARPM_ASSERT_STRING_EQUAL(digests[1], one);
     free(one);
     free(digests[0]);
@@ -549,12 +556,14 @@ test_archive_digest_gzip(void)
     TARPM_ASSERT_TRUE(archive_write_free(out) == ARCHIVE_OK);
 
     /* the archive digest covers the cpio stream with the gzip taken off */
-    digest = archive_digest(TARPM_DIGEST_SHA256, fd, &size);
+    digest = NULL;
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &digest, &size), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_TRUE(strlen(digest) == (SHA256_DIGEST_LENGTH * 2));
 
     /* which is bigger than the compressed payload and a different digest */
-    plain = payload_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    plain = NULL;
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &plain, NULL), 0);
     TARPM_ASSERT_PTR_NOT_NULL(plain);
     TARPM_ASSERT_TRUE(size > strlen(content));
     TARPM_ASSERT_STRING_NOT_EQUAL(digest, plain);
@@ -585,8 +594,8 @@ get_suite(void)
         CU_add_test(pSuite, "test mksigdigest() MD5", test_mksigdigest_md5) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() SHA-1", test_mksigdigest_sha1) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() SHA-256", test_mksigdigest_sha256) == NULL ||
-        CU_add_test(pSuite, "test payload_digest() SHA-256", test_payload_digest_sha256) == NULL ||
-        CU_add_test(pSuite, "test archive_digest() gzip", test_archive_digest_gzip) == NULL ||
+        CU_add_test(pSuite, "test payload_digest_list() SHA-256", test_payload_digest_sha256) == NULL ||
+        CU_add_test(pSuite, "test archive_digest_list() gzip", test_archive_digest_gzip) == NULL ||
         CU_add_test(pSuite, "test payload_digest_list() and archive_digest_list()", test_digest_lists) == NULL ||
         CU_add_test(pSuite, "test nul_digest()", test_nul_digest) == NULL ||
         CU_add_test(pSuite, "test mksigdigest() empty payload", test_mksigdigest_empty_payload) == NULL ||

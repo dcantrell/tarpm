@@ -1550,11 +1550,7 @@ index_payload_paths(struct payload_scan *scan)
         }
 
         /* each prefix that ends at a slash is a directory leading to it */
-        dir = strdup(s);
-
-        if (dir == NULL) {
-            continue;
-        }
+        dir = xstrdup(s);
 
         for (len = 0; s[len] != '\0'; len++) {
             if (s[len] != '/') {

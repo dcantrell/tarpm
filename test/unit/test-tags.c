@@ -701,6 +701,52 @@ test_buildtime_value(void)
     return;
 }
 
+/* Test drop_tags() and drop_tag() keep the rest of the array in order */
+void
+test_drop_tags(void)
+{
+    struct json_object *tags = NULL;
+    struct json_object *version = NULL;
+    const rpmTagVal drop[] = { RPMTAG_NAME, RPMTAG_SUMMARY };
+
+    tags = json_object_new_array();
+    add_test_tag(tags, "Name", "a");
+    add_test_tag(tags, "Summary", "x");
+    add_test_tag(tags, "Name", "b");
+    add_test_tag(tags, "Version", "1.0");
+    add_test_tag(tags, "Summary", "y");
+    add_test_tag(tags, "Release", "1");
+    add_test_tag(tags, "Release", "2");
+
+    /* nothing to do for no array or no list */
+    drop_tags(NULL, drop, 2);
+    drop_tags(tags, NULL, 2);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 7);
+
+    version = json_object_get(json_object_array_get_idx(tags, 3));
+
+    /* every copy of each one goes and the kept entries move down */
+    drop_tags(tags, drop, 2);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 3);
+    TARPM_ASSERT_TRUE(json_object_array_get_idx(tags, 0) == version);
+    TARPM_ASSERT_STRING_EQUAL(get_tag_value(tags, RPMTAG_VERSION, false), "1.0");
+    TARPM_ASSERT_EQUAL(get_tag_number(json_object_array_get_idx(tags, 1), false), RPMTAG_RELEASE);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(json_object_array_get_idx(tags, 2), "value")), "2");
+
+    /* a tag that is not there changes nothing */
+    drop_tag(tags, RPMTAG_NAME);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 3);
+
+    drop_tag(tags, RPMTAG_RELEASE);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 1);
+    TARPM_ASSERT_TRUE(json_object_array_get_idx(tags, 0) == version);
+
+    json_object_put(version);
+    json_object_put(tags);
+
+    return;
+}
+
 /*
  * Test renamed_tag_number() takes either spelling of the three main
  * header tags rpm renamed in 6.0.0.
@@ -757,7 +803,8 @@ get_suite(void)
         CU_add_test(pSuite, "test digest_algo()", test_digest_algo) == NULL ||
         CU_add_test(pSuite, "test strbuildtime()", test_strbuildtime) == NULL ||
         CU_add_test(pSuite, "test buildtime_value()", test_buildtime_value) == NULL ||
-        CU_add_test(pSuite, "test renamed_tag_number()", test_renamed_tag_number) == NULL) {
+        CU_add_test(pSuite, "test renamed_tag_number()", test_renamed_tag_number) == NULL ||
+        CU_add_test(pSuite, "test drop_tags()", test_drop_tags) == NULL) {
         return NULL;
     }
 

@@ -44,12 +44,7 @@ metadata_path(const char *path, const char *name)
 
     /* the JSON goes to stdout rather than a file */
     if (!strcmp(path, OUTPUT_STDOUT)) {
-        r = strdup(path);
-
-        if (r == NULL) {
-            err(EXIT_FAILURE, "strdup");
-        }
-
+        r = xstrdup(path);
         return r;
     }
 
@@ -223,7 +218,7 @@ main(int argc, char **argv)
                     filename = realpath(optarg, NULL);
                 } else {
                     if (optarg[0] == '/') {
-                        filename = strdup(optarg);
+                        filename = xstrdup(optarg);
                     } else {
                         filename = joinpath(cwd, optarg, NULL);
                     }
@@ -396,11 +391,7 @@ main(int argc, char **argv)
             } else if (optind + 1 < argc) {
                 /* the other mode is -c which will create the named file */
                 if (argv[optind + 1][0] == '/') {
-                    filename = strdup(argv[optind + 1]);
-
-                    if (filename == NULL) {
-                        err(EXIT_FAILURE, "strdup");
-                    }
+                    filename = xstrdup(argv[optind + 1]);
                 } else {
                     filename = joinpath(cwd, argv[optind + 1], NULL);
 

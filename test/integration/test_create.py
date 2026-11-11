@@ -850,6 +850,33 @@ class CreateFailsOnUnreadableInputDir(RequiresTarpm):
         self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateFailsWhenPayloadIsNotADirectory(RequiresTarpm):
+    """A payload that is a regular file is reported without a stale errno"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        payload = os.path.join(self.tree, "payload")
+        shutil.rmtree(payload)
+
+        f = open(payload, "w")
+        f.write("not a directory\n")
+        f.close()
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+
+        self.assertNotEqual(rc, 0)
+        self.assertFalse(os.path.isfile(pkg))
+
+        # lstat() worked, so there is no error string to append
+        lines = [line for line in err.splitlines() if "is not a directory" in line]
+        self.assertEqual(len(lines), 1, msg=err)
+        self.assertTrue(lines[0].endswith("payload is not a directory"), msg=err)
+
+
 class CreateRejectsHeaderWithoutNVR(RequiresTarpm):
     """A header naming none of Name, Version and Release is turned away"""
 

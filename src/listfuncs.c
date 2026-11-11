@@ -259,58 +259,6 @@ uint32_list_len(const uint32_list_t *list)
 }
 
 /*
- * Return the string at the given index in a str_list_t or NULL if the
- * list is NULL or the index is out of range.
- */
-const char *
-str_list_nth(const str_list_t *list, uint32_t index)
-{
-    uint32_t i = 0;
-    str_entry_t *entry = NULL;
-
-    if (list == NULL) {
-        return NULL;
-    }
-
-    TAILQ_FOREACH(entry, list, items) {
-        if (i == index) {
-            return entry->str;
-        }
-
-        i++;
-    }
-
-    return NULL;
-}
-
-/*
- * Return the number at the given index in a uint32_list_t through the
- * value argument.  Returns false if the list is NULL or the index is
- * out of range, in which case value is ignored.
- */
-bool
-uint32_list_nth(const uint32_list_t *list, uint32_t index, uint32_t *value)
-{
-    uint32_t i = 0;
-    uint32_entry_t *entry = NULL;
-
-    if (list == NULL || value == NULL) {
-        return false;
-    }
-
-    TAILQ_FOREACH(entry, list, items) {
-        if (i == index) {
-            *value = entry->value;
-            return true;
-        }
-
-        i++;
-    }
-
-    return false;
-}
-
-/*
  * Helpers for walking one or more lists in lockstep.  Each one is
  * NULL-safe so callers can treat a missing list as a missing value.
  */

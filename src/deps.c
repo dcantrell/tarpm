@@ -536,24 +536,6 @@ lookup_dependency(struct json_object *dependencies, struct json_object *lookup, 
 }
 
 /*
- * Find the entry in dependencies[key] that matches the given
- * dependency entry and return its index, or -1 if there is no match.
- * For many lookups use index_dependencies() and lookup_dependency().
- */
-int
-dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry)
-{
-    int idx = -1;
-    struct json_object *lookup = NULL;
-
-    lookup = index_dependencies(dependencies);
-    idx = lookup_dependency(dependencies, lookup, key, entry);
-    json_object_put(lookup);
-
-    return idx;
-}
-
-/*
  * Read the name, flags, and version arrays for one dependency type
  * out of the header data.  Arrays we do not find stay NULL with a
  * count of zero.

@@ -604,6 +604,42 @@ test_read_json_file_valid(void)
     return;
 }
 
+/* Test sort_tags_stable() orders by tag number and keeps repeats in order */
+void
+test_sort_tags_stable(void)
+{
+    size_t i = 0;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    const char *names[] = { "Summary", "Name", "Release", "Name", "Version", "Name" };
+    const char *values[] = { "s", "n1", "r", "n2", "v", "n3" };
+    const char *sorted[] = { "n1", "n2", "n3", "v", "r", "s" };
+
+    tags = json_object_new_array();
+
+    for (i = 0; i < 6; i++) {
+        entry = json_object_new_object();
+        json_object_object_add(entry, "tag", json_object_new_string(names[i]));
+        json_object_object_add(entry, "value", json_object_new_string(values[i]));
+        json_object_array_add(tags, entry);
+    }
+
+    /* short arrays and NULL are left alone */
+    sort_tags_stable(NULL, false);
+
+    sort_tags_stable(tags, false);
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 6);
+
+    for (i = 0; i < 6; i++) {
+        entry = json_object_array_get_idx(tags, i);
+        TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_object_get(entry, "value")), sorted[i]);
+    }
+
+    json_object_put(tags);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -632,7 +668,8 @@ get_suite(void)
         CU_add_test(pSuite, "test create_json_entry() has required fields", test_create_json_entry_has_required_fields) == NULL ||
         CU_add_test(pSuite, "test read_json_file() with a missing file", test_read_json_file_missing) == NULL ||
         CU_add_test(pSuite, "test read_json_file() with invalid JSON", test_read_json_file_invalid) == NULL ||
-        CU_add_test(pSuite, "test read_json_file() with valid JSON", test_read_json_file_valid) == NULL) {
+        CU_add_test(pSuite, "test read_json_file() with valid JSON", test_read_json_file_valid) == NULL ||
+        CU_add_test(pSuite, "test sort_tags_stable()", test_sort_tags_stable) == NULL) {
         return NULL;
     }
 

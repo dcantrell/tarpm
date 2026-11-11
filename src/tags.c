@@ -183,12 +183,7 @@ strdigestalgo(uint32_t algo)
 
     for (i = 0; digest_algos[i].name != NULL; i++) {
         if (digest_algos[i].algo == algo) {
-            s = strdup(digest_algos[i].name);
-
-            if (s == NULL) {
-                err(EXIT_FAILURE, "strdup");
-            }
-
+            s = xstrdup(digest_algos[i].name);
             return s;
         }
     }
@@ -256,12 +251,7 @@ strbuildtime(uint32_t buildtime)
         return s;
     }
 
-    s = strdup(buf);
-
-    if (s == NULL) {
-        err(EXIT_FAILURE, "strdup");
-    }
-
+    s = xstrdup(buf);
     return s;
 }
 
@@ -369,20 +359,64 @@ sig_tag_name(uint32_t tag)
     }
 }
 
+/*
+ * Take every copy of the n tags in drop out of the tags array.  We
+ * slide the kept entries down in one pass and cut the tail off once,
+ * so the cost does not grow with how many copies go.
+ */
+void
+drop_tags(struct json_object *tags, const rpmTagVal *drop, const size_t n)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t k = 0;
+    size_t len = 0;
+    bool dropped = false;
+    rpmTagVal tag = 0;
+    struct json_object *entry = NULL;
+
+    if (tags == NULL || drop == NULL || json_object_get_type(tags) != json_type_array) {
+        return;
+    }
+
+    len = json_object_array_length(tags);
+
+    for (i = 0; i < len; i++) {
+        entry = json_object_array_get_idx(tags, i);
+        tag = get_tag_number(entry, false);
+        dropped = false;
+
+        for (k = 0; k < n; k++) {
+            if (tag == drop[k]) {
+                dropped = true;
+                break;
+            }
+        }
+
+        if (dropped) {
+            continue;
+        }
+
+        /* the extra reference stands in for the slot it leaves */
+        if (j != i) {
+            json_object_array_put_idx(tags, j, json_object_get(entry));
+        }
+
+        j++;
+    }
+
+    if (j < len) {
+        json_object_array_del_idx(tags, j, len - j);
+    }
+
+    return;
+}
+
 /* Take every copy of a tag out of the tags array */
 void
 drop_tag(struct json_object *tags, const rpmTagVal tag)
 {
-    size_t i = 0;
-
-    while (i < json_object_array_length(tags)) {
-        if (get_tag_number(json_object_array_get_idx(tags, i), false) == tag) {
-            json_object_array_del_idx(tags, i, 1);
-        } else {
-            i++;
-        }
-    }
-
+    drop_tags(tags, &tag, 1);
     return;
 }
 

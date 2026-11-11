@@ -350,6 +350,7 @@ char *
 get_rpmtag_str(Header h, rpmTagVal tag)
 {
     char *val = NULL;
+    const char *str = NULL;
     rpmtd td = NULL;
     rpm_count_t td_size;
 
@@ -375,7 +376,12 @@ get_rpmtag_str(Header h, rpmTagVal tag)
         goto val_cleanup;
     }
 
-    val = strdup(rpmtdGetString(td));
+    /* a tag that is not a string has no string value */
+    str = rpmtdGetString(td);
+
+    if (str != NULL) {
+        val = xstrdup(str);
+    }
 
 val_cleanup:
     rpmtdFree(td);

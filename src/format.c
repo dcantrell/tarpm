@@ -118,25 +118,6 @@ find_tag(struct json_object *tags, const rpmTagVal tag)
     return -1;
 }
 
-/* Take every copy of each tag in the group out of the tags array */
-static void
-drop_tags(struct json_object *tags, const rpmTagVal *group, const size_t ngroup)
-{
-    size_t i = 0;
-    int idx = -1;
-
-    for (i = 0; i < ngroup; i++) {
-        idx = find_tag(tags, group[i]);
-
-        while (idx >= 0) {
-            json_object_array_del_idx(tags, idx, 1);
-            idx = find_tag(tags, group[i]);
-        }
-    }
-
-    return;
-}
-
 /* Record an entry under a different tag and type, keeping its value */
 static void
 retag(struct json_object *tags, const rpmTagVal from, const rpmTagVal to, const rpmTagType type)

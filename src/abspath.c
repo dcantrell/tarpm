@@ -33,7 +33,7 @@ char *abspath(const char *path)
     }
 
     if (!strcmp(path, "") || !strcmp(path, delim)) {
-        return strdup(path);
+        return xstrdup(path);
     }
 
     /* get current directory if path is relative */
@@ -86,7 +86,7 @@ char *abspath(const char *path)
     if (p) {
         xasprintf(&r, "/%s", p);
     } else {
-        r = strdup("/");
+        r = xstrdup("/");
     }
 
     /* clean up */

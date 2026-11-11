@@ -41,12 +41,16 @@ compare_tag_position(const void *a, const void *b)
  * The signature flag reads the names as signature tags, since some
  * share a name with a header tag that has another number.
  */
-static void
+void
 sort_tags_stable(struct json_object *kvals, const bool signature)
 {
     size_t i = 0;
     size_t n = 0;
     struct tag_position *items = NULL;
+
+    if (kvals == NULL || json_object_get_type(kvals) != json_type_array) {
+        return;
+    }
 
     n = json_object_array_length(kvals);
 

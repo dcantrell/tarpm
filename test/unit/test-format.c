@@ -708,13 +708,15 @@ test_update_payload_tags_v4(void)
     TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V4, 0, &uncompressed), 0);
 
     /* the digest of the payload as it lands in the package */
-    digest = payload_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    digest = NULL;
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &digest, NULL), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256_VALUE)), digest);
     free(digest);
 
     /* and the digest of the same payload uncompressed, with its size */
-    digest = archive_digest(TARPM_DIGEST_SHA256, fd, &size);
+    digest = NULL;
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &digest, &size), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256ALT_VALUE)), digest);
     TARPM_ASSERT_TRUE(uncompressed == size);
@@ -746,12 +748,15 @@ test_update_payload_tags_v6(void)
     TARPM_ASSERT_EQUAL(update_payload_tags(header, fd, RPM_FORMAT_V6, 0, NULL), 0);
 
     /* every digest in the v6 group describes the payload we have */
-    digest = payload_digest(TARPM_DIGEST_SHA512, fd, &payloadsize);
+    digest = NULL;
+    TARPM_ASSERT_EQUAL(payload_digest_list((const int[]) { TARPM_DIGEST_SHA512 }, 1, fd, &digest, &payloadsize), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA512_VALUE)), digest);
     free(digest);
 
-    digest = archive_digest(TARPM_DIGEST_SHA3_256, fd, &archivesize);
+    digest = NULL;
+
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA3_256 }, 1, fd, &digest, &archivesize), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA3_256ALT_VALUE)), digest);
     free(digest);
@@ -832,7 +837,8 @@ test_update_payload_tags_kept(void)
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256_VALUE)), "dead");
 
     /* the one it did not carry is computed */
-    digest = archive_digest(TARPM_DIGEST_SHA256, fd, NULL);
+    digest = NULL;
+    TARPM_ASSERT_EQUAL(archive_digest_list((const int[]) { TARPM_DIGEST_SHA256 }, 1, fd, &digest, NULL), 0);
     TARPM_ASSERT_PTR_NOT_NULL(digest);
     TARPM_ASSERT_STRING_EQUAL(tag_string(lookup_tag(header, RPMTAG_PAYLOADSHA256ALT_VALUE)), digest);
     free(digest);

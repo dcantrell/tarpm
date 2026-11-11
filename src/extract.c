@@ -109,7 +109,7 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
     char *dir = NULL;
 
     if (output_dir != NULL) {
-        return strdup(output_dir);
+        return xstrdup(output_dir);
     }
 
     nevra = get_nevra(h);
@@ -302,7 +302,7 @@ make_payload_dir(const char *dest_dir, const char *payload_path, const mode_t mo
     if (payload_path == NULL) {
         dir = joinpath(dest_dir, PAYLOAD_SUBDIR, NULL);
     } else {
-        dir = strdup(payload_path);
+        dir = xstrdup(payload_path);
     }
 
     if (dir == NULL) {
@@ -401,7 +401,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
      * With the header going to stdout they keep their usual home.
      */
     if (paths->header == NULL || !strcmp(paths->header, OUTPUT_STDOUT)) {
-        header_dir = strdup(dest_dir);
+        header_dir = xstrdup(dest_dir);
     } else {
         header_dir = xdirname(paths->header);
     }

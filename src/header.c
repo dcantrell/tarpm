@@ -136,19 +136,9 @@ is_skipped_tag(struct json_object *entry, bool is_signature)
 static void
 drop_verity_tags(struct json_object *tags)
 {
-    size_t i = 0;
-    rpmTagVal tag = 0;
+    const rpmTagVal verity[] = { RPMSIGTAG_VERITYSIGNATURES_VALUE, RPMSIGTAG_VERITYSIGNATUREALGO_VALUE };
 
-    while (i < json_object_array_length(tags)) {
-        tag = get_tag_number(json_object_array_get_idx(tags, i), false);
-
-        if (tag == RPMSIGTAG_VERITYSIGNATURES_VALUE || tag == RPMSIGTAG_VERITYSIGNATUREALGO_VALUE) {
-            json_object_array_del_idx(tags, i, 1);
-        } else {
-            i++;
-        }
-    }
-
+    drop_tags(tags, verity, sizeof(verity) / sizeof(verity[0]));
     return;
 }
 
@@ -1539,74 +1529,6 @@ read_header(const int fd, const char *dest_dir, bool *raw_tags)
 }
 
 /*
- * rpm sorts the header index entries by tag number and lays the data
- * area out in the same order.  See headerSort() and headerExport() in
- * lib/header.cc in the rpm source.  We sort the tags array in place
- * to match so our header looks like one rpm wrote.
- */
-static void
-sort_header_tags(struct json_object *tags, bool is_signature)
-{
-    size_t i = 0;
-    size_t j = 0;
-    size_t len = 0;
-    size_t pick = 0;
-    size_t *order = NULL;
-    rpmTagVal *tagnums = NULL;
-    struct json_object **entries = NULL;
-
-    if (tags == NULL) {
-        return;
-    }
-
-    len = json_object_array_length(tags);
-
-    if (len < 2) {
-        return;
-    }
-
-    order = xcalloc(len, sizeof(*order));
-    tagnums = xcalloc(len, sizeof(*tagnums));
-    entries = xcalloc(len, sizeof(*entries));
-
-    for (i = 0; i < len; i++) {
-        tagnums[i] = get_tag_number(json_object_array_get_idx(tags, i), is_signature);
-        order[i] = i;
-    }
-
-    /* insertion sort so entries carrying the same tag keep their order */
-    for (i = 1; i < len; i++) {
-        pick = order[i];
-        j = i;
-
-        while (j > 0 && tagnums[order[j - 1]] > tagnums[pick]) {
-            order[j] = order[j - 1];
-            j--;
-        }
-
-        order[j] = pick;
-    }
-
-    /*
-     * Take a reference on everything first because writing back in to
-     * the array releases the reference the array already holds.
-     */
-    for (i = 0; i < len; i++) {
-        entries[i] = json_object_get(json_object_array_get_idx(tags, order[i]));
-    }
-
-    for (i = 0; i < len; i++) {
-        json_object_array_put_idx(tags, i, entries[i]);
-    }
-
-    free(order);
-    free(tagnums);
-    free(entries);
-
-    return;
-}
-
-/*
  * Create a new header to write to an RPM file later.  A header
  * starts with the magic number, the record count and the size of the
  * storage area.  The storage area is a run of header index structs
@@ -1703,8 +1625,13 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         drop_verity_tags(tags_copy);
     }
 
-    /* lay the header out the way rpm would have written it */
-    sort_header_tags(tags_copy, is_signature);
+    /*
+     * Lay the header out the way rpm would have written it.  rpm sorts
+     * the index entries by tag number and lays the data area out in
+     * the same order.  See headerSort() and headerExport() in
+     * lib/header.cc in the rpm source.
+     */
+    sort_tags_stable(tags_copy, is_signature);
 
     /*
      * Read the files backing the file tags up front, so sizing the

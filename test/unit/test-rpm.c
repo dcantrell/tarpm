@@ -4,6 +4,7 @@
  */
 
 #include <CUnit/Basic.h>
+#include <rpm/header.h>
 #include "tarpm.h"
 
 #include "test-main.h"
@@ -41,7 +42,24 @@ test_get_header(void)
 void
 test_get_rpmtag_str(void)
 {
+    char *str = NULL;
+    Header h = NULL;
+
     TARPM_ASSERT_TRUE(get_rpmtag_str(NULL, 0) == NULL);
+
+    h = headerNew();
+    TARPM_ASSERT_TRUE(headerPutString(h, RPMTAG_NAME, "hello") == 1);
+    TARPM_ASSERT_TRUE(headerPutUint32(h, RPMTAG_EPOCH, (uint32_t[]) { 3 }, 1) == 1);
+
+    str = get_rpmtag_str(h, RPMTAG_NAME);
+    TARPM_ASSERT_STRING_EQUAL(str, "hello");
+    free(str);
+
+    /* a number tag has no string value and a missing tag has no value */
+    TARPM_ASSERT_TRUE(get_rpmtag_str(h, RPMTAG_EPOCH) == NULL);
+    TARPM_ASSERT_TRUE(get_rpmtag_str(h, RPMTAG_VERSION) == NULL);
+
+    headerFree(h);
 
     return;
 }

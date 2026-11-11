@@ -15,28 +15,24 @@
 #include "tarpm.h"
 
 /*
- * Convert Unix timestamp to RPM changelog date format.
- * Returns allocated string like "Wed Jul 29 2020". Caller must free.
+ * Convert Unix timestamp to RPM changelog date format in the C locale
+ * cee the caller made.  Returns allocated string like "Wed Jul 29
+ * 2020" or NULL without a locale. Caller must free.
  */
 static char *
-timestamp_to_changelog_date(uint32_t timestamp)
+timestamp_to_changelog_date(uint32_t timestamp, locale_t cee)
 {
     time_t t = (time_t) timestamp;
     struct tm *tm_info = NULL;
     char *result = NULL;
-    locale_t cee;
+
+    if (cee == (locale_t) 0) {
+        return NULL;
+    }
 
     tm_info = gmtime(&t);
 
     if (tm_info == NULL) {
-        return NULL;
-    }
-
-    errno = 0;
-    cee = newlocale(LC_TIME_MASK, "C", 0);
-
-    if (cee == 0) {
-        warn("newlocale");
         return NULL;
     }
 
@@ -48,8 +44,6 @@ timestamp_to_changelog_date(uint32_t timestamp)
     } else {
         strftime_l(result, 64, "%a %b %d %H:%M:%S UTC %Y", tm_info, cee);
     }
-
-    freelocale(cee);
 
     return result;
 }
@@ -210,12 +204,7 @@ split_changelog_text(const char *text)
     }
 
     lines = json_object_new_array();
-    copy = strdup(text);
-
-    if (copy == NULL) {
-        return lines;
-    }
-
+    copy = xstrdup(text);
     sp = copy;
 
     while ((line = strsep(&sp, "\n")) != NULL) {
@@ -337,6 +326,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
     uint32_t time_val = 0;
     char *changelog_date = NULL;
     struct json_object *lines = NULL;
+    locale_t cee = (locale_t) 0;
 
     if (hdr == NULL || hdrinfo == NULL) {
         return NULL;
@@ -397,6 +387,14 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         return NULL;
     }
 
+    /* every date is written in the C locale, so we make it once */
+    errno = 0;
+    cee = newlocale(LC_TIME_MASK, "C", (locale_t) 0);
+
+    if (cee == (locale_t) 0) {
+        warn("newlocale");
+    }
+
     /* Build the changelog array */
     changelog = json_object_new_array();
 
@@ -404,7 +402,7 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
         entry = json_object_new_object();
 
         /* Add timestamp */
-        changelog_date = timestamp_to_changelog_date(times[j]);
+        changelog_date = timestamp_to_changelog_date(times[j], cee);
 
         if (changelog_date != NULL) {
             json_object_object_add(entry, "timestamp", json_object_new_string(changelog_date));
@@ -423,6 +421,10 @@ generate_changelog(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo)
 
     /* Cleanup */
     free_changelog_parts(times, names, nnames, texts, ntexts);
+
+    if (cee != (locale_t) 0) {
+        freelocale(cee);
+    }
 
     return changelog;
 }

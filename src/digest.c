@@ -241,23 +241,6 @@ cleanup_payload_digest_list:
 }
 
 /*
- * Digest the payload as it lands in the package.  The size goes in
- * size if the caller asked for it.  Returns an allocated hex string or
- * NULL on failure.  Caller must free the string.
- */
-char *
-payload_digest(const int type, const int payloadfd, uint64_t *size)
-{
-    char *r = NULL;
-
-    if (payload_digest_list(&type, 1, payloadfd, &r, size) != 0) {
-        return NULL;
-    }
-
-    return r;
-}
-
-/*
  * Digest the payload with the compression taken back off, which is
  * what the ALT tags in the main header record.  We decompress it once
  * and compute a digest for each of the n types, so out needs room for
@@ -332,24 +315,6 @@ archive_digest_list(const int *types, const size_t n, const int payloadfd, char 
 cleanup_archive_digest_list:
     free_digest_contexts(ctx, n);
     archive_read_free(raw);
-
-    return r;
-}
-
-/*
- * Digest the payload with the compression taken back off.  The
- * uncompressed size goes in size if the caller asked for it.  Returns
- * an allocated hex string or NULL on failure.  Caller must free the
- * string.
- */
-char *
-archive_digest(const int type, const int payloadfd, uint64_t *size)
-{
-    char *r = NULL;
-
-    if (archive_digest_list(&type, 1, payloadfd, &r, size) != 0) {
-        return NULL;
-    }
 
     return r;
 }

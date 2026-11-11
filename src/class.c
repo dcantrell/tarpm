@@ -271,10 +271,10 @@ file_class(const char *path, const char *file_path, const struct stat *sb)
     }
 
     if (!wanted_class(name)) {
-        return strdup(RPM_FILE_CLASS_NONE);
+        return xstrdup(RPM_FILE_CLASS_NONE);
     }
 
-    return strdup(name);
+    return xstrdup(name);
 }
 
 /*
@@ -316,7 +316,7 @@ file_mime(const char *path, const char *file_path, const struct stat *sb)
     }
 
     if (name != NULL) {
-        return strdup(name);
+        return xstrdup(name);
     }
 
     ms = open_magic(&mime_handle, &mime_opened, RPM_MAGIC_FLAGS | MAGIC_MIME_TYPE);
@@ -339,5 +339,5 @@ file_mime(const char *path, const char *file_path, const struct stat *sb)
         name = RPM_FILE_MIME_UNKNOWN;
     }
 
-    return strdup(name);
+    return xstrdup(name);
 }

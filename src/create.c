@@ -2679,7 +2679,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     /* the caller may have named where the payload tree is */
     if (paths != NULL && paths->payload != NULL) {
-        payload_dir = strdup(paths->payload);
+        payload_dir = xstrdup(paths->payload);
     } else {
         payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
     }
@@ -2696,7 +2696,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     if (!S_ISDIR(sb.st_mode)) {
-        warn(_("*** %s is not a directory"), payload_dir);
+        warnx(_("*** %s is not a directory"), payload_dir);
         goto create_cleanup;
     }
 
@@ -2707,7 +2707,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         /* tag values kept in their own file sit next to header.json */
         header_dir = xdirname(header_path);
     } else {
-        header_dir = strdup(input_dir);
+        header_dir = xstrdup(input_dir);
     }
 
     if (header_dir == NULL) {

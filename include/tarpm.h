@@ -47,8 +47,6 @@ void uint64_list_free(uint64_list_t *list);
 uint64_list_t *uint64_list_add(uint64_list_t *list, const uint64_t value);
 uint32_t str_list_len(const str_list_t *list);
 uint32_t uint32_list_len(const uint32_list_t *list);
-const char *str_list_nth(const str_list_t *list, uint32_t index);
-bool uint32_list_nth(const uint32_list_t *list, uint32_t index, uint32_t *value);
 str_entry_t *first_str(str_list_t *list);
 uint32_entry_t *first_uint32(uint32_list_t *list);
 str_entry_t *next_str(str_entry_t *entry);
@@ -119,7 +117,6 @@ int check_dependencies(struct json_object *dependencies);
 bool is_dependency_tag(rpmTagVal tag);
 const char *dependency_type_key(const char abbrev);
 char dependency_type_abbrev(const char *key);
-int dependency_index(struct json_object *dependencies, const char *key, struct json_object *entry);
 struct json_object *index_dependencies(struct json_object *dependencies);
 int lookup_dependency(struct json_object *dependencies, struct json_object *lookup, const char *key, struct json_object *entry);
 
@@ -179,6 +176,7 @@ struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const 
 struct json_object *generate_json(const struct rpmhdr *hdr);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 bool keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const char *dest_dir, bool (*is_member)(rpmTagVal));
+void sort_tags_stable(struct json_object *kvals, const bool signature);
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *path);
 
@@ -194,6 +192,7 @@ const char *header_tag_name(const rpmTagVal tag);
 bool is_rpmsign_tag(uint32_t tag);
 bool is_file_signature_tag(uint32_t tag);
 rpmTagVal get_tag_number(struct json_object *entry, bool signature);
+void drop_tags(struct json_object *tags, const rpmTagVal *drop, const size_t n);
 void drop_tag(struct json_object *tags, const rpmTagVal tag);
 rpmTagVal renamed_tag_number(const char *tag);
 bool has_tag(const struct json_object *tags, const rpmTagVal tag, const bool signature);
@@ -230,8 +229,6 @@ int list_rpm(const char *rpm);
 
 /* digest.c */
 unsigned char *mksigdigest(const int type, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const struct json_object *data, const int fd);
-char *payload_digest(const int type, const int payloadfd, uint64_t *size);
-char *archive_digest(const int type, const int payloadfd, uint64_t *size);
 int payload_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size);
 int archive_digest_list(const int *types, const size_t n, const int payloadfd, char **out, uint64_t *size);
 char *nul_digest(const int type);
