@@ -370,7 +370,8 @@ class TestRoundTripManyFiles(RoundTrip, TestUnpackRPM):
     def setUp(self):
         super().setUp()
 
-        # 50 directories of 40 files, each with a script that requires /bin/sh
+        # 50 directories of 40 files, a script that requires /bin/sh and
+        # a hard link of the first file
         self.rpm.section_install += (
             "for d in $(seq 1 50) ; do\n"
             "    mkdir -p $RPM_BUILD_ROOT/usr/share/%s/dir$d\n"
@@ -379,7 +380,9 @@ class TestRoundTripManyFiles(RoundTrip, TestUnpackRPM):
             "    done\n"
             "    printf '#!/bin/sh\\nexit 0\\n' > $RPM_BUILD_ROOT/usr/share/%s/dir$d/run\n"
             "    chmod 755 $RPM_BUILD_ROOT/usr/share/%s/dir$d/run\n"
-            "done\n" % (NAME, NAME, NAME, NAME)
+            "    ln $RPM_BUILD_ROOT/usr/share/%s/dir$d/file1 "
+            "$RPM_BUILD_ROOT/usr/share/%s/dir$d/link\n"
+            "done\n" % (NAME, NAME, NAME, NAME, NAME, NAME)
         )
         self.rpm.get_subpackage(None).section_files += "/usr/share/%s\n" % NAME
 
@@ -406,6 +409,17 @@ class TestRoundTripManyFiles(RoundTrip, TestUnpackRPM):
         # the last script still finds its slice of the depends dictionary
         run = files["/usr/share/%s/dir50/run" % NAME]
         self.assertIn("provides", run)
+
+        # each link shares the inode of its file and no other
+        groups = set()
+
+        for d in range(1, 51):
+            first = files["/usr/share/%s/dir%d/file1" % (NAME, d)]["inode"]
+            link = files["/usr/share/%s/dir%d/link" % (NAME, d)]["inode"]
+            self.assertEqual(first, link)
+            groups.add(first)
+
+        self.assertEqual(len(groups), 50)
 
         recreated = self.create(extract_dir)
 

@@ -1770,6 +1770,7 @@ test_add_file_list_tags_keyed_hardlinks(void)
     hardlink_payload(payload_dir, "/usr/bin/d", "/usr/bin/c");
     write_payload(payload_dir, "/usr/bin/e", 1000);
     hardlink_payload(payload_dir, "/usr/bin/f", "/usr/bin/e");
+    write_payload(payload_dir, "/usr/bin/g", 1);
 
     files = json_object_new_array();
 
@@ -1789,6 +1790,10 @@ test_add_file_list_tags_keyed_hardlinks(void)
     file = add_file(files, "/usr/bin/f");
     json_object_object_add(file, "inode", json_object_new_int(12));
 
+    /* the same low 32 bits as a's key, but not the same inode */
+    file = add_file(files, "/usr/bin/g");
+    json_object_object_add(file, "inode", json_object_new_int64(4294967303LL));
+
     tags = json_object_new_array();
     add_tag(tags, rpmTagGetName(RPMTAG_SIZE), "1");
 
@@ -1802,9 +1807,10 @@ test_add_file_list_tags_keyed_hardlinks(void)
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 3)), 3);
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 4)), 5);
     TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 5)), 6);
+    TARPM_ASSERT_EQUAL(json_object_get_int(json_object_array_get_idx(values, 6)), 7);
 
-    /* each of the first two groups counts once, e and f count apart */
-    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "2110"));
+    /* each of the first two groups counts once, e, f and g count apart */
+    TARPM_ASSERT_TRUE(!strcmp(get_tag_value(tags, RPMTAG_SIZE, false), "2111"));
 
     /* a second pass over the same entries gives the same numbers */
     json_object_put(tags);
@@ -1826,6 +1832,7 @@ test_add_file_list_tags_keyed_hardlinks(void)
     remove_payload(payload_dir, "/usr/bin/d");
     remove_payload(payload_dir, "/usr/bin/e");
     remove_payload(payload_dir, "/usr/bin/f");
+    remove_payload(payload_dir, "/usr/bin/g");
     remove_payload(payload_dir, "/usr/bin");
     remove_payload(payload_dir, "/usr");
 

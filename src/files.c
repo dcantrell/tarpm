@@ -164,16 +164,16 @@ struct file_list_tags {
     size_t nmimes;
     struct json_object *mimelookup;
 
-    /* what each hard link group carried and the number rpm gives it */
-    int64_t *inodes;
-    int *mapped;
-    size_t ninodes;
+    /*
+     * The number rpm gives each hard link group, keyed by the "inode"
+     * the group carried.  keyed is indexed by that number and is true
+     * for groups that came from an "inode" key.
+     */
+    struct json_object *inodelookup;
+    bool *keyed;
 
-    /* hard link groups in the payload tree of entries with no "inode" */
-    dev_t *devs;
-    ino_t *inos;
-    int *devmapped;
-    size_t ndevinos;
+    /* hard link groups in the payload tree, keyed by "dev:ino" */
+    struct json_object *devinolookup;
 };
 
 /*
@@ -2218,11 +2218,11 @@ new_file_list_arrays(struct file_list_tags *out, const size_t count)
     out->dirlookup = json_object_new_object();
     out->classlookup = json_object_new_object();
     out->mimelookup = json_object_new_object();
-    out->inodes = xcalloc(count, sizeof(*out->inodes));
-    out->mapped = xcalloc(count, sizeof(int));
-    out->devs = xcalloc(count, sizeof(dev_t));
-    out->inos = xcalloc(count, sizeof(ino_t));
-    out->devmapped = xcalloc(count, sizeof(int));
+    out->inodelookup = json_object_new_object();
+    out->devinolookup = json_object_new_object();
+
+    /* group numbers run from 1 to count */
+    out->keyed = xcalloc(count + 1, sizeof(bool));
 
     out->dirnames = json_object_new_array();
     out->basenames = json_object_new_array();
@@ -2283,11 +2283,9 @@ finish_file_list_arrays(struct file_list_tags *out)
     json_object_put(out->dirlookup);
     json_object_put(out->classlookup);
     json_object_put(out->mimelookup);
-    free(out->inodes);
-    free(out->mapped);
-    free(out->devs);
-    free(out->inos);
-    free(out->devmapped);
+    json_object_put(out->inodelookup);
+    json_object_put(out->devinolookup);
+    free(out->keyed);
 
     return;
 }
@@ -2608,65 +2606,60 @@ file_langs_value(struct json_object *file)
 }
 
 /*
- * Return where the file is in the payload hard link table, -1
- * otherwise.
+ * Write the payload hard link table key for a file in to buf.
+ * Returns false for a file that is not a hard link.
  */
-static ssize_t
+static bool
+payload_link_key(const struct stat *sb, char *buf, const size_t len)
+{
+    if (sb == NULL || !S_ISREG(sb->st_mode) || sb->st_nlink < 2) {
+        return false;
+    }
+
+    snprintf(buf, len, "%ju:%ju", (uintmax_t) sb->st_dev, (uintmax_t) sb->st_ino);
+    return true;
+}
+
+/*
+ * Return the inode number of the group the file is in from the
+ * payload hard link table, or -1 if it is not there.
+ */
+static int
 find_payload_link(const struct file_list_tags *out, const struct stat *sb)
 {
-    size_t i = 0;
+    char key[64];
+    struct json_object *number = NULL;
 
-    if (sb == NULL || !S_ISREG(sb->st_mode) || sb->st_nlink < 2) {
+    if (!payload_link_key(sb, key, sizeof(key))) {
         return -1;
     }
 
-    for (i = 0; i < out->ndevinos; i++) {
-        if (out->devs[i] == sb->st_dev && out->inos[i] == sb->st_ino) {
-            return (ssize_t) i;
-        }
+    if (!json_object_object_get_ex(out->devinolookup, key, &number)) {
+        return -1;
     }
 
-    return -1;
+    return json_object_get_int(number);
 }
 
 /*
  * Add a hard link to the payload hard link table with the inode
- * number of its group.
+ * number of its group.  A file already there keeps its number.
  */
 static void
 add_payload_link(struct file_list_tags *out, const struct stat *sb, const int number)
 {
-    if (sb == NULL || !S_ISREG(sb->st_mode) || sb->st_nlink < 2) {
+    char key[64];
+
+    if (!payload_link_key(sb, key, sizeof(key))) {
         return;
     }
 
-    if (find_payload_link(out, sb) != -1) {
+    if (json_object_object_get_ex(out->devinolookup, key, NULL)) {
         return;
     }
 
-    out->devs[out->ndevinos] = sb->st_dev;
-    out->inos[out->ndevinos] = sb->st_ino;
-    out->devmapped[out->ndevinos] = number;
-    out->ndevinos++;
-
+    json_object_object_add(out->devinolookup, key, json_object_new_int(number));
     return;
-}
-
-/*
- * Return true if the inode number belongs to a group from header.json.
- */
-static bool
-inode_key_number(const struct file_list_tags *out, const int number)
-{
-    size_t i = 0;
-
-    for (i = 0; i < out->ninodes; i++) {
-        if (out->mapped[i] == number) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 /*
@@ -2678,44 +2671,42 @@ inode_key_number(const struct file_list_tags *out, const int number)
 static int
 file_inode_value(struct file_list_tags *out, struct json_object *file, const struct stat *sb, const int next, bool *shared)
 {
-    size_t i = 0;
-    ssize_t slot = 0;
-    int64_t inode = 0;
+    char key[32];
+    int linked = 0;
     int number = next;
+    struct json_object *mapped = NULL;
 
     *shared = false;
-    slot = find_payload_link(out, sb);
+    linked = find_payload_link(out, sb);
 
     if (key_object(file, RPM_FILE_INODE_DESC) == NULL) {
-        if (slot != -1) {
+        if (linked != -1) {
             *shared = true;
-            return out->devmapped[slot];
+            return linked;
         }
 
         add_payload_link(out, sb, next);
         return next;
     }
 
-    inode = key_number(file, RPM_FILE_INODE_DESC);
+    snprintf(key, sizeof(key), "%" PRId64, key_number(file, RPM_FILE_INODE_DESC));
 
-    for (i = 0; i < out->ninodes; i++) {
-        if (out->inodes[i] == inode) {
-            *shared = true;
-            add_payload_link(out, sb, out->mapped[i]);
-            return out->mapped[i];
-        }
+    if (json_object_object_get_ex(out->inodelookup, key, &mapped)) {
+        number = json_object_get_int(mapped);
+        *shared = true;
+        add_payload_link(out, sb, number);
+        return number;
     }
 
     /* join a group only files with no "inode" key have started */
-    if (slot != -1 && !inode_key_number(out, out->devmapped[slot])) {
+    if (linked != -1 && !out->keyed[linked]) {
         *shared = true;
-        number = out->devmapped[slot];
+        number = linked;
     }
 
     /* the first entry of a hard link group names the group */
-    out->inodes[out->ninodes] = inode;
-    out->mapped[out->ninodes] = number;
-    out->ninodes++;
+    json_object_object_add(out->inodelookup, key, json_object_new_int(number));
+    out->keyed[number] = true;
 
     add_payload_link(out, sb, number);
 
