@@ -1139,6 +1139,65 @@ parse_payload_flags(const char *flags, long *level)
 }
 
 /*
+ * Print the payload stage line with -v.  It names the archive format
+ * and the compression the tags call for.
+ */
+static void
+verbose_payload_stage(struct json_object *tags, const bool stripped)
+{
+    char *how = NULL;
+    const char *kind = _("newc cpio");
+    const char *compressor = NULL;
+    const char *level = NULL;
+
+    if (!verbose) {
+        return;
+    }
+
+    if (stripped) {
+        kind = _("stripped cpio");
+    }
+
+    compressor = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
+    level = get_tag_value(tags, RPMTAG_PAYLOADFLAGS, false);
+
+    if (compressor == NULL) {
+        how = xstrdup(_("not compressed"));
+    } else if (level == NULL || level[0] == '\0') {
+        xasprintf(&how, _("%s compressed"), compressor);
+    } else {
+        xasprintf(&how, _("%s compressed at level %s"), compressor, level);
+    }
+
+    verbose_stage(_("Writing the payload as a %s archive, %s"), kind, how);
+    free(how);
+    return;
+}
+
+/* Print the path of an entry that went in to the payload with -v */
+static void
+verbose_payload_entry(const struct file_params *params)
+{
+    char *path = NULL;
+
+    if (!verbose) {
+        return;
+    }
+
+    path = payload_path(params->dirname, params->basename);
+
+    /* a source package keeps bare names, show them like the rest */
+    if (path != NULL && strncmp(path, "./", 2)) {
+        verbose_detail("./%s", path);
+    } else {
+        verbose_detail("%s", str_or_empty(path));
+    }
+
+    free(path);
+    return;
+}
+
+/*
  * Helper for create_rpm() that writes the payload to a temporary
  * file.  Returns an open file descriptor to use later when putting
  * the RPM together, or -1 on failure.  Closing it removes the
@@ -1419,6 +1478,8 @@ create_payload(struct json_object *header, const char *payload_dir)
         goto close_payload;
     }
 
+    verbose_payload_stage(tags, stripped);
+
     /* the raw format holds one regular file, which is our cpio stream */
     if (stripped) {
         entry = archive_entry_new();
@@ -1496,6 +1557,8 @@ create_payload(struct json_object *header, const char *payload_dir)
             failed = true;
             break;
         }
+
+        verbose_payload_entry(&params);
     }
 
     if (!failed && stripped && write_stripped_trailer() != 0) {
@@ -1551,6 +1614,7 @@ close_payload:
         return -1;
     }
 
+    verbose_detail("%zu %s", ordered, N_("payload entry", "payload entries", ordered));
     return payloadfd;
 }
 
@@ -1646,6 +1710,21 @@ widen_size_tag(struct json_object *tags, const char *tag, const char *wide)
     }
 
     return -1;
+}
+
+/* Print how many tags a header we built has and its size with -v */
+static void
+verbose_header_size(const struct rpmhdr *h)
+{
+    char size[HUMAN_SIZE_LEN];
+
+    if (!verbose || h == NULL) {
+        return;
+    }
+
+    human_size(sizeof(*h) + (ntohl(h->nentries) * sizeof(struct rpmhdrentry)) + ntohl(h->nbytes), size, sizeof(size));
+    verbose_detail("%u %s, %s", ntohl(h->nentries), N_("tag", "tags", ntohl(h->nentries)), size);
+    return;
 }
 
 /*
@@ -1877,6 +1956,8 @@ keep_signature_digests(struct json_object *tags, struct json_object *kept)
             warnx(_("*** failed to update %s in signature"), name);
             return -1;
         }
+
+        verbose_detail(_("%s: kept from %s"), name, OUTPUT_SIGNATURE);
     }
 
     return 0;
@@ -2023,6 +2104,7 @@ keep_package_signatures(struct json_object *signature, struct json_object *kept,
             return -1;
         }
 
+        verbose_detail(_("%s: kept from %s"), sig_tag_name(tag), OUTPUT_SIGNATURE);
         json_object_array_add(tags, copy);
     }
 
@@ -2644,7 +2726,9 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     int payloadfd = -1;
     uint32_t keptpayload = 0;
     uint64_t archivesize = 0;
+    size_t nfiles = 0;
     struct stat sb;
+    char size[HUMAN_SIZE_LEN];
     char *tmpname = NULL;
     char *header_dir = NULL;
     char *payload_dir = NULL;
@@ -2715,6 +2799,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
+    verbose_stage(_("Creating %s, a v%d format package"), filename, rpmformat);
+    verbose_detail(_("from %s"), input_dir);
+
+    if (paths != NULL && paths->payload != NULL) {
+        verbose_detail(_("with the payload tree in %s"), payload_dir);
+    }
+
     /*
      * Build the signature header ourselves.  Everything in it is
      * recalculated from the header and the payload.  Only -D and -k
@@ -2728,6 +2819,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* read in header.json */
+    verbose_stage(_("Reading %s"), header_path);
     header = read_json_file(header_path);
 
     if (header == NULL) {
@@ -2738,6 +2830,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     if (check_tag_entries(header) != 0) {
         goto create_cleanup;
     }
+
+    verbose_counts(header);
 
     warn_duplicate_tags(header);
 
@@ -2751,6 +2845,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      * because the payload scan below goes by the digest algorithm and
      * the package type it leaves behind.
      */
+    verbose_stage(_("Filling in the tags %s does not carry"), OUTPUT_HEADER);
+
     if (check_dependencies(dependencies) != 0 || apply_header_defaults(header, rpmformat) != 0) {
         goto create_cleanup;
     }
@@ -2769,27 +2865,60 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
             json_object_object_add(header, RPM_FILES_DESC, files);
         }
 
+        verbose_stage(_("Scanning the payload tree %s"), payload_dir);
+        nfiles = json_object_array_length(files);
         add_payload_files(tags, files, payload_dir);
+        nfiles = json_object_array_length(files) - nfiles;
+
+        if (nfiles == 0) {
+            verbose_detail(_("nothing new in the payload"));
+        } else {
+            verbose_detail(_("%zu new %s added to the file list"), nfiles, N_("entry", "entries", nfiles));
+        }
     }
 
     if (check_payload_paths(header, payload_dir) != 0) {
         goto create_cleanup;
     }
 
+    /* tell the user what goes in unchecked or exactly as given */
+    if (tags != NULL && (raw_tag_count(tags, RPMTAG_CHANGELOGTIME) > 0 || keep_digests || keep_signatures)) {
+        verbose_stage(_("Using data as-is"));
+
+        if (raw_tag_count(tags, RPMTAG_CHANGELOGTIME) > 0) {
+            verbose_detail(_("the raw changelog tags in %s"), OUTPUT_HEADER);
+        }
+
+        if (keep_digests) {
+            verbose_detail(_("the file digests in %s (-D)"), OUTPUT_HEADER);
+        }
+    }
+
     /* note the payload digests header.json carries before placeholders go in */
     keptpayload = kept_payload_digests(header);
+
+    if (keep_digests) {
+        verbose_detail(_("the signature digests in %s (-D)"), OUTPUT_SIGNATURE);
+    }
+
+    if (keep_signatures) {
+        verbose_detail(_("the package signatures in %s (-k)"), OUTPUT_SIGNATURE);
+    }
 
     /*
      * Put the main header in to the shape the format calls for before
      * anything reads it.  The lead, the header and the payload all
      * depend on what this leaves behind.
      */
+    verbose_stage(_("Fitting the header to the v%d format"), rpmformat);
+
     if (apply_rpmformat(header, rpmformat) != 0) {
         warnx(_("*** unable to apply the RPM format to the header"));
         goto create_cleanup;
     }
 
     /* create the lead from header metadata */
+    verbose_stage(_("Building the lead"));
     rawlead = create_lead(header);
 
     if (rawlead == NULL) {
@@ -2803,8 +2932,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
      * digest and libmagic work and the warnings.  The dependencies go
      * in because the depends dictionary holds indexes in to them.
      */
-    if (files != NULL && add_file_list_tags(tags, files, payload_dir, dependencies, rpmformat) != 0) {
-        goto create_cleanup;
+    if (files != NULL) {
+        nfiles = json_object_array_length(files);
+        verbose_stage(_("Building the file list tags for %zu %s"), nfiles, N_("file", "files", nfiles));
+
+        if (add_file_list_tags(tags, files, payload_dir, dependencies, rpmformat) != 0) {
+            goto create_cleanup;
+        }
     }
 
     /* create the header (the main header) */
@@ -2822,6 +2956,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* work out the payload digests and sizes the format calls for */
+    verbose_stage(_("Computing the payload digests"));
+
     if (update_payload_tags(header, payloadfd, rpmformat, keptpayload, &archivesize) != 0) {
         warnx("update_payload_tags");
         goto create_cleanup;
@@ -2833,10 +2969,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     hdrinfo = NULL;
 
     /* regenerate the header with updated digests */
+    verbose_stage(_("Building the main header"));
+
     if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to reconstruct RPM header"));
         goto create_cleanup;
     }
+
+    verbose_header_size(hdr);
 
     /* with -D and -k what signature.json carries goes in as-is */
     if (read_kept_signature(paths, &keptsig) != 0) {
@@ -2844,6 +2984,8 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /* recalculate the digests and update the signature data using the updated header */
+    verbose_stage(_("Building the signature header"));
+
     if (update_signature(signature, header, hdr, hdrinfo, payloadfd, rpmformat, keptsig, archivesize) != 0) {
         warnx("update_signature");
         goto create_cleanup;
@@ -2869,7 +3011,10 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
+    verbose_header_size(sig);
+
     /* create an RPM for writing */
+    verbose_stage(_("Writing %s"), filename);
     rpm = open_package(filename, &tmpname);
 
     if (rpm == NULL) {
@@ -2930,6 +3075,11 @@ create_cleanup:
 
     if (tmpname != NULL && rc != 0 && unlink(tmpname) == -1) {
         warn("unlink");
+    }
+
+    if (rc == 0 && verbose && stat(filename, &sb) == 0) {
+        human_size((uint64_t) sb.st_size, size, sizeof(size));
+        verbose_stage(_("Done, the package is %s"), size);
     }
 
     free(tmpname);

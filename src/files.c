@@ -1800,7 +1800,13 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
             warn("lstat");
         } else {
             if (new_in_payload(scan, path, &sb)) {
-                warnx_escaped(_("*** %s is new in the payload, adding it to the file list"), path);
+                /* with -v the status line says it, so we skip the warning */
+                if (verbose) {
+                    verbose_detail(_("%s: new in the payload, added to the file list"), path);
+                } else {
+                    warnx_escaped(_("*** %s is new in the payload, adding it to the file list"), path);
+                }
+
                 json_object_array_add(scan->files, mkfileentry(scan, path, file_path, &sb));
             }
 
@@ -2841,7 +2847,13 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * missing_from_payload() with the lstat() we already made.
      */
     if (build->payload_dir != NULL && psb == NULL && !is_ghost(file)) {
-        warnx_escaped(_("*** %s is not in the payload, leaving it out of the file list"), path);
+        /* with -v the status line says it, so we skip the warning */
+        if (verbose) {
+            verbose_detail(_("%s: not in the payload, left out of the file list"), path);
+        } else {
+            warnx_escaped(_("*** %s is not in the payload, leaving it out of the file list"), path);
+        }
+
         free(file_path);
         return;
     }
@@ -2867,6 +2879,12 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     add_file_path(out, path);
 
     size = file_size_value(file, psb);
+
+    /* the payload file grew or shrank since header.json was written */
+    if (key_object(file, RPM_FILE_SIZE_DESC) != NULL && key_number(file, RPM_FILE_SIZE_DESC) != size) {
+        verbose_detail(_("%s: size %" PRId64 " in %s, %" PRId64 " in the payload, using the payload"), path, key_number(file, RPM_FILE_SIZE_DESC), OUTPUT_HEADER, size);
+    }
+
     json_object_array_add(out->filesizes, json_object_new_int64(size));
     json_object_array_add(out->filemodes, json_object_new_int(file_mode_value(file, psb)));
     json_object_array_add(out->filemtimes, json_object_new_int64(file_mtime_value(file)));
@@ -2895,6 +2913,12 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * The bytes are not the ones the entry describes, so the file may
      * be a different kind of thing now and needs classifying again.
      */
+    if (olddigest != NULL && olddigest[0] != '\0' && strcmp(olddigest, str)) {
+        verbose_detail(_("%s: the payload file changed, computed a new digest"), path);
+    } else if (keep_digests && key_object(file, RPM_FILE_SIZE_DESC) != NULL && psb != NULL && S_ISREG(psb->st_mode) && key_number(file, RPM_FILE_SIZE_DESC) != (int64_t) psb->st_size) {
+        verbose_detail(_("%s: the payload file changed, keeping the old digest (-D)"), path);
+    }
+
     if (olddigest != NULL && strcmp(olddigest, str)) {
         set_file_class(file, path, file_path, psb);
         set_file_mime(file, path, file_path, psb);

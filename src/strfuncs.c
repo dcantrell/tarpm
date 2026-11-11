@@ -6,6 +6,8 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -171,4 +173,106 @@ str_or_empty(const char *s)
     }
 
     return s;
+}
+
+/*
+ * True with -v.  The status lines go to verbose_out, which is stdout
+ * unless the caller points it elsewhere.  Extracting with a JSON file
+ * going to stdout sends them to stderr, the way tar(1) does.
+ */
+bool verbose = false;
+FILE *verbose_out = NULL;
+
+/* Print one escaped status line with the given indent */
+static void
+verbose_line(const char *indent, const char *fmt, va_list ap)
+{
+    char *msg = NULL;
+    char *escaped = NULL;
+    FILE *out = verbose_out;
+
+    if (out == NULL) {
+        out = stdout;
+    }
+
+    if (vasprintf(&msg, fmt, ap) == -1) {
+        return;
+    }
+
+    escaped = escape_name(msg);
+    fprintf(out, "%s%s\n", indent, escaped);
+    free(escaped);
+    free(msg);
+    return;
+}
+
+/*
+ * Print the line for a stage of the work with -v.  Stages start with
+ * VERBOSE_STAGE_PREFIX and the details of each one sit under it.
+ */
+void
+verbose_stage(const char *fmt, ...)
+{
+    va_list ap;
+
+    if (!verbose) {
+        return;
+    }
+
+    va_start(ap, fmt);
+    verbose_line(VERBOSE_STAGE_PREFIX, fmt, ap);
+    va_end(ap);
+    return;
+}
+
+/* Print a detail line under the current stage with -v */
+void
+verbose_detail(const char *fmt, ...)
+{
+    va_list ap;
+
+    if (!verbose) {
+        return;
+    }
+
+    va_start(ap, fmt);
+    verbose_line(VERBOSE_DETAIL_INDENT, fmt, ap);
+    va_end(ap);
+    return;
+}
+
+/*
+ * Write a byte count to buf for people to read.  Under 1 KiB it is a
+ * count of bytes, above that one decimal place of KiB, MiB or GiB.
+ */
+void
+human_size(const uint64_t bytes, char *buf, const size_t len)
+{
+    size_t i = 0;
+    double value = (double) bytes;
+    const char *units[] = { "KiB", "MiB", "GiB", "TiB" };
+
+    if (buf == NULL || len == 0) {
+        return;
+    }
+
+    if (bytes < 1024) {
+        if (bytes == 1) {
+            snprintf(buf, len, _("1 byte"));
+        } else {
+            snprintf(buf, len, _("%" PRIu64 " bytes"), bytes);
+        }
+
+        return;
+    }
+
+    value /= 1024.0;
+
+    while (value >= 1024.0 && i < (sizeof(units) / sizeof(units[0])) - 1) {
+        value /= 1024.0;
+        i++;
+    }
+
+    snprintf(buf, len, "%.1f %s", value, units[i]);
+    return;
 }

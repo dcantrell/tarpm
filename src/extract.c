@@ -9,7 +9,10 @@
 #include <ctype.h>
 #include <err.h>
 #include <fcntl.h>
+#include <rpm/rpmlib.h>
 #include <rpm/header.h>
+#include <rpm/rpmfiles.h>
+#include <rpm/rpmfi.h>
 #include <json_object.h>
 #include <archive.h>
 
@@ -27,6 +30,12 @@ write_metadata(struct json_object *data, const char *dest_dir, const char *path,
     char *file = NULL;
 
     if (path != NULL) {
+        if (!strcmp(path, OUTPUT_STDOUT)) {
+            verbose_detail(_("%s to standard output"), name);
+        } else {
+            verbose_detail("%s", path);
+        }
+
         return write_json_file(data, path);
     }
 
@@ -37,6 +46,8 @@ write_metadata(struct json_object *data, const char *dest_dir, const char *path,
         return -1;
     }
 
+    /* the stage line already named dest_dir */
+    verbose_detail("%s", name);
     r = write_json_file(data, file);
 
     free(file);
@@ -196,6 +207,7 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 {
     int r = 0;
     int rpmfd = -1;
+    size_t n = 0;
     struct json_object *lead = NULL;
     struct json_object *signature = NULL;
     struct json_object *header = NULL;
@@ -214,6 +226,7 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     }
 
     /* extract the RPM lead -- the first header (unused) */
+    verbose_stage(_("Reading the lead"));
     lead = read_lead(rpmfd);
 
     if (lead == NULL) {
@@ -222,7 +235,10 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
         goto metadata_cleanup;
     }
 
+    verbose_detail(_("lead version %s for a %s package"), str_or_empty(json_object_get_string(json_object_object_get(lead, RPM_LEAD_VERSION))), str_or_empty(json_object_get_string(json_object_object_get(lead, RPM_LEAD_TYPE))));
+
     /* extract the RPM signature -- the second header (sort of used) */
+    verbose_stage(_("Reading the signature header"));
     signature = read_signature(rpmfd);
 
     if (signature == NULL) {
@@ -231,7 +247,11 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
         goto metadata_cleanup;
     }
 
+    n = key_array_length(signature, RPM_ENTRY_TAGS_DESC);
+    verbose_detail("%zu %s", n, N_("tag", "tags", n));
+
     /* extract the RPM header -- the third header (used) */
+    verbose_stage(_("Reading the main header"));
     header = read_header(rpmfd, header_dir, &raw_tags);
 
     if (header == NULL) {
@@ -242,6 +262,12 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
 
     /* move the file and verify signatures to the "files" array */
     move_file_signatures(signature, header);
+
+    verbose_counts(header);
+
+    if (raw_tags) {
+        verbose_detail(_("some tags stay raw in %s, see the warnings above"), OUTPUT_HEADER);
+    }
 
     /* the payload starts here, right after the main header */
     mark_uncompressed_payload(rpmfd, header);
@@ -258,6 +284,8 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
      * each file needs it now, so a write failure means mkdir failed.
      * Warn the user but keep going.
      */
+    verbose_stage(_("Writing the metadata"));
+
     if (write_metadata(lead, dest_dir, paths->lead, OUTPUT_LEAD) != 0) {
         warnx(_("*** unable to write %s"), OUTPUT_LEAD);
         r = -1;
@@ -337,11 +365,16 @@ extract_payload(const char *filename, const char *payload_dir, const bool verbos
      * and unpacking again would only write it all a second time.
      */
     if (!stripped) {
+        verbose_detail(_("reading the cpio archive with libarchive"));
         r = unpack_archive(filename, payload_dir, verbose);
 
         if (r != UNPACK_UNREADABLE) {
             return r;
         }
+
+        verbose_detail(_("libarchive cannot read this payload, trying librpm"));
+    } else {
+        verbose_detail(_("reading the stripped cpio archive with librpm"));
     }
 
     if (unpack_rpm_payload(filename, payload_dir, verbose) != 0) {
@@ -350,6 +383,91 @@ extract_payload(const char *filename, const char *payload_dir, const bool verbos
     }
 
     return 0;
+}
+
+/* Print what the package is and where it goes with -v */
+static void
+verbose_package(Header h, const char *filename, const char *dest_dir)
+{
+    char *nevra = NULL;
+    const char *kind = _("binary");
+    int format = RPM_FORMAT_V4;
+
+    if (!verbose) {
+        return;
+    }
+
+    if (headerIsSource(h)) {
+        kind = _("source");
+    }
+
+    if (headerIsEntry(h, RPMTAG_RPMFORMAT_VALUE)) {
+        format = RPM_FORMAT_V6;
+    }
+
+    nevra = get_nevra(h);
+    verbose_stage(_("Extracting %s"), filename);
+    verbose_detail(_("%s, a v%d format %s package"), str_or_empty(nevra), format, kind);
+    verbose_detail(_("in to %s"), dest_dir);
+    free(nevra);
+    return;
+}
+
+/* Print the payload stage line with -v */
+static void
+verbose_payload_stage(Header h, const char *payload_dir)
+{
+    const char *compressor = NULL;
+
+    if (!verbose) {
+        return;
+    }
+
+    /* rpm reads a missing compressor tag as gzip */
+    compressor = headerGetString(h, RPMTAG_PAYLOADCOMPRESSOR);
+
+    if (compressor == NULL) {
+        compressor = "gzip";
+    }
+
+    verbose_stage(_("Unpacking the %s compressed payload in to %s"), compressor, payload_dir);
+    return;
+}
+
+/*
+ * Print what the payload held with -v.  A %ghost file is in the header
+ * but not the payload, so it does not count.  The size is the
+ * installed size the header records, which counts hard links once.
+ */
+static void
+verbose_payload_done(Header h)
+{
+    size_t n = 0;
+    char size[HUMAN_SIZE_LEN];
+    rpmfiles files = NULL;
+    rpmfi fi = NULL;
+
+    if (!verbose) {
+        return;
+    }
+
+    files = rpmfilesNew(NULL, h, 0, RPMFI_KEEPHEADER);
+    fi = rpmfilesIter(files, RPMFI_ITER_FWD);
+
+    while (fi != NULL && rpmfiNext(fi) >= 0) {
+        if (rpmfiFFlags(fi) & RPMFILE_GHOST) {
+            continue;
+        }
+
+        n++;
+    }
+
+    rpmfiFree(fi);
+    rpmfilesFree(files);
+
+    human_size(headerGetNumber(h, RPMTAG_LONGSIZE), size, sizeof(size));
+    verbose_detail(_("%zu %s, %s installed size"), n, N_("payload entry", "payload entries", n), size);
+    return;
 }
 
 /* Handler for -x mode (extract) */
@@ -396,6 +514,8 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
         goto cleanup;
     }
 
+    verbose_package(h, filename, dest_dir);
+
     /*
      * Tag values written to their own file sit next to header.json.
      * With the header going to stdout they keep their usual home.
@@ -430,9 +550,15 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
             goto cleanup;
         }
 
+        verbose_payload_stage(h, payload_dir);
+
         if (extract_payload(filename, payload_dir, verbose, headerIsEntry(h, RPMTAG_LONGFILESIZES)) != 0) {
             goto cleanup;
         }
+
+        verbose_payload_done(h);
+    } else {
+        verbose_stage(_("Skipping the payload"));
     }
 
     r = metadata;

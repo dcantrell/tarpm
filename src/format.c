@@ -177,6 +177,55 @@ fits_uint32(struct json_object *tags, const rpmTagVal tag)
 }
 
 /*
+ * Say with -v what filter_format_tags() is about to do to the tags.
+ * It drops the tags the format does not carry and moves a size tag to
+ * the spelling the format uses.
+ */
+static void
+verbose_format_changes(struct json_object *tags, const int format)
+{
+    size_t i = 0;
+    size_t n = 0;
+    const rpmTagVal *drop = NULL;
+    rpmTagVal small = 0;
+    rpmTagVal large = 0;
+
+    if (!verbose) {
+        return;
+    }
+
+    if (format == RPM_FORMAT_V6) {
+        drop = v4_only_tags;
+        n = V4_ONLY_NTAGS;
+    } else {
+        drop = v6_only_tags;
+        n = V6_ONLY_NTAGS;
+    }
+
+    for (i = 0; i < n; i++) {
+        if (find_tag(tags, drop[i]) >= 0) {
+            verbose_detail(_("dropping %s, the v%d format does not carry it"), rpmTagGetName(drop[i]), format);
+        }
+    }
+
+    for (i = 0; size_tag_pairs[i].small != 0; i++) {
+        small = size_tag_pairs[i].small;
+        large = size_tag_pairs[i].large;
+
+        /* the same choice normalize_size_pair() makes */
+        if (find_tag(tags, small) >= 0) {
+            if (format == RPM_FORMAT_V6 || !fits_uint32(tags, small)) {
+                verbose_detail(_("%s becomes %s"), rpmTagGetName(small), rpmTagGetName(large));
+            }
+        } else if (find_tag(tags, large) >= 0 && format == RPM_FORMAT_V4 && fits_uint32(tags, large)) {
+            verbose_detail(_("%s becomes %s"), rpmTagGetName(large), rpmTagGetName(small));
+        }
+    }
+
+    return;
+}
+
+/*
  * Settle a size tag on the spelling the format we are writing uses.
  * When a header carries both, the 32-bit one is the newer of the two
  * and the 64-bit one goes.  A v4 format package uses the 64-bit tag
@@ -419,6 +468,7 @@ apply_rpmformat(struct json_object *header, const int format)
         return -1;
     }
 
+    verbose_format_changes(tags, format);
     filter_format_tags(tags, format);
 
     for (i = 0; i < ntags; i++) {
@@ -433,6 +483,7 @@ apply_rpmformat(struct json_object *header, const int format)
             continue;
         }
 
+        verbose_detail(_("adding %s"), rpmTagGetName(group[i]));
         json_object_array_add(tags, entry);
     }
 
@@ -489,6 +540,7 @@ kept_payload_digests(struct json_object *header)
             continue;
         }
 
+        verbose_detail(_("%s in %s (-D)"), rpmTagGetName(payload_digests[i].tag), OUTPUT_HEADER);
         kept |= (uint32_t) 1 << i;
     }
 
@@ -518,6 +570,8 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
     uint64_t archivesize = 0;
     int r = -1;
     char *digest = NULL;
+    char compressed[HUMAN_SIZE_LEN];
+    char plain[HUMAN_SIZE_LEN];
     const char *tag_name = NULL;
     const rpmTagVal *group = NULL;
     struct json_object *tags = NULL;
@@ -574,6 +628,7 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
 
         /* we still computed it since the sizes come from the same pass */
         if (kept & ((uint32_t) 1 << which[i])) {
+            verbose_detail(_("%s: kept from %s"), rpmTagGetName(payload_digests[which[i]].tag), OUTPUT_HEADER);
             continue;
         }
 
@@ -588,10 +643,18 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
             warnx(_("*** failed to update %s in the header"), tag_name);
             goto cleanup_update_payload_tags;
         }
+
+        verbose_detail("%s: %s", rpmTagGetName(payload_digests[which[i]].tag), digest);
     }
 
     if (uncompressed != NULL) {
         *uncompressed = archivesize;
+    }
+
+    if (verbose) {
+        human_size(payloadsize, compressed, sizeof(compressed));
+        human_size(archivesize, plain, sizeof(plain));
+        verbose_detail(_("%s compressed, %s uncompressed"), compressed, plain);
     }
 
     /* only a v6 header records the payload sizes */

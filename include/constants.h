@@ -35,6 +35,13 @@
 /* mode for output directories we create */
 #define OUTPUT_DIR_MODE                (S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)
 
+/* room for what human_size() writes */
+#define HUMAN_SIZE_LEN                 32
+
+/* what starts a -v stage line and what indents the details under it */
+#define VERBOSE_STAGE_PREFIX           ">>> "
+#define VERBOSE_DETAIL_INDENT          "  "
+
 /* RPM lead -- all from rpm headers and source */
 #define RPMLEAD_MAGIC0                 0xED
 #define RPMLEAD_MAGIC1                 0xAB

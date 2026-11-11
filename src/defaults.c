@@ -23,6 +23,9 @@
 #define HOST_NAME_MAX 255
 #endif
 
+/* how many tags apply_header_defaults() filled in, for -v */
+static size_t filled = 0;
+
 /*
  * Add a string tag if the header does not already carry it.  Every
  * default goes through here, which is what keeps the pass additive.
@@ -35,6 +38,9 @@ add_default_tag(struct json_object *tags, const rpmTagVal tag, const rpmTagType 
     if (value == NULL || has_tag(tags, tag, false)) {
         return;
     }
+
+    verbose_detail("%s: %s", header_tag_name(tag), value);
+    filled++;
 
     entry = json_object_new_object();
     json_object_object_add(entry, RPM_ENTRY_TAG_DESC, json_object_new_string(header_tag_name(tag)));
@@ -92,6 +98,9 @@ add_region_trailer(struct json_object *tags)
     if (has_tag(tags, RPMTAG_HEADERIMMUTABLE, false)) {
         return 0;
     }
+
+    verbose_detail(_("%s: the region trailer"), name);
+    filled++;
 
     region.tag = htonl(RPMTAG_HEADERIMMUTABLE);
     region.type = htonl(RPM_BIN_TYPE);
@@ -231,6 +240,8 @@ add_self_provide(struct json_object *header, struct json_object *tags)
     }
 
     evr = package_evr(tags);
+    verbose_detail(_("Provides: %s = %s"), name, evr);
+    filled++;
 
     entry = json_object_new_object();
     json_object_object_add(entry, RPM_DEPENDENCY_NAME_DESC, json_object_new_string(name));
@@ -265,6 +276,8 @@ apply_header_defaults(struct json_object *header, const int format)
     if (header == NULL) {
         return -1;
     }
+
+    filled = 0;
 
     if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
         tags = json_object_new_array();
@@ -374,5 +387,13 @@ apply_header_defaults(struct json_object *header, const int format)
 
     add_self_provide(header, tags);
 
-    return add_region_trailer(tags);
+    if (add_region_trailer(tags) != 0) {
+        return -1;
+    }
+
+    if (filled == 0) {
+        verbose_detail(_("nothing was missing"));
+    }
+
+    return 0;
 }

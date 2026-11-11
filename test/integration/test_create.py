@@ -814,6 +814,240 @@ class CreateWithNoFiles(RequiresTarpm):
             self.assertEqual(rc, 0, msg=err)
 
 
+class CreateVerboseStages(RequiresTarpm):
+    """-v names each stage of a create, the tags it fills in and the payload entries"""
+
+    # the RPM format to write, overridden by the v6 subclass
+    rpmformat = "4"
+    archive = "newc cpio archive, gzip compressed at level 9"
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = os.path.realpath(
+            write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        )
+        bindir = os.path.join(self.tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        f = open(os.path.join(bindir, "hello"), "w")
+        f.write("#!/bin/sh\necho hello\n")
+        f.close()
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-v", "-F", self.rpmformat, "-f", pkg, self.tree]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        lines = out.splitlines()
+
+        # the stages start with >>> and come in the order the work is done
+        stages = [line[4:] for line in lines if line.startswith(">>> ")]
+        expected = [
+            "Creating %s, a v%s format package" % (pkg, self.rpmformat),
+            "Reading header.json",
+            "Filling in the tags header.json does not carry",
+            "Scanning the payload tree %s" % os.path.join(self.tree, "payload"),
+            "Fitting the header to the v%s format" % self.rpmformat,
+            "Building the lead",
+            "Building the file list tags for 3 files",
+            "Writing the payload as a %s" % self.archive,
+            "Computing the payload digests",
+            "Building the main header",
+            "Building the signature header",
+            "Writing %s" % pkg,
+        ]
+        self.assertEqual(stages[:-1], expected, msg=lines)
+        self.assertTrue(stages[-1].startswith("Done, the package is "), msg=lines)
+
+        # everything else is a detail indented two spaces under a stage
+        details = [line for line in lines if not line.startswith(">>> ")]
+        self.assertEqual(
+            [line for line in details if not line.startswith("  ")], [], msg=lines
+        )
+
+        # the tags tarpm filled in, under the stage that did it
+        self.assertIn("  Os: linux", lines)
+        self.assertIn("  Arch: %s" % platform.machine(), lines)
+        self.assertIn("  Provides: hello = 1.0-1", lines)
+        self.assertNotIn("  Summary: hello", lines)
+
+        # each file new in the payload, then the count
+        for path in ["/usr", "/usr/bin", "/usr/bin/hello"]:
+            self.assertIn(
+                "  %s: new in the payload, added to the file list" % path, lines
+            )
+
+        self.assertIn("  3 new entries added to the file list", lines)
+
+        # each entry that went in to the payload
+
+        for path in ["./usr", "./usr/bin", "./usr/bin/hello"]:
+            self.assertIn("  " + path, lines)
+
+        self.assertIn("  3 payload entries", lines)
+
+        # the status line takes the place of the warning
+        self.assertNotIn("is new in the payload", err)
+
+        # without -v nothing goes to stdout and the warning is back
+        rc, out, err = run_tarpm(
+            [
+                self.tarpm,
+                "-c",
+                "-F",
+                self.rpmformat,
+                "-f",
+                os.path.join(self.output_dir, "quiet.rpm"),
+                self.tree,
+            ]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(out, "")
+        self.assertIn("*** /usr/bin/hello is new in the payload", err)
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class CreateVerboseStagesV6(CreateVerboseStages):
+    """The same stages for a v6 format package"""
+
+    rpmformat = "6"
+    archive = "stripped cpio archive, zstd compressed at level 19"
+
+
+class CreateVerboseReportsChanges(RequiresTarpm):
+    """-v says what changed in the payload and what -D keeps as-is"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        bindir = os.path.join(self.tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        f = open(os.path.join(bindir, "hello"), "w")
+        f.write("#!/bin/sh\necho hello\n")
+        f.close()
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # unpack it and change the file, the way someone fixing a package would
+        x = os.path.join(self.output_dir, "x")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", x])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(os.path.join(x, "payload", "usr", "bin", "hello"), "w")
+        f.write("#!/bin/sh\necho hello, world\n")
+        f.close()
+
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-v", "-f", os.path.join(self.output_dir, "new.rpm"), x]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        lines = out.splitlines()
+
+        size = "  /usr/bin/hello: size 21 in header.json, 28 in the payload, using the payload"
+        self.assertIn(size, lines)
+        self.assertIn(
+            "  /usr/bin/hello: the payload file changed, computed a new digest", lines
+        )
+        self.assertIn("  nothing was missing", lines)
+        self.assertIn("  nothing new in the payload", lines)
+        self.assertNotIn(">>> Using data as-is", lines)
+
+        # -D keeps the old digests and -v names each one it keeps
+        rc, out, err = run_tarpm(
+            [
+                self.tarpm,
+                "-c",
+                "-v",
+                "-D",
+                "-f",
+                os.path.join(self.output_dir, "kept.rpm"),
+                x,
+            ]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        lines = out.splitlines()
+
+        for line in [
+            ">>> Using data as-is",
+            "  the file digests in header.json (-D)",
+            "  the signature digests in signature.json (-D)",
+            "  /usr/bin/hello: the payload file changed, keeping the old digest (-D)",
+            "  Sha256: kept from signature.json",
+        ]:
+            self.assertIn(line, lines)
+
+        # librpm names tag 5092 Payloaddigest before rpm 6.0.0
+        for line in ["  %s in header.json (-D)", "  %s: kept from header.json"]:
+            names = [line % "Payloadsha256", line % "Payloaddigest"]
+            self.assertTrue([name for name in names if name in lines], msg=lines)
+
+        self.assertNotIn(
+            "  /usr/bin/hello: the payload file changed, computed a new digest", lines
+        )
+
+
+class CreateVerboseReportsRemovedFiles(RequiresTarpm):
+    """-v names a file removed from the payload tree under the file list stage"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        bindir = os.path.join(self.tree, "payload", "usr", "bin")
+        os.makedirs(bindir)
+
+        for name in ["hello", "goodbye"]:
+            f = open(os.path.join(bindir, name), "w")
+            f.write("#!/bin/sh\necho %s\n" % name)
+            f.close()
+
+    def runTest(self):
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, self.tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # unpack it and take one file out of the payload tree
+        x = os.path.join(self.output_dir, "x")
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", pkg, "-O", x])
+        self.assertEqual(rc, 0, msg=err)
+        os.unlink(os.path.join(x, "payload", "usr", "bin", "goodbye"))
+
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-v", "-f", os.path.join(self.output_dir, "new.rpm"), x]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        lines = out.splitlines()
+
+        # the line sits under the file list stage
+        stage = lines.index(">>> Building the file list tags for 4 files")
+        dropped = "  /usr/bin/goodbye: not in the payload, left out of the file list"
+        self.assertIn(dropped, lines)
+        self.assertGreater(lines.index(dropped), stage)
+        self.assertNotIn("not in the payload", err)
+        self.assertNotIn("  ./usr/bin/goodbye", lines)
+        self.assertIn("  3 payload entries", lines)
+
+        # without -v it is a warning
+        rc, out, err = run_tarpm(
+            [self.tarpm, "-c", "-f", os.path.join(self.output_dir, "quiet.rpm"), x]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(out, "")
+        self.assertIn(
+            "*** /usr/bin/goodbye is not in the payload, leaving it out of the file list",
+            err,
+        )
+
+
 class CreateFailsWithoutInputDir(RequiresTarpm):
     """A missing input directory makes tarpm exit non-zero"""
 

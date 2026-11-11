@@ -422,7 +422,8 @@ class VerifyFailedEntryIsExtractedOnce(TestUnpackRPM):
     def runTest(self):
         super().runTest()
 
-        out = self.out.decode("utf-8").splitlines()
+        # -v indents each payload entry under the unpacking stage
+        out = [line.strip() for line in self.out.decode("utf-8").splitlines()]
         err = self.err.decode("utf-8")
 
         # each path comes out once and the failure is reported once
@@ -739,6 +740,97 @@ class VerifyOutputFilesDoNotFollowSymlinks(TestUnpackRPM):
             f.close()
 
 
+class VerifyVerboseExtractStages(TestUnpackRPM):
+    """-v names each stage of an extract and indents what goes under it"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v"]
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        super().runTest()
+        lines = self.out.decode("utf-8").splitlines()
+
+        # the stages start with >>> and come in the order the work is done
+        stages = [line[4:] for line in lines if line.startswith(">>> ")]
+        expected = [
+            "Extracting ",
+            "Reading the lead",
+            "Reading the signature header",
+            "Reading the main header",
+            "Writing the metadata",
+            "Unpacking the ",
+        ]
+        self.assertEqual(len(stages), len(expected), msg=lines)
+
+        for stage, start in zip(stages, expected):
+            self.assertTrue(stage.startswith(start), msg=lines)
+
+        # everything else is a detail indented two spaces under a stage
+        details = [line for line in lines if not line.startswith(">>> ")]
+        self.assertEqual(
+            [line for line in details if not line.startswith("  ")], [], msg=lines
+        )
+        self.assertTrue(
+            lines[1].startswith("  %s-%s-%s." % (NAME, VER, REL)), msg=lines
+        )
+        self.assertTrue(lines[1].endswith(" format binary package"), msg=lines)
+        self.assertIn("  in to %s" % self.output_dir, lines)
+        self.assertIn("  header.json", lines)
+        self.assertIn("  ./usr/share/%s/README" % NAME, lines)
+
+        # the payload summary is the last line, there is no closing stage
+        self.assertTrue(lines[-1].startswith("  1 payload entry, "), msg=lines)
+
+        # nothing went wrong, so there is nothing on stderr
+        self.assertEqual(self.err, b"")
+
+
+class VerifyQuietExtract(TestUnpackRPM):
+    """Without -v an extract prints nothing"""
+
+    def runTest(self):
+        super().runTest()
+        self.assertEqual(self.out, b"")
+        self.assertEqual(self.err, b"")
+
+
+class VerifyVerboseMetadataOnStdout(TestUnpackRPM):
+    """With header.json going to stdout the -v lines go to stderr"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v", "-H", "-"]
+
+    def runTest(self):
+        super().runTest()
+
+        # stdout carries the JSON and nothing else
+        header = json.loads(self.out.decode("utf-8"))
+        self.assertIn("tags", header)
+
+        lines = self.err.decode("utf-8").splitlines()
+        self.assertIn(">>> Writing the metadata", lines)
+        self.assertIn("  header.json to standard output", lines)
+
+
+class VerifyVerboseNoPayload(TestUnpackRPM):
+    """-v with -n says the payload was skipped"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v", "-n"]
+
+    def runTest(self):
+        super().runTest()
+        lines = self.out.decode("utf-8").splitlines()
+        self.assertEqual(lines[-1], ">>> Skipping the payload")
+        self.assertFalse([line for line in lines if line.startswith(">>> Unpacking")])
+
+
 class VerifyVerboseKeepsDotfiles(TestUnpackRPM):
     """Test -v prints a dotfile with its leading dot"""
 
@@ -752,7 +844,7 @@ class VerifyVerboseKeepsDotfiles(TestUnpackRPM):
 
     def runTest(self):
         super().runTest()
-        lines = self.out.decode("utf-8").splitlines()
+        lines = [line.strip() for line in self.out.decode("utf-8").splitlines()]
         self.assertIn("./.hidden", lines)
         self.assertNotIn("./hidden", lines)
 
@@ -1290,7 +1382,7 @@ class VerifyLibrpmPayloadNeedsNoTmpdir(LibrpmPayload):
             f.close()
 
         # -v names each entry once, the way the libarchive reader does
-        lines = out.decode().splitlines()
+        lines = [line.strip() for line in out.decode().splitlines()]
         self.assertEqual(lines.count("./usr/share/hello/big"), 1, msg=lines)
         self.assertEqual(lines.count("./usr/share/hello"), 1, msg=lines)
         self.assertNotIn("./usr/share/hello/", lines)

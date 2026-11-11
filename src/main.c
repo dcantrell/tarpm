@@ -79,7 +79,7 @@ usage(void)
     printf(_("    -t, --list                  List RPM payload contents\n"));
     printf(_("    -c, --create                Create an RPM file\n"));
     printf(_("    -x, --extract               Extract RPM file\n"));
-    printf(_("    -v, --verbose               Verbose progress output\n"));
+    printf(_("    -v, --verbose               Show each step and payload entry\n"));
     printf(_("    -f FILE, --filename=FILE    Use FILE as input or output RPM file\n"));
     printf(_("    -O DIR, --output=DIR        Use DIR as output directory\n"));
     printf(_("    -L FILE, --lead=FILE        Use FILE for lead.json\n"));
@@ -100,6 +100,7 @@ usage(void)
     printf(_("A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"), OUTPUT_STDOUT);
     printf(_("It may only be used when extracting an RPM.\n"));
     printf(_("The -n option may only be used when extracting an RPM.\n"));
+    printf(_("The -t option always prints the long listing, so -v changes nothing there.\n"));
     printf(_("The -m, -u, -g, -l, -a, -D, -k, and -F options may only be used when creating an RPM.\n"));
     printf(_("The default format is %d.  The format shapes the lead, the signature\n"), RPM_FORMAT_DEFAULT);
     printf(_("header, the payload digest tags in the main header, and the payload\n"));
@@ -470,6 +471,16 @@ main(int argc, char **argv)
     /* we generate the signature header, so -S only matters for what -D and -k keep */
     if (c_flag && paths.signature != NULL && !keep_digests && !keep_signatures) {
         warnx(_("*** -S is ignored when creating an RPM"));
+    }
+
+    /*
+     * The status lines go to stdout.  When extracting sends a JSON
+     * file there they go to stderr instead, the way tar(1) does it.
+     */
+    verbose = v_flag;
+
+    if (x_flag && ((paths.lead != NULL && !strcmp(paths.lead, OUTPUT_STDOUT)) || (paths.signature != NULL && !strcmp(paths.signature, OUTPUT_STDOUT)) || (paths.header != NULL && !strcmp(paths.header, OUTPUT_STDOUT)))) {
+        verbose_out = stderr;
     }
 
     /* Reset librpm */

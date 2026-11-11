@@ -430,3 +430,41 @@ write_json_file(struct json_object *data, const char *path)
 
     return 0;
 }
+
+/* Return the length of the array key holds in obj, 0 if it is not one */
+size_t
+key_array_length(struct json_object *obj, const char *key)
+{
+    struct json_object *value = NULL;
+
+    if (obj == NULL || key == NULL || !json_object_object_get_ex(obj, key, &value) || json_object_get_type(value) != json_type_array) {
+        return 0;
+    }
+
+    return json_object_array_length(value);
+}
+
+/*
+ * Print with -v how much header data holds.  The dependencies object
+ * is counted across every kind of dependency.
+ */
+void
+verbose_counts(struct json_object *header)
+{
+    size_t ntags = 0;
+    size_t nfiles = 0;
+    size_t ndeps = 0;
+    size_t nchanges = 0;
+
+    if (!verbose || header == NULL) {
+        return;
+    }
+
+    ntags = key_array_length(header, RPM_ENTRY_TAGS_DESC);
+    nfiles = key_array_length(header, RPM_FILES_DESC);
+    ndeps = dependency_count(header);
+    nchanges = key_array_length(header, RPM_CHANGELOG_DESC);
+
+    verbose_detail("%zu %s, %zu %s, %zu %s, %zu %s", ntags, N_("tag", "tags", ntags), nfiles, N_("file", "files", nfiles), ndeps, N_("dependency", "dependencies", ndeps), nchanges, N_("changelog entry", "changelog entries", nchanges));
+    return;
+}

@@ -222,6 +222,72 @@ test_str_or_empty(void)
     return;
 }
 
+/* Test human_size() picks the unit and rounds to one place */
+void
+test_human_size(void)
+{
+    char buf[HUMAN_SIZE_LEN];
+
+    human_size(0, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "0 bytes");
+    human_size(1, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1 byte");
+    human_size(1023, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1023 bytes");
+    human_size(1024, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.0 KiB");
+    human_size(1536, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.5 KiB");
+    human_size(5 * 1024 * 1024, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "5.0 MiB");
+    human_size(UINT64_MAX, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "16777216.0 TiB");
+
+    /* a buffer too small is cut short, not overrun */
+    human_size(1024, buf, 4);
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.0");
+
+    return;
+}
+
+/* Test verbose_stage() and verbose_detail() print only with -v */
+void
+test_verbose_lines(void)
+{
+    char *line = NULL;
+    size_t len = 0;
+    FILE *out = NULL;
+
+    out = tmpfile();
+    TARPM_ASSERT_PTR_NOT_NULL(out);
+    verbose_out = out;
+
+    /* without -v nothing is printed */
+    verbose = false;
+    verbose_stage("quiet %d", 1);
+    verbose_detail("quiet %d", 2);
+    TARPM_ASSERT_EQUAL(ftell(out), 0);
+
+    /* stages get a prefix, details are indented, control characters escaped */
+    verbose = true;
+    verbose_stage("Reading %s", "header.json");
+    verbose_detail("./%s", "bad\033name");
+
+    rewind(out);
+    TARPM_ASSERT_TRUE(getline(&line, &len, out) > 0);
+    TARPM_ASSERT_STRING_EQUAL(line, ">>> Reading header.json\n");
+    TARPM_ASSERT_TRUE(getline(&line, &len, out) > 0);
+    TARPM_ASSERT_STRING_EQUAL(line, "  ./bad\\033name\n");
+    TARPM_ASSERT_TRUE(getline(&line, &len, out) == -1);
+
+    free(line);
+    fclose(out);
+    verbose = false;
+    verbose_out = NULL;
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -238,7 +304,9 @@ get_suite(void)
     if (CU_add_test(pSuite, "test strappend()", test_strappend) == NULL ||
         CU_add_test(pSuite, "test strsplit()", test_strsplit) == NULL ||
         CU_add_test(pSuite, "test escape_name()", test_escape_name) == NULL ||
-        CU_add_test(pSuite, "test str_or_empty()", test_str_or_empty) == NULL) {
+        CU_add_test(pSuite, "test str_or_empty()", test_str_or_empty) == NULL ||
+        CU_add_test(pSuite, "test human_size()", test_human_size) == NULL ||
+        CU_add_test(pSuite, "test verbose_stage() and verbose_detail()", test_verbose_lines) == NULL) {
         return NULL;
     }
 

@@ -122,7 +122,6 @@ new_disk_writer(void)
 void
 print_entry_path(struct archive_entry *entry)
 {
-    char *name = NULL;
     const char *p = NULL;
 
     p = archive_entry_pathname(entry);
@@ -137,9 +136,8 @@ print_entry_path(struct archive_entry *entry)
         p++;
     }
 
-    name = escape_name(p);
-    printf("./%s\n", name);
-    free(name);
+    /* verbose_detail() escapes the name for us */
+    verbose_detail("./%s", p);
 
     return;
 }

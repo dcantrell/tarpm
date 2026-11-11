@@ -36,6 +36,11 @@ char *escape_name(const char *s);
 const char *str_or_empty(const char *s);
 void warnx_escaped(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void warn_escaped(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+extern bool verbose;
+extern FILE *verbose_out;
+void verbose_stage(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void verbose_detail(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void human_size(const uint64_t bytes, char *buf, const size_t len);
 
 /* listfuncs.c */
 void list_free(str_list_t *list, list_entry_data_free_func free_func);
@@ -119,6 +124,7 @@ const char *dependency_type_key(const char abbrev);
 char dependency_type_abbrev(const char *key);
 struct json_object *index_dependencies(struct json_object *dependencies);
 int lookup_dependency(struct json_object *dependencies, struct json_object *lookup, const char *key, struct json_object *entry);
+size_t dependency_count(struct json_object *header);
 
 /* files.c */
 /*
@@ -177,6 +183,8 @@ struct json_object *generate_json(const struct rpmhdr *hdr);
 struct json_object *generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct rpmhdrentry *trailer, const char *dest_dir, const bool signature);
 bool keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, const char *dest_dir, bool (*is_member)(rpmTagVal));
 void sort_tags_stable(struct json_object *kvals, const bool signature);
+size_t key_array_length(struct json_object *obj, const char *key);
+void verbose_counts(struct json_object *header);
 struct json_object *read_json_file(const char *input_file);
 int write_json_file(struct json_object *data, const char *path);
 

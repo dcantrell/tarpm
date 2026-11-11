@@ -977,3 +977,25 @@ is_dependency_tag(rpmTagVal tag)
 
     return false;
 }
+
+/* Return how many dependencies of every kind the header data names */
+size_t
+dependency_count(struct json_object *header)
+{
+    size_t n = 0;
+    struct json_object *dependencies = NULL;
+
+    if (header == NULL || !json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies) || json_object_get_type(dependencies) != json_type_object) {
+        return 0;
+    }
+
+    json_object_object_foreach(dependencies, key, value) {
+        (void) key;
+
+        if (json_object_get_type(value) == json_type_array) {
+            n += json_object_array_length(value);
+        }
+    }
+
+    return n;
+}
