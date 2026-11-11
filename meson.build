@@ -42,6 +42,11 @@ if cc.has_function('strlcpy')
     add_global_arguments('-D_HAVE_STRLCPY', language : 'c')
 endif
 
+# Check for openat2(2), without it we walk the path with O_NOFOLLOW
+if cc.has_header('linux/openat2.h') and cc.get_define('SYS_openat2', prefix : '#include <sys/syscall.h>') != ''
+    add_global_arguments('-D_HAVE_OPENAT2', language : 'c')
+endif
+
 # Check for sys/queue.h
 if not cc.has_header('sys/queue.h', include_directories : sysinc)
     message('<sys/queue.h> not found, using bundled copy')

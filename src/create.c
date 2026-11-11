@@ -204,23 +204,34 @@ pad_payload(void)
 
 /*
  * Copy the contents of a file in the payload tree to the payload.  The
- * file has to hold exactly the size the header lists for it.
+ * file has to hold exactly the size the header lists for it.  We open
+ * it with open_beneath() so a symlink put in the tree after
+ * check_payload_paths() ran is not followed.
  */
 static int
-write_file_data(const char *file_path, const uint64_t size)
+write_file_data(const char *payload_dir, const char *relative_path, const uint64_t size)
 {
     int fd = -1;
     int r = 0;
     ssize_t len = 0;
     uint64_t total = 0;
+    char *file_path = NULL;
     char buf[BUFSIZ];
 
-    if (file_path == NULL) {
+    if (payload_dir == NULL || relative_path == NULL) {
         return -1;
     }
 
-    if ((fd = open(file_path, O_RDONLY)) == -1) {
-        warn_escaped("open: %s", file_path);
+    file_path = joinpath(payload_dir, relative_path, NULL);
+
+    if ((fd = open_beneath(payload_dir, relative_path)) == -1) {
+        if (errno == ELOOP || errno == EXDEV || errno == EINVAL) {
+            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
+        } else {
+            warn_escaped("open: %s", file_path);
+        }
+
+        free(file_path);
         return -1;
     }
 
@@ -243,6 +254,7 @@ write_file_data(const char *file_path, const uint64_t size)
     }
 
     close(fd);
+    free(file_path);
     return r;
 }
 
@@ -259,7 +271,6 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
 {
     int r = 0;
     char *relative_path = NULL;
-    char *file_path = NULL;
     char entry[CPIO_STRIPPED_HEADER_SIZE + 1];
 
     if (payload_dir == NULL || params == NULL) {
@@ -278,16 +289,7 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
         }
     } else if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         relative_path = joinpath(params->dirname, params->basename, NULL);
-
-        if (!path_beneath(payload_dir, relative_path, false)) {
-            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
-            free(relative_path);
-            return -1;
-        }
-
-        file_path = joinpath(payload_dir, relative_path, NULL);
-        r = write_file_data(file_path, params->size);
-        free(file_path);
+        r = write_file_data(payload_dir, relative_path, params->size);
         free(relative_path);
     }
 
@@ -329,7 +331,6 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
     int r = 0;
     char *relative_path = NULL;
     char *full_path = NULL;
-    char *file_path = NULL;
     struct archive_entry *entry = NULL;
 
     if (payload_dir == NULL || params == NULL) {
@@ -338,9 +339,6 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* the relative path is where this file will live when installed */
     relative_path = joinpath(params->dirname, params->basename, NULL);
-
-    /* this is the actual location of the file going in the payload */
-    file_path = joinpath(payload_dir, relative_path, NULL);
 
     /* start a new entry */
     entry = archive_entry_new();
@@ -409,13 +407,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
-        if (!path_beneath(payload_dir, relative_path, false)) {
-            warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
-            r = -1;
-            goto file_cleanup;
-        }
-
-        if (write_file_data(file_path, params->size) != 0) {
+        if (write_file_data(payload_dir, relative_path, params->size) != 0) {
             r = -1;
             goto file_cleanup;
         }
@@ -430,7 +422,6 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 file_cleanup:
     archive_entry_free(entry);
     free(full_path);
-    free(file_path);
     free(relative_path);
     return r;
 }

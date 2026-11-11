@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <CUnit/Basic.h>
@@ -166,6 +168,114 @@ test_path_beneath(void)
     return;
 }
 
+/* Assert opener fails on path with the given errno */
+static void
+assert_open_fails(int (*opener)(const char *, const char *), const char *base, const char *path, const int expected)
+{
+    errno = 0;
+    TARPM_ASSERT_EQUAL(opener(base, path), -1);
+    TARPM_ASSERT_EQUAL(errno, expected);
+    return;
+}
+
+/* Run the same cases against open_beneath() and its fallback */
+static void
+check_opener(int (*opener)(const char *, const char *))
+{
+    int fd = -1;
+    char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
+    char *path = NULL;
+    char buf[8];
+    FILE *fp = NULL;
+
+    /* the don't crash case */
+    assert_open_fails(opener, NULL, "usr", EINVAL);
+    assert_open_fails(opener, "/", NULL, EINVAL);
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+
+    /* usr/bin/file is a file, lib a symlink to usr/bin, link a symlink to file */
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin", tmpdir);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin/file", tmpdir);
+    fp = fopen(path, "w");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    fputs("data", fp);
+    fclose(fp);
+    free(path);
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(symlink("usr/bin", path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin/link", tmpdir);
+    TARPM_ASSERT_TRUE(symlink("file", path) == 0);
+    free(path);
+
+    /* a file below the base opens with or without a leading slash */
+    fd = opener(tmpdir, "usr/bin/file");
+    TARPM_ASSERT_TRUE(fd >= 0);
+    memset(buf, 0, sizeof(buf));
+    TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
+    TARPM_ASSERT_STRING_EQUAL(buf, "data");
+    close(fd);
+
+    fd = opener(tmpdir, "/usr/bin/file");
+    TARPM_ASSERT_TRUE(fd >= 0);
+    close(fd);
+
+    /* no symlink is followed, on the way or at the end */
+    assert_open_fails(opener, tmpdir, "lib/file", ELOOP);
+    assert_open_fails(opener, tmpdir, "/usr/bin/link", ELOOP);
+
+    /* names that leave the base or are not plain */
+    assert_open_fails(opener, tmpdir, "", EINVAL);
+    assert_open_fails(opener, tmpdir, "/", EINVAL);
+    assert_open_fails(opener, tmpdir, "../etc/passwd", EINVAL);
+    assert_open_fails(opener, tmpdir, "usr/../usr/bin/file", EINVAL);
+    assert_open_fails(opener, tmpdir, "usr/./bin/file", EINVAL);
+    assert_open_fails(opener, tmpdir, "usr//bin/file", EINVAL);
+
+    /* a missing file is just missing */
+    assert_open_fails(opener, tmpdir, "usr/bin/missing", ENOENT);
+
+    /* clean up */
+    xasprintf(&path, "%s/usr/bin/link", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin/file", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/bin", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+
+    return;
+}
+
+void
+test_open_beneath(void)
+{
+    check_opener(open_beneath);
+    return;
+}
+
+void
+test_open_beneath_walk(void)
+{
+    check_opener(open_beneath_walk);
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -180,7 +290,9 @@ get_suite(void)
 
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test joinpath()", test_joinpath) == NULL ||
-        CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL) {
+        CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL ||
+        CU_add_test(pSuite, "test open_beneath()", test_open_beneath) == NULL ||
+        CU_add_test(pSuite, "test open_beneath_walk()", test_open_beneath_walk) == NULL) {
         return NULL;
     }
 
