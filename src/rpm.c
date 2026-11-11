@@ -30,6 +30,7 @@ write_payload_file(rpmfi fi, struct archive *output, char *buf, const bool writi
     bool ok = writing;
     rpm_loff_t left = 0;
     size_t len = 0;
+    ssize_t got = 0;
 
     left = rpmfiFSize(fi);
 
@@ -40,7 +41,10 @@ write_payload_file(rpmfi fi, struct archive *output, char *buf, const bool writi
             len = left;
         }
 
-        if (rpmfiArchiveRead(fi, buf, len) != (ssize_t) len) {
+        /* rpm 4.14 returns size_t here and later releases ssize_t */
+        got = rpmfiArchiveRead(fi, buf, len);
+
+        if (got != (ssize_t) len) {
             warnx(_("*** error reading file from RPM payload"));
             return -2;
         }
