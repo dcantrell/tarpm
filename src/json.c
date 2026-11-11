@@ -12,57 +12,65 @@
 #include <json.h>
 #include "tarpm.h"
 
-/*
- * Compare two entries of a 'tags' array by tag number.  The signature
- * flag tells us to read the names as signature tags, which we have to
- * do because some signature tags share a name with a header tag that
- * carries a different number.
- */
+/* A 'tags' array entry with its tag number and where it sits */
+struct tag_position {
+    rpmTagVal tag;
+    size_t position;
+    struct json_object *entry;
+};
+
+/* Order by tag number and keep the array order for one tag number */
 static int
-compare_tag_number(const void *a, const void *b, const bool signature)
+compare_tag_position(const void *a, const void *b)
 {
-    struct json_object **aobj = (struct json_object **) a;
-    struct json_object **bobj = (struct json_object **) b;
-    int atag = 0;
-    int btag = 0;
+    const struct tag_position *x = a;
+    const struct tag_position *y = b;
 
-    /* handle special conditions */
-    if (*aobj == NULL && *bobj == NULL) {
-        return 0;
+    if (x->tag != y->tag) {
+        return (x->tag > y->tag) - (x->tag < y->tag);
     }
 
-    if (*aobj == NULL) {
-        return -1;
-    }
-
-    if (*bobj == NULL) {
-        return 1;
-    }
-
-    /* get the tag numbers for sorting */
-    atag = get_tag_number(*aobj, signature);
-    btag = get_tag_number(*bobj, signature);
-
-    return (atag > btag) - (atag < btag);
+    return (x->position > y->position) - (x->position < y->position);
 }
 
 /*
- * Used by generate_json_entries() below to sort a header 'tags' array.
+ * Sort a 'tags' array by tag number.  qsort() is not stable, so we
+ * break a tie on the position in the array, which is the header
+ * order.  The copies of a tag that is there twice then go back in the
+ * order they came out, and a round trip keeps the value rpm finds.
+ * The signature flag reads the names as signature tags, since some
+ * share a name with a header tag that has another number.
  */
-static int
-sort_by_tag_number(const void *a, const void *b)
+static void
+sort_tags_stable(struct json_object *kvals, const bool signature)
 {
-    return compare_tag_number(a, b, false);
-}
+    size_t i = 0;
+    size_t n = 0;
+    struct tag_position *items = NULL;
 
-/*
- * Used by generate_json_entries() below to sort a signature 'tags'
- * array.
- */
-static int
-sort_by_sig_tag_number(const void *a, const void *b)
-{
-    return compare_tag_number(a, b, true);
+    n = json_object_array_length(kvals);
+
+    if (n < 2) {
+        return;
+    }
+
+    items = xcalloc(n, sizeof(*items));
+
+    /* we hold a reference to each so putting them back frees nothing */
+    for (i = 0; i < n; i++) {
+        items[i].entry = json_object_get(json_object_array_get_idx(kvals, i));
+        items[i].tag = get_tag_number(items[i].entry, signature);
+        items[i].position = i;
+    }
+
+    qsort(items, n, sizeof(*items), compare_tag_position);
+
+    for (i = 0; i < n; i++) {
+        json_object_array_put_idx(kvals, i, items[i].entry);
+    }
+
+    free(items);
+    return;
 }
 
 /*
@@ -270,11 +278,7 @@ generate_json_entries(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo
     json_object_put(i18ntable);
 
     /* sort the array in ascending order by tag number */
-    if (signature) {
-        json_object_array_sort(kvals, sort_by_sig_tag_number);
-    } else {
-        json_object_array_sort(kvals, sort_by_tag_number);
-    }
+    sort_tags_stable(kvals, signature);
 
     return kvals;
 }
@@ -320,7 +324,7 @@ keep_raw_entries(struct json_object *kvals, const struct rpmhdr *hdr, const stru
     }
 
     if (found) {
-        json_object_array_sort(kvals, sort_by_tag_number);
+        sort_tags_stable(kvals, false);
     }
 
     return found;

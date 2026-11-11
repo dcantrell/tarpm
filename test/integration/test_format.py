@@ -517,6 +517,107 @@ class VerifyUncompressedPackageStaysUncompressed(TestUnpackRPM):
         self.assertEqual(one, two, "the package came out different")
 
 
+class VerifyRepeatedTagKeepsItsOrder(TestUnpackRPM):
+    """The copies of a tag come back out in the order the header has them"""
+
+    def setUp(self):
+        super().setUp()
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        header = json.load(f)
+        f.close()
+
+        # which copy rpm finds depends on where each one sits
+        values = ["copy%d" % i for i in range(1, 7)]
+
+        for value in values:
+            header["tags"].append(
+                {"tag": "Buildhost", "type": "string", "value": value}
+            )
+
+        f = open(self.header, "w")
+        json.dump(header, f)
+        f.close()
+
+        first = os.path.join(self.output_dir, "first.rpm")
+        args = [self.tarpm, "-c", "-f", first] + RPMBUILD_FORMAT_ARGS
+        rc, out, err = run_tarpm(args + [self.output_dir])
+        self.assertEqual(rc, 0, msg=err)
+
+        # every copy follows the one rpmbuild wrote
+        extracted = extracted_header(self, first, "again")
+        hosts = [t["value"] for t in extracted["tags"] if t["tag"] == "Buildhost"]
+        self.assertEqual(len(hosts), 7)
+        self.assertEqual(hosts[1:], values)
+
+        second = os.path.join(self.output_dir, "second.rpm")
+        args = [self.tarpm, "-c", "-f", second] + RPMBUILD_FORMAT_ARGS
+        rc, out, err = run_tarpm(args + [os.path.join(self.output_dir, "again")])
+        self.assertEqual(rc, 0, msg=err)
+
+        f = open(first, "rb")
+        one = f.read()
+        f.close()
+
+        f = open(second, "rb")
+        two = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+        self.assertEqual(query(first, "%{buildhost}"), query(second, "%{buildhost}"))
+
+
+class VerifyRepeatedLocaleKeepsFirstString(TestUnpackRPM):
+    """A locale named twice in Headeri18ntable does not lose a string"""
+
+    def setUp(self):
+        super().setUp()
+        self.rpm.header += "\nSummary(de): hallo\nSummary(fr): salut\n"
+        self.rpm.basePackage.section_conflicts += (
+            "\n%description -l de\nBeschreibung\n"
+            "\n%description -l fr\nDescription en francais\n"
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        pkg = self.rpm.get_built_rpm(get_expected_arch())
+
+        f = open(pkg, "rb")
+        data = f.read()
+        f.close()
+
+        # rpmbuild has no way to name a locale twice, so we do it by hand
+        table = b"C\x00de\x00fr\x00"
+        self.assertEqual(data.count(table), 1)
+        patched = os.path.join(self.output_dir, "patched.rpm")
+
+        f = open(patched, "wb")
+        f.write(data.replace(table, b"C\x00de\x00de\x00"))
+        f.close()
+
+        out_dir = os.path.join(self.output_dir, "out")
+        os.makedirs(out_dir)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", patched, "-O", out_dir])
+        self.assertEqual(rc, 0, msg=err)
+        self.assertIn('locale "de" is in Headeri18ntable more than once', err)
+
+        f = open(os.path.join(out_dir, "header.json"))
+        tags = dict((t["tag"], t) for t in json.load(f)["tags"])
+        f.close()
+
+        # both tags keep the first string and no translation
+        self.assertEqual(tags["Summary"]["value"], query(pkg, "%{summary}"))
+        self.assertEqual(tags["Description"]["file"], "description.txt")
+        self.assertFalse(os.path.exists(os.path.join(out_dir, "description.de.txt")))
+        self.assertFalse(os.path.exists(os.path.join(out_dir, "description.fr.txt")))
+
+
 class VerifyTranslationsRoundTrip(TestUnpackRPM):
     """Translations from rpmbuild come back the way they went in"""
 

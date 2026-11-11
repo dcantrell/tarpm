@@ -179,22 +179,37 @@ valid_locale(const char *locale)
  * An i18n string tag holds one string per locale in the order of
  * Headeri18ntable, and may stop short of the end of the table.  Replace
  * the value add_entry_value() wrote for the first one with an object
- * keyed by locale.  Without a locale for every string we warn and leave
- * it alone.  Returns 0 on success, -1 for a locale we cannot use as a
+ * keyed by locale.  Without a locale for every string, or with a locale
+ * named twice, we warn and leave it alone since the object would lose
+ * a string.  Returns 0 on success, -1 for a locale we cannot use as a
  * file name.
  */
 int
 add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uint32_t count, struct json_object *i18ntable, const char *dest_dir)
 {
     uint32_t i = 0;
+    uint32_t j = 0;
     uint8_t *p = data;
     char *filename = NULL;
     const char *locale = NULL;
+    struct json_object *first = NULL;
     struct json_object *values = NULL;
 
     if (i18ntable == NULL || count > json_object_array_length(i18ntable)) {
         warnx(_("*** the %s tag has translations with no locale in %s, keeping the first string"), rpmTagGetName(tag), rpmTagGetName(RPMTAG_HEADERI18NTABLE));
         return 0;
+    }
+
+    /* the table is short, so the pairwise check costs nothing */
+    for (i = 1; i < count; i++) {
+        locale = json_object_get_string(json_object_array_get_idx(i18ntable, i));
+
+        for (j = 0; j < i; j++) {
+            if (!strcmp(locale, json_object_get_string(json_object_array_get_idx(i18ntable, j)))) {
+                warnx(_("*** the locale \"%s\" is in %s more than once, keeping the first string of the %s tag"), locale, rpmTagGetName(RPMTAG_HEADERI18NTABLE), rpmTagGetName(tag));
+                return 0;
+            }
+        }
     }
 
     values = json_object_new_object();
@@ -209,8 +224,10 @@ add_i18n_value(struct json_object *arrayentry, rpmTagVal tag, uint8_t *data, uin
             json_object_put(values);
             return -1;
         } else {
-            /* the first string goes where a single string goes */
-            if (i == 0) {
+            /* add_entry_value() already wrote the first string where a single string goes */
+            if (i == 0 && json_object_object_get_ex(arrayentry, RPM_ENTRY_FILE_DESC, &first)) {
+                filename = xstrdup(json_object_get_string(first));
+            } else if (i == 0) {
                 filename = write_entry_value_file(tag, p, dest_dir, NULL);
             } else {
                 filename = write_entry_value_file(tag, p, dest_dir, locale);

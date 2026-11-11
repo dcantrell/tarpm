@@ -88,6 +88,16 @@ read_signature(const int fd)
     /* dump all of the tags in the signature */
     jvals = generate_json_entries(rawhdr, hdrinfo, trailer, NULL, true);
 
+    /* a later -k or -D create would find nothing in "tags": null */
+    if (jvals == NULL) {
+        json_object_put(signature);
+        free(hdrinfo);
+        free(trailer);
+        free(buffer);
+        free(rawhdr);
+        return NULL;
+    }
+
     /* write the signature to a file */
     json_object_object_add(signature, RPM_ENTRY_TAGS_DESC, json_object_get(jvals));
 
