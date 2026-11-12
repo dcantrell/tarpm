@@ -29,17 +29,18 @@
 #include "tarpm.h"
 
 /* Local prototypes */
-static int copy_data(struct archive *, struct archive *);
-static int extract_entry(struct archive *, struct archive *, struct archive_entry *);
+static int copy_data(struct archive *, struct archive *, const char *, bool *);
+static int extract_entry(struct archive *, struct archive *, struct archive_entry *, bool *);
 
 /*
  * From:
  * https://github.com/libarchive/libarchive/wiki/Examples
  * Reads data from the input archive stream and writes it to the output
- * archive stream.
+ * archive stream.  path names the entry in our messages.  readfailed
+ * is set when reading failed, so the caller knows we said why.
  */
 static int
-copy_data(struct archive *ar, struct archive *aw)
+copy_data(struct archive *ar, struct archive *aw, const char *path, bool *readfailed)
 {
     int r;
     const void *buf = NULL;
@@ -48,6 +49,9 @@ copy_data(struct archive *ar, struct archive *aw)
 
     while ((r = archive_read_data_block(ar, &buf, &s, &o)) != ARCHIVE_EOF) {
         if (r != ARCHIVE_OK) {
+            /* a payload cut short or corrupt lands here */
+            warnx_escaped(_("*** unable to read %s from the payload: %s"), str_or_empty(path), archive_error_string(ar));
+            *readfailed = true;
             return r;
         }
 
@@ -142,9 +146,12 @@ print_entry_path(struct archive_entry *entry)
     return;
 }
 
-/* Extract a single entry from an archive and write it to disk. */
+/*
+ * Extract a single entry from an archive and write it to disk.
+ * readfailed is set when the entry data could not be read.
+ */
 static int
-extract_entry(struct archive *input, struct archive *output, struct archive_entry *entry)
+extract_entry(struct archive *input, struct archive *output, struct archive_entry *entry, bool *readfailed)
 {
     int r = 0;
     int ret = 0;
@@ -155,7 +162,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
         warnx_escaped("archive_write_header: %s", archive_error_string(output));
         ret = -1;
     } else if (archive_entry_size(entry) > 0) {
-        if (copy_data(input, output) != ARCHIVE_OK) {
+        if (copy_data(input, output, archive_entry_pathname(entry), readfailed) != ARCHIVE_OK) {
             ret = -1;
         }
     }
@@ -163,6 +170,7 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
     r = archive_write_finish_entry(output);
 
     if (r < ARCHIVE_WARN) {
+        warnx_escaped("archive_write_finish_entry: %s", archive_error_string(output));
         ret = -1;
     } else if (r != ARCHIVE_OK) {
         warnx_escaped("archive_write_finish_entry: %s", archive_error_string(output));
@@ -184,6 +192,8 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     int r = 0;
     int ret = 0;
     size_t nread = 0;
+    bool readfailed = false;
+    const char *msg = NULL;
     char cwd[PATH_MAX + 1];
     struct archive *input = NULL;
     struct archive *output = NULL;
@@ -225,7 +235,23 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     /* extract each archive member */
     while ((r = archive_read_next_header(input, &entry)) != ARCHIVE_EOF) {
         if (r == ARCHIVE_FATAL) {
-            /* we cannot recover here, so just take what we could extract */
+            /*
+             * We cannot recover here, so just take what we could
+             * extract.  With no entry read the caller tries librpm,
+             * which reports its own failure.  After a failed data
+             * read copy_data() has already said why.
+             */
+            if (nread > 0 && !readfailed) {
+                msg = archive_error_string(input);
+
+                /* libarchive does not always say what went wrong */
+                if (msg == NULL) {
+                    msg = _("the payload is corrupt or cut short");
+                }
+
+                warnx_escaped(_("*** unable to read the next entry in the payload: %s"), msg);
+            }
+
             ret = -1;
             break;
         }
@@ -248,7 +274,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
 
         restrict_mode(entry);
 
-        if (extract_entry(input, output, entry)) {
+        if (extract_entry(input, output, entry, &readfailed)) {
             ret = -1;
         }
     }

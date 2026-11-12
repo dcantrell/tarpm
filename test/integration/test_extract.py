@@ -396,6 +396,85 @@ class VerifyPayloadExtractSpecialChars(TestUnpackRPM):
             self.assertEqual(os.path.getsize(filepath), 100)
 
 
+class VerifyBrokenPayloadSaysWhy(TestUnpackRPM):
+    """A v4 format payload cut short or corrupt fails with one message naming the entry"""
+
+    def setUp(self):
+        super().setUp()
+
+        # libarchive reads a gzip v4 format package straight from the RPM
+        self.rpm.header += "\n%global _rpmformat 4\n"
+        self.rpm.header += "%define _binary_payload w9.gzdio\n"
+
+        self.rpm.add_installed_file(
+            "/usr/share/%s/a.txt" % NAME, rpmfluff.SourceFile("a.txt", b"a.txt\n")
+        )
+
+        # random text keeps most of the payload in this one entry
+        big = make_random_content(262144).encode("utf-8")
+        self.rpm.add_installed_file(
+            "/usr/share/%s/big" % NAME, rpmfluff.SourceFile("big", big)
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = f.read()
+        f.close()
+
+        # the lead, the signature header padded to 8, then the main header
+        offset = 96
+
+        for pad in [True, False]:
+            nindex, hsize = struct.unpack_from(">II", data, offset + 8)
+            offset += 16 + (16 * nindex) + hsize
+
+            if pad:
+                offset += (8 - (offset % 8)) % 8
+
+        half = offset + ((len(data) - offset) // 2)
+        cases = [
+            ("cut", data[:half]),
+            (
+                "zeroed",
+                data[:half] + (b"\0" * 4096) + data[half + 4096 :],
+            ),  # noqa: E203
+        ]
+
+        for name, broken in cases:
+            pkg = os.path.join(self.output_dir, name + ".rpm")
+            f = open(pkg, "wb")
+            f.write(broken)
+            f.close()
+
+            proc = subprocess.Popen(
+                [
+                    self.tarpm,
+                    "-x",
+                    "-f",
+                    pkg,
+                    "-O",
+                    os.path.join(self.output_dir, name),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = proc.communicate()
+            err = err.decode("utf-8")
+
+            self.assertEqual(proc.returncode, 1, msg=err)
+            self.assertIn("*** unable to read ", err)
+            self.assertIn("the payload", err)
+            self.assertNotIn("(null)", err)
+            self.assertEqual(len(err.splitlines()), 1, msg=err)
+
+            # a cut short gzip stream fails reading the entry it cut
+            if name == "cut":
+                s = "unable to read ./usr/share/%s/big from the payload" % NAME
+                self.assertIn(s, err)
+
+
 class VerifyFailedEntryIsExtractedOnce(TestUnpackRPM):
     """One entry that fails does not make the whole payload go in twice"""
 
