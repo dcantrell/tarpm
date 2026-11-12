@@ -9,17 +9,19 @@ tarpm is C and builds with meson and ninja.  The libraries it needs are:
 
 * librpm, for the tag tables and a few helpers
 * json-c, for reading and writing the JSON metadata
-* libarchive, for the cpio payload
-* libmagic, for working out file classes
-* libzstd, for v6 payload compression
+* libarchive 3.3.3 or later, for the cpio payload
+* libmagic, for working out file classes and MIME types
+* libzstd, for zstd payload compression
+* liblzma, for xz payload compression
 * OpenSSL, for the digests
 
-The test suite also wants CUnit, python3, python3-rpm, and rpm-build.
+The test suite also wants CUnit, python3, python3-rpm, rpm-build, and
+the rpmfluff Python module.
 The HTML manual wants doxygen, sphinx, breathe, and the Read the Docs
 sphinx theme.
 
-On Fedora the whole list is in ``osdeps/fedora/reqs.txt`` and this
-installs it::
+On Fedora the packages are listed in ``osdeps/fedora/reqs.txt`` and
+the Python modules in ``osdeps/fedora/pip.txt``.  This installs both::
 
     make instreqs
 
@@ -111,8 +113,11 @@ Style checks
 
     make flake8
     make black
+    make shellcheck
 
-Both of those only look at the Python under ``test/``.
+The first two only look at the Python under ``test/``.
+``make shellcheck`` looks at the shell scripts under ``utils/`` and
+``osdeps/``.
 
 Installing
 ==========

@@ -46,8 +46,8 @@ at any point.
     recomputes and what it leaves to you.
 
 :doc:`creating`
-    Binary packages in format 4 and format 6, source packages, and
-    dependencies.
+    Binary packages in the v4 format and the v6 format, source
+    packages, and dependencies.
 
 The tarpm(1) man page is the reference for every command line option.
 These documents explain how the pieces fit together and what to do with

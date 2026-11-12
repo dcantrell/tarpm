@@ -14,6 +14,12 @@ directory you are in.  Use ``-O`` to put it somewhere else::
 
     $ tarpm -xvf bash-5.3.9-3.fc44.x86_64.rpm -O /var/tmp/bash
 
+The NEVRA comes from the package header.  tarpm refuses to use it as
+the directory name if it holds a slash or a control character, or if
+it is ``.`` or ``..``.  A crafted package could otherwise send the
+extraction outside the directory you are in.  Use ``-O`` to extract
+such a package.
+
 Either way you end up with this::
 
     bash-5.3.9-3.fc44.x86_64/
@@ -44,16 +50,42 @@ mknod(2).  tarpm says so and exits non-zero::
 
     $ tarpm -xf devtest-1.0-1.noarch.rpm
     tarpm: archive_write_header: Can't create 'dev/testnode'
-    tarpm: archive_write_header: Can't create 'dev/testnode'
-    tarpm: unpack_archive
 
-The message comes twice because tarpm has two ways to read a payload
-and tries both.  See `The payload`_ below.
+A v6 format package prints ``tarpm: unpack_rpm_payload`` after that,
+because librpm reads its payload.  See `The payload`_ below.
 
 The JSON still gets written, so this is enough to read the metadata.
 Do not repack from a tree like that, though.  The device node is not in
 the payload tree, so tarpm takes it to be a file you deleted and leaves
 it out of the new package.  Extract as root if you mean to repack.
+
+tarpm does not restore the setuid and setgid bits on files and
+directories in ``payload``.  Device nodes get mode 0600.  The full modes
+stay in the header, and that is what tarpm writes back out when you
+create a package.
+
+tarpm does not write through a symlink.  If ``header.json`` or one of
+the other JSON or ``.txt`` files is already a symlink in the output
+directory, tarpm says so and exits non-zero.
+
+tarpm refuses a package whose header does not hold together, and exits
+non-zero.  A header with more than 65535 entries or more than 256 MiB
+of data is refused, as is one with an entry that points outside the
+header data or a string with no terminating NUL.  These are the limits
+rpm(8) uses.
+
+The file list and changelog tags have to agree with each other for
+tarpm to build the ``files`` and ``changelog`` arrays.  If they do not,
+tarpm says so and keeps those tags as they are under ``tags`` in
+``header.json``.  The rest of the metadata is still written, and tarpm
+exits non-zero::
+
+    tarpm: *** changelog arrays have mismatched lengths
+    tarpm: *** unable to build the changelog array, keeping the raw tags in header.json
+
+A bad file list can also stop the payload from unpacking, because
+librpm needs the file list for its reader.  tarpm will not create a
+package from raw tags like these.  See :doc:`metadata`.
 
 Sending pieces elsewhere
 ========================
@@ -75,6 +107,10 @@ home for all four pieces and the output directory never happens::
     $ tarpm -xf bash.rpm -L l.json -S s.json -H h.json -P ./files
     $ ls -d bash-5.3.9-3.fc44.x86_64
     ls: cannot access 'bash-5.3.9-3.fc44.x86_64': No such file or directory
+
+The tag value files such as ``description.txt`` go next to the file
+``-H`` names, since the ``file`` keys in ``header.json`` name them
+relative to it.
 
 The same goes the other way.  A ``-H`` path several directories deep
 gets those directories made for it when the file is written, so you do
@@ -143,18 +179,69 @@ The usual one is newc, which every cpio tool reads.  A package whose
 header carries Longfilesizes gets what rpm calls a stripped archive
 instead, with a magic of ``07070X`` and a file index in each entry in
 place of the name, the mode, and the timestamps, since the main header
-already holds all of that.  Every format 6 package is written that
-way, and so is a format 4 package holding a file too large to count in
-32 bits.
+already holds all of that.  Every v6 format package is written that
+way, and so is a v4 format package holding a file too large to count
+in 32 bits.
 
-So tarpm has two readers.  It hands the package to libarchive first,
-which is quick but only knows newc.  When that does not work it falls
-back to librpm, which knows both, writes the payload out to a tar file
-of its own next to the package, and unpacks that.
+So tarpm has two readers.  libarchive is quick but only knows newc.
+librpm knows both.  A header with Longfilesizes means a stripped
+archive, so tarpm hands that package straight to librpm.  Any other
+package goes to libarchive first, and to librpm only when libarchive
+cannot read a single entry.  librpm reads the entries and tarpm writes
+each one to the payload tree as it goes, the same way libarchive does.
+Nothing is written anywhere else, so ``$TMPDIR`` is not used.  Files
+that are hard links of one another in the package come out as hard
+links from either reader.
 
-That is why a failure in the payload can print the same complaint
-twice, once per reader, and why the last line names whichever reader
-gave up last.
+An entry that fails after others went in does not start the second
+reader.  A device node a regular user cannot make or a full disk is
+reported once, the rest of the payload still goes in, and tarpm exits
+non-zero.  Only a payload libarchive cannot read at all can print a
+complaint from each reader.
+
+A payload that is corrupt or cut short makes tarpm exit non-zero.
+
+Watching it work
+================
+
+``-v`` prints each stage of the extract as it happens.  Each stage
+line starts with ``>>>``.  The details of each stage are indented two
+spaces under it::
+
+    $ tarpm -xvf hello.rpm
+    >>> Extracting /home/you/hello.rpm
+      hello-1.0-1.x86_64, a v4 format binary package
+      in to /home/you/hello-1.0-1.x86_64
+    >>> Reading the lead
+      lead version 3.0 for a binary package
+    >>> Reading the signature header
+      7 tags
+    >>> Reading the main header
+      20 tags, 3 files, 1 dependency, 0 changelog entries
+    >>> Writing the metadata
+      lead.json
+      signature.json
+      header.json
+    >>> Unpacking the gzip compressed payload in to /home/you/hello-1.0-1.x86_64/payload
+      reading the cpio archive with libarchive
+      ./usr
+      ./usr/bin
+      ./usr/bin/hello
+      3 payload entries, 21 bytes installed size
+
+Each payload entry gets a line as it lands on disk, the same way
+``tar -xv`` prints them.  The line under the payload stage names the
+reader.  When libarchive cannot read the payload, another line says
+tarpm is trying librpm.  The last line counts the entries and gives the
+installed size the header records.  With ``-n`` the payload stage says
+the payload was skipped.
+
+The status lines go to standard output.  When ``-L``, ``-S``, or ``-H``
+sends JSON to standard output, the status lines go to standard error
+instead.  That keeps the JSON clean for a pipe, the same as
+``tar -cvf -`` does with its file list.  Warnings always go to standard
+error.  Paths in the status lines are escaped the same way as in the
+``-t`` output.
 
 Reading what you got
 ====================
@@ -182,7 +269,8 @@ Some things are worth knowing before you start reading values.
 Timestamps are ISO 8601 in UTC
    ``"mtime": "2026-01-16T00:00:00Z"`` rather than a time_t.  Changelog
    dates use the format the spec file uses, such as
-   ``"Fri Jan 16 2026"``.
+   ``"Fri Jan 16 2026"``.  A changelog date that is not noon UTC also
+   carries the time, such as ``"Thu Oct 06 06:48:39 UTC 2016"``.
 
 Bitfields are arrays of names
    ``flags``, ``verifyflags``, ``colors``, and the dependency

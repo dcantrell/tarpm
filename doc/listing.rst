@@ -18,6 +18,11 @@ size columns are as wide as the widest entry in the package needs them
 to be.  Paths carry a leading ``./`` because that is how they sit in the
 cpio archive.
 
+A control character in a path is printed as a ``\ooo`` octal escape and
+a backslash is printed as ``\\``, the same as ``ls -b``.  This keeps a
+crafted name from sending escape sequences to your terminal.  The paths
+``-xv`` prints and the paths in warnings are escaped the same way.
+
 tarpm always prints the long form, so ``-tf`` and ``-tvf`` give you the
 same thing.  ``-v`` is accepted for the sake of muscle memory.
 

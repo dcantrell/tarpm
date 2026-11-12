@@ -64,15 +64,17 @@ What tarpm does take care of is the mechanical part.  File digests, the
 payload digests, sizes, the cpio archive, the compression, the lead, the
 signature header, and the header region trailer are all built fresh
 every time you create a package.  You cannot get those wrong by hand
-because you do not write them by hand.
+because you do not write them by hand.  ``-D`` keeps the digests you
+already have instead, for when you want them wrong on purpose.
 
 What it does not do
 ===================
 
 tarpm will not sign a package.  Signing needs a private key, so run
 rpmsign(1) on the package after tarpm writes it.  Any signature the
-original package carried is dropped, since changing anything in the
-package invalidates it anyway.
+original package carried is dropped unless you pass ``-k``, since
+changing anything in the package invalidates it anyway.  The file signatures are the exception.
+tarpm keeps them for the files that did not change.
 
 tarpm also does not split debuginfo, strip binaries, compress man pages,
 or do any of the other things rpmbuild does to a buildroot on your
@@ -92,8 +94,8 @@ Patching a package you cannot rebuild
    sources are gone.  Extract it, change the file, repack it.
 
 Converting between RPM formats
-   ``tarpm -xf`` a v4 package and ``tarpm -cf -F 6`` it back out.  tarpm
-   drops the tags that belong to the other format and writes the ones
+   ``tarpm -xf`` a v4 format package and ``tarpm -cf -F 6`` it back
+   out.  tarpm drops the tags that belong to the other format and writes the ones
    the new format wants.  See :doc:`modifying`.
 
 Scripted package surgery
