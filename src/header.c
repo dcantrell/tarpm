@@ -769,6 +769,77 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
 }
 
 /*
+ * rpm refuses a header holding a tag it knows with a type other than
+ * the one its tag table gives.  Strings, string arrays and i18n
+ * strings count as one type, and a tag rpm does not know takes any
+ * type.  This is the rule hdrchkTagType() in rpm's lib/header.c uses.
+ */
+static bool
+rpm_takes_type(const rpmTagVal tag, const rpmTagType type)
+{
+    rpmTagType expected = rpmTagGetTagType(tag) & RPM_MASK_TYPE;
+
+    if (expected == RPM_NULL_TYPE || expected == type) {
+        return true;
+    }
+
+    if (rpmTagGetClass(tag) == RPM_STRING_CLASS && rpmTagTypeGetClass(type) == RPM_STRING_CLASS) {
+        return true;
+    }
+
+    return false;
+}
+
+/*
+ * Make sure each tag in the main header has a type rpm takes for it.
+ * The signature tag numbers overlap the main header ones, so rpm's
+ * tag table does not apply to them, and we build that header
+ * ourselves anyway.
+ *
+ * Returns 0 on success, -1 if any tag has the wrong type.
+ */
+static int
+check_tag_types(struct json_object *tags, bool is_signature)
+{
+    int r = 0;
+    size_t i = 0;
+    rpmTagType entry_type = RPM_NULL_TYPE;
+    rpmTagVal tag_number = 0;
+    struct json_object *entry = NULL;
+
+    if (tags == NULL) {
+        return -1;
+    }
+
+    if (is_signature) {
+        return 0;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        entry = json_object_array_get_idx(tags, i);
+
+        if (is_skipped_tag(entry, is_signature)) {
+            continue;
+        }
+
+        tag_number = get_tag_number(entry, is_signature);
+
+        if (tag_number == HEADER_SIGNATURES || tag_number == HEADER_IMMUTABLE) {
+            continue;
+        }
+
+        entry_type = get_entry_type(entry);
+
+        if (!rpm_takes_type(tag_number, entry_type)) {
+            warnx(_("*** the %s tag has the %s type but rpm needs %s"), report_tag_name(tag_number, is_signature), strtagtype(entry_type), strtagtype(rpmTagGetTagType(tag_number) & RPM_MASK_TYPE));
+            r = -1;
+        }
+    }
+
+    return r;
+}
+
+/*
  * Every tag we write needs a number.  get_tag_number() gives back
  * RPMTAG_NOT_FOUND for a name it does not know, which would go in to
  * the header as a tag rpm rejects.
@@ -1641,7 +1712,7 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     ntags = json_object_array_length(tags);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (check_tag_numbers(tags, is_signature) == -1 || check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1) {
+    if (check_tag_numbers(tags, is_signature) == -1 || check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1 || check_tag_types(tags, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
         json_object_put(tags);
         free(s);

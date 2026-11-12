@@ -589,8 +589,8 @@ get_tag_number(struct json_object *entry, bool signature)
         return RPMTAG_NOT_FOUND;
     }
 
+    /* check_tag_numbers() reports an entry with no name */
     if (!json_object_object_get_ex(entry, RPM_ENTRY_TAG_DESC, &tag)) {
-        warnx("json_object_object_get_ex");
         return RPMTAG_NOT_FOUND;
     }
 

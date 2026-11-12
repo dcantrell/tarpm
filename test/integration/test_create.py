@@ -1417,6 +1417,135 @@ class CreateRejectsTagEntryNotAnObject(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsBadHeaderShape(RequiresTarpm):
+    """A header.json with the wrong JSON shape is named and refused, not aborted on"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS]
+        cases = [
+            ([{"tags": tags}], "header.json does not hold a JSON object"),
+            ({"tags": {"Name": "hello"}}, "the tags in header.json are not an array"),
+            (
+                {"tags": tags, "files": {"path": "/x"}},
+                "the files in header.json are not an array",
+            ),
+            (
+                {"tags": tags, "files": ["/x"]},
+                "entry 0 of the files in header.json is not an object",
+            ),
+            (
+                {"tags": tags, "files": [None]},
+                "entry 0 of the files in header.json is not an object",
+            ),
+            (
+                {"tags": tags, "changelog": {"a": 1}},
+                "the changelog in header.json is not an array",
+            ),
+        ]
+
+        for i, (header, message) in enumerate(cases):
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i))
+
+            f = open(os.path.join(tree, "header.json"), "w")
+            json.dump(header, f)
+            f.close()
+
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg=err)
+            self.assertIn(message, err)
+            self.assertNotIn("Assertion", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateRejectsBadSignatureShape(RequiresTarpm):
+    """A signature.json with the wrong JSON shape is named and refused with -D and -k"""
+
+    def runTest(self):
+        cases = [
+            ([1, 2], "signature.json does not hold a JSON object"),
+            ({"tags": {"x": 1}}, "the tags in signature.json are not an array"),
+            (
+                {"tags": [1, None]},
+                "entry 1 of the tags in signature.json is not an object",
+            ),
+        ]
+
+        for i, (signature, message) in enumerate(cases):
+            for flag in ["-D", "-k"]:
+                name = "tree%d%s" % (i, flag)
+                tree = write_minimal_tree(os.path.join(self.output_dir, name))
+
+                f = open(os.path.join(tree, "signature.json"), "w")
+                json.dump(signature, f)
+                f.close()
+
+                pkg = os.path.join(self.output_dir, name + ".rpm")
+                rc, out, err = run_tarpm([self.tarpm, "-c", flag, "-f", pkg, tree])
+
+                self.assertEqual(rc, 1, msg="%s %s" % (flag, err))
+                self.assertIn(message, err)
+                self.assertNotIn("Assertion", err)
+                self.assertNotIn("json_object_object_get_ex", err)
+                self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateRejectsTagTypeRpmRefuses(RequiresTarpm):
+    """A known tag with a type rpm does not take for it is refused"""
+
+    def runTest(self):
+        cases = [
+            (
+                "Version",
+                "int32",
+                7,
+                "the Version tag has the int32 type but rpm needs string",
+            ),
+            (
+                "Epoch",
+                "string",
+                "1",
+                "the Epoch tag has the string type but rpm needs int32",
+            ),
+            (
+                "Buildtime",
+                "int16",
+                7,
+                "the Buildtime tag has the int16 type but rpm needs int32",
+            ),
+        ]
+
+        for i, (name, tagtype, value, message) in enumerate(cases):
+            tags = [dict(t) for t in MINIMAL_TAGS if t["tag"] != name]
+            tags.append({"tag": name, "type": tagtype, "value": value})
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg=err)
+            self.assertIn(message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
+class CreateAcceptsStringClassTypes(RequiresTarpm):
+    """rpm takes any string type for a string tag, so tarpm does too"""
+
+    def runTest(self):
+        tags = [dict(t) for t in MINIMAL_TAGS if t["tag"] != "Summary"]
+        tags.append({"tag": "Summary", "type": "string", "value": "A greeting"})
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"), tags)
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertNotIn("but rpm needs", err)
+        self.assertEqual(query_rpm(pkg, "%{summary}"), "A greeting")
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)
+
+
 class CreateReadsTagNameInAnyCase(RequiresTarpm):
     """A tag named in another case is the tag the defaults and the payload look for"""
 

@@ -1848,6 +1848,45 @@ add_signature_files(struct json_object *signature, struct json_object *header, c
 }
 
 /*
+ * header.json and signature.json have to hold a JSON object, and the
+ * "tags" array in one has to be made of objects.  json-c aborts on an
+ * array call made on anything else, and the lookups go past an entry
+ * that is not an object, so a null or a string there would be dropped
+ * without a word.  file is the name we report.  Returns 0 if the
+ * shape is right, -1 otherwise.
+ */
+static int
+check_tag_entries(struct json_object *data, const char *file)
+{
+    int r = 0;
+    size_t i = 0;
+    struct json_object *tags = NULL;
+
+    if (json_object_get_type(data) != json_type_object) {
+        warnx_escaped(_("*** %s does not hold a JSON object"), file);
+        return -1;
+    }
+
+    if (!json_object_object_get_ex(data, RPM_ENTRY_TAGS_DESC, &tags)) {
+        return 0;
+    }
+
+    if (json_object_get_type(tags) != json_type_array) {
+        warnx_escaped(_("*** the %s in %s are not an array"), RPM_ENTRY_TAGS_DESC, file);
+        return -1;
+    }
+
+    for (i = 0; i < json_object_array_length(tags); i++) {
+        if (json_object_get_type(json_object_array_get_idx(tags, i)) != json_type_object) {
+            warnx_escaped(_("*** entry %zu of the tags in %s is not an object"), i, file);
+            r = -1;
+        }
+    }
+
+    return r;
+}
+
+/*
  * Read signature.json for -D and -k, from the -S path when given and
  * from the input directory otherwise.  A missing signature.json in the input
  * directory is not an error, we compute every digest then.  Sets kept
@@ -1874,6 +1913,12 @@ read_kept_signature(const struct json_paths *paths, struct json_object **kept)
 
     if (*kept == NULL) {
         warnx_escaped(_("*** unable to read %s"), path);
+        return -1;
+    }
+
+    if (check_tag_entries(*kept, path) != 0) {
+        json_object_put(*kept);
+        *kept = NULL;
         return -1;
     }
 
@@ -2593,27 +2638,37 @@ compare_tag_value(const void *a, const void *b)
 }
 
 /*
- * Every element of the "tags" array in header.json has to be an
- * object.  The lookups go past anything else, so a null or a string
- * there would be dropped without a word.  Returns 0 if they all are,
- * -1 otherwise.
+ * The "files" key in header.json has to be an array of objects and
+ * the "changelog" key an array.  json-c aborts on an array call made
+ * on anything else, a file entry that is not an object would be
+ * skipped, and a changelog that is not an array would be dropped.
+ * Either key may be missing.  Returns 0 if the shape is right, -1
+ * otherwise.
  */
 static int
-check_tag_entries(struct json_object *header)
+check_header_keys(struct json_object *header, const char *file)
 {
     int r = 0;
     size_t i = 0;
-    struct json_object *tags = NULL;
+    struct json_object *value = NULL;
 
-    if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags) || json_object_get_type(tags) != json_type_array) {
-        return 0;
+    if (json_object_object_get_ex(header, RPM_FILES_DESC, &value)) {
+        if (json_object_get_type(value) != json_type_array) {
+            warnx_escaped(_("*** the %s in %s are not an array"), RPM_FILES_DESC, file);
+            return -1;
+        }
+
+        for (i = 0; i < json_object_array_length(value); i++) {
+            if (json_object_get_type(json_object_array_get_idx(value, i)) != json_type_object) {
+                warnx_escaped(_("*** entry %zu of the files in %s is not an object"), i, file);
+                r = -1;
+            }
+        }
     }
 
-    for (i = 0; i < json_object_array_length(tags); i++) {
-        if (json_object_get_type(json_object_array_get_idx(tags, i)) != json_type_object) {
-            warnx(_("*** entry %zu of the tags in %s is not an object"), i, OUTPUT_HEADER);
-            r = -1;
-        }
+    if (json_object_object_get_ex(header, RPM_CHANGELOG_DESC, &value) && json_object_get_type(value) != json_type_array) {
+        warnx_escaped(_("*** the %s in %s is not an array"), RPM_CHANGELOG_DESC, file);
+        r = -1;
     }
 
     return r;
@@ -2827,7 +2882,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
-    if (check_tag_entries(header) != 0) {
+    if (check_tag_entries(header, header_path) != 0 || check_header_keys(header, header_path) != 0) {
         goto create_cleanup;
     }
 
