@@ -174,9 +174,11 @@ scriptlets, are still written, since those live in the header too.
 Pair it with \f[B]\-H \-\f[R] to send \f[B]header.json\f[R] to standard
 output for a script to read.  Note this still makes the output
 directory, because \f[B]lead.json\f[R], \f[B]signature.json\f[R], and
-the tag value files have nowhere else to go.  Add \f[B]\-L \-\f[R] and
-\f[B]\-S \-\f[R] and the only thing left in there is the tag value
-files.
+the tag value files have nowhere else to go.  Send \f[B]\-L\f[R] and
+\f[B]\-S\f[R] to /dev/null as well and the only thing left in there is
+the tag value files.  Only one piece should go to standard output at a
+time, since two or three JSON documents back to back is not something
+a JSON parser reads.
 .PP
 A package carrying device nodes cannot be extracted by an ordinary
 user, because writing the nodes means calling mknod(2).  Reading the
@@ -209,7 +211,7 @@ the main header and the reserved space, and nothing else.
 .PP
 The main header carries the payload digests the format calls for.  A
 v4 format package gets Payloadsha256, Payloadsha256alt, and the
-Payloaddigestalgo tag naming the algorithm.  A v6 format package gets
+Payloadsha256algo tag naming the algorithm.  A v6 format package gets
 the Rpmformat tag, the Payloadsize and Payloadsizealt tags, and the
 Payloadsha256, Payloadsha512, and Payloadsha3_256 digests along with
 the alt form of each.  The alt digests cover the payload with the
@@ -218,10 +220,15 @@ in the package.  The tags the other format owns are taken out, so
 writing a package you extracted from one format as the other leaves
 nothing behind.
 .PP
+rpm renamed three of these tags in 6.0.0.  An older rpm calls
+Payloadsha256, Payloadsha256algo, and Payloadsha256alt by the names
+Payloaddigest, Payloaddigestalgo, and Payloaddigestalt.  The numbers
+did not change and \f[B]tarpm\f[R] takes either spelling.
+.PP
 Each format has main header tags the other one never uses.  tarpm
 takes out the ones that do not belong, so you do not have to edit
 \f[B]header.json\f[R] yourself before switching formats.  The v4
-format tags are Payloaddigestalgo, Fileclass, Classdict, Size, Filesizes,
+format tags are Payloadsha256algo, Fileclass, Classdict, Size, Filesizes,
 Archivesize, Filesignatures, and Filesignaturelength.  The v6 format
 tags are Rpmformat, Payloadsize, Payloadsizealt, Filemimeindex, Mimedict,
 Sourcenevr, Payloadsha512, Payloadsha512alt, Payloadsha3_256, and
@@ -317,8 +324,9 @@ Copy the package signatures in \f[B]signature.json\f[R] in to the
 package.  These are the Dsa, Rsa, Openpgp, Pgp, Gpg, and Pgp5 tags.
 A tag with no value is left out.  If a tag appears more than once,
 \f[B]tarpm\f[R] warns and keeps the first.  Pgp, Gpg, and Pgp5 are
-left out of a v6 format package with a warning.  The values are
-copied as they are and not checked.  The room they take comes out of
+left out of a v6 format package with a warning.  Openpgp must be an
+array of non\-empty strings and the others must be base64 strings.
+The signatures themselves are not checked.  The room they take comes out of
 the reserved space in the signature header, the same as rpmsign(1).  A
 DIRECTORY with no
 \f[B]signature.json\f[R] gets no package signatures.
@@ -366,11 +374,11 @@ we write.
 .TP
 \f[B]signature.json\f[R]
 The RPM signature.
-Marked with a magic number followed by the number of records and the
-size of the data area. Information is stored in key=value manner but
-value may be an array. The contents of the RPM signature is read\-only
-as \f[B]tarpm\f[R] will recalculate all of the values when creating an
-RPM.
+It holds the magic number and the reserved bytes of the binary header
+and a \f[B]tags\f[R] array.  Information is stored in key=value manner
+but value may be an array.  The contents of the RPM signature is
+read\-only as \f[B]tarpm\f[R] will recalculate all of the values when
+creating an RPM, unless \f[B]\-D\f[R] or \f[B]\-k\f[R] is given.
 .RS
 .PP
 The tags in \f[B]signature.json\f[R] are presented for informational
@@ -409,12 +417,14 @@ create gets them back in its signature header, in either format.
 The RPM header.
 Contains the metadata that most users are expecting to find. Things
 from the spec file, changelog information, dependency information, and
-so on. It is also marked with a magic number followed by the number of
-records and the size of the data area. Information is stored in
-key=value manner but value may be an array.
+so on.  It holds the magic number and the reserved bytes of the binary
+header and the \f[B]tags\f[R], \f[B]dependencies\f[R],
+\f[B]files\f[R], and \f[B]changelog\f[R] keys.  Information is stored
+in key=value manner but value may be an array.
 .PP
-The contents of \f[B]lead.json\f[R] and \f[B]signature.json\f[R] files
-cannot be modified, but might be interesting to look at or use for
+Editing \f[B]lead.json\f[R] changes nothing.  Editing
+\f[B]signature.json\f[R] only changes the package with \f[B]\-D\f[R] or
+\f[B]\-k\f[R].  Otherwise both files are there to look at or use for
 verification purposes.
 .PP
 The contents of the \f[B]header.json\f[R] file can be modified.
@@ -468,45 +478,19 @@ package with a warning. The value for each key is an
 array of dicts where each array entry is a dict consisting of at least
 name and optionally comparison, version, and sense_flags. The
 structure looks like this:
- :
-\(lqdependencies\(rq: {
 .IP
 .EX
- \(dqDEP_TYPE\(dq: [
+\(dqdependencies\(dq: {
+  \(dqDEP_TYPE\(dq: [
+    {
+      \(dqname\(dq: \(dqVALUE\(dq,
+      \(dqcomparison\(dq: \(dqVALUE\(dq,
+      \(dqversion\(dq: \(dqVALUE\(dq,
+      \(dqsense_flags\(dq: [ \(dqFLAG\(dq, ... ]
+    }, ...
+  ]
+}
 .EE
-.IP
-.EX
-     {
-.EE
-.IP
-.EX
-         \(dqname\(dq: \(dqVALUE\(dq,
-.EE
-.IP
-.EX
-         \(dqcomparison\(dq: \(dqVALUE\(dq,
-.EE
-.IP
-.EX
-         \(dqversion\(dq: \(dqVALUE\(dq,
-.EE
-.IP
-.EX
-         \(dqsense_flags\(dq: [
-.EE
-.IP
-.EX
-             \(dqFLAG\(dq, ...
-.EE
-.IP
-.EX
-         ]
-.EE
-.IP
-.EX
-     }, ...
-.EE
-} :
 .PP
 All dependencies must have at least a name. This can be given
 explicitly in a spec file and correspond to a file path or a package
@@ -833,14 +817,16 @@ the file list together and reconciles them:
 Files you removed
 An entry naming a file that is no longer in the payload tree is left
 out of the new package. A %ghost file is never in the payload to begin
-with, so those are always kept.
+with, so those are always kept.  \f[B]tarpm\f[R] says so on standard
+error, or in the status lines with \f[B]\-v\f[R].
 .TP
 Files you added
 A file in the payload tree that the file list does not name gets an
 entry of its own, filled in from the file itself. The directories
 leading to a file the list already names do not get entries, since the
 payload tree needs those to hold the files under them but the package
-never owned them.
+never owned them.  \f[B]tarpm\f[R] says so on standard error, or in the
+status lines with \f[B]\-v\f[R].
 .TP
 Files you changed
 The type, the size, the symlink target, the device number, the digest,
