@@ -879,6 +879,56 @@ string_or_missing(struct json_object *entry, const char *key)
 }
 
 /*
+ * A comparison has to be one we know and needs a version to compare
+ * against, and a version needs a comparison.  Otherwise the flag word
+ * loses the comparison and rpm reads the version on its own.  key is
+ * the dependency type for the message.  Returns 0 on success, -1 if
+ * the pair does not go together.
+ */
+static int
+check_comparison(struct json_object *entry, const size_t index, const char *key)
+{
+    const char *name = NULL;
+    const char *comparison = NULL;
+    const char *version = NULL;
+    struct json_object *obj = NULL;
+
+    if (json_object_object_get_ex(entry, RPM_DEPENDENCY_NAME_DESC, &obj)) {
+        name = json_object_get_string(obj);
+    }
+
+    if (json_object_object_get_ex(entry, RPM_DEPENDENCY_COMPARISON_DESC, &obj)) {
+        comparison = json_object_get_string(obj);
+    }
+
+    if (json_object_object_get_ex(entry, RPM_DEPENDENCY_VERSION_DESC, &obj)) {
+        version = json_object_get_string(obj);
+    }
+
+    /* an empty version is the same as none */
+    if (version != NULL && *version == '\0') {
+        version = NULL;
+    }
+
+    if (comparison != NULL && str_to_comparison(comparison) == 0) {
+        warnx_escaped(_("*** entry %zu (%s) in %s has the comparison \"%s\", which is not one of %s %s %s %s %s"), index, str_or_empty(name), key, comparison, COMPARISON_LT, COMPARISON_LE, COMPARISON_EQ, COMPARISON_GE, COMPARISON_GT);
+        return -1;
+    }
+
+    if (comparison != NULL && version == NULL) {
+        warnx_escaped(_("*** entry %zu (%s) in %s has a comparison but no version"), index, str_or_empty(name), key);
+        return -1;
+    }
+
+    if (comparison == NULL && version != NULL) {
+        warnx_escaped(_("*** entry %zu (%s) in %s has a version but no comparison"), index, str_or_empty(name), key);
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
  * Make sure the dependencies object from header.json has the shape
  * we read it with.  Each dependency type holds an array of objects.
  * The name, comparison and version are strings and the sense flags
@@ -934,6 +984,10 @@ check_dependencies(struct json_object *dependencies)
 
             if (!string_or_missing(entry, RPM_DEPENDENCY_NAME_DESC) || !string_or_missing(entry, RPM_DEPENDENCY_COMPARISON_DESC) || !string_or_missing(entry, RPM_DEPENDENCY_VERSION_DESC)) {
                 warnx(_("*** entry %zu in %s has a %s, %s or %s that is not a string"), j, dep_types[i].key, RPM_DEPENDENCY_NAME_DESC, RPM_DEPENDENCY_COMPARISON_DESC, RPM_DEPENDENCY_VERSION_DESC);
+                return -1;
+            }
+
+            if (check_comparison(entry, j, dep_types[i].key) != 0) {
                 return -1;
             }
 

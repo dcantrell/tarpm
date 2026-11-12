@@ -1417,6 +1417,143 @@ class CreateRejectsTagEntryNotAnObject(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class FileListTree(RequiresTarpm):
+    """
+    Class for tests that write a "files" array by hand.  The tree holds
+    /usr/README and header.json lists the entries the test gives.
+    """
+
+    def tree(self, name, files, tags=MINIMAL_TAGS):
+        tree = write_minimal_tree(os.path.join(self.output_dir, name), tags)
+        os.makedirs(os.path.join(tree, "payload", "usr"))
+
+        f = open(os.path.join(tree, "payload", "usr", "README"), "w")
+        f.write("hello\n")
+        f.close()
+
+        edit_header(
+            os.path.join(tree, "header.json"), lambda h: h.update({"files": files})
+        )
+
+        return tree
+
+    def readme(self, **values):
+        entry = {
+            "path": "/usr/README",
+            "type": "file",
+            "mode": "0644",
+            "user": "root",
+            "group": "root",
+            "mtime": "2026-01-16T00:00:00Z",
+        }
+        entry.update(values)
+
+        return entry
+
+
+class CreateRejectsBadFileValues(FileListTree):
+    """A file entry value tarpm would have to change is named and refused"""
+
+    def runTest(self):
+        cases = [
+            ("mode", "abc", "has a mode that is not an octal string"),
+            ("mode", "99999", "has a mode that is not an octal string"),
+            ("mode", "10000", "has a mode that is not an octal string"),
+            ("mode", "0755x", "has a mode that is not an octal string"),
+            ("mode", "", "has a mode that is not an octal string"),
+            ("mode", 755, "has a mode that is not an octal string"),
+            ("mtime", "yesterday", "has an mtime that is not a time"),
+            ("mtime", "2026-01-16T00:00:00Zjunk", "has an mtime that is not a time"),
+            ("mtime", "1969-12-31T23:59:59Z", "has an mtime that is not a time"),
+            ("mtime", "2106-02-07T06:28:16Z", "has an mtime that is not a time"),
+            ("mtime", 0, "has an mtime that is not a time"),
+            ("user", 0, "has a user that is not a string"),
+            ("group", ["root"], "has a group that is not a string"),
+        ]
+
+        for i, (key, value, message) in enumerate(cases):
+            tree = self.tree("tree%d" % i, [self.readme(**{key: value})])
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg="%s %r %s" % (key, value, err))
+            self.assertIn("/usr/README %s" % message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+        # an entry with no path is named by its place in the array
+        tree = self.tree("nopath", [{"type": "file", "mode": "abc"}])
+        pkg = os.path.join(self.output_dir, "nopath.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn("entry 0 of the files in header.json has a mode", err)
+
+
+class CreateAcceptsFileValueLimits(FileListTree):
+    """The ends of the mode and mtime ranges still go in"""
+
+    def runTest(self):
+        cases = [
+            ("7777", "1970-01-01T00:00:00Z", "0"),
+            ("0", "2106-02-07T06:28:15Z", "4294967295"),
+        ]
+
+        for i, (mode, mtime, seconds) in enumerate(cases):
+            tree = self.tree("tree%d" % i, [self.readme(mode=mode, mtime=mtime)])
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 0, msg=err)
+            self.assertEqual(query_rpm(pkg, "[%{filemtimes}]"), seconds)
+            self.assertEqual(
+                int(query_rpm(pkg, "[%{filemodes}]")) & 0o7777, int(mode, 8)
+            )
+
+        # a null counts as a missing key, so the payload fills it in
+        tree = self.tree("null", [self.readme(user=None, mtime=None)])
+        pkg = os.path.join(self.output_dir, "null.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertEqual(rc, 0, msg=err)
+
+
+class CreateRejectsRepeatedPath(FileListTree):
+    """A path listed twice in the files array is refused"""
+
+    def runTest(self):
+        tree = self.tree("tree", [self.readme(), self.readme()])
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn("/usr/README is in the files array more than once", err)
+        self.assertFalse(os.path.isfile(pkg))
+
+        # entries with no path name nothing, so two of them are fine
+        tree = self.tree("nopath", [self.readme(), {"path": None}, {"path": None}])
+        pkg = os.path.join(self.output_dir, "nopath.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        self.assertNotIn("more than once", err)
+
+
+class CreateRejectsEmptyNevr(RequiresTarpm):
+    """An empty Name, Version, or Release is refused"""
+
+    def runTest(self):
+        for i, name in enumerate(["Name", "Version", "Release"]):
+            tags = [dict(t) for t in MINIMAL_TAGS]
+
+            for tag in tags:
+                if tag["tag"] == name:
+                    tag["value"] = ""
+
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i), tags)
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg=err)
+            self.assertIn("Name, Version, and Release cannot be empty", err)
+            self.assertFalse(os.path.isfile(pkg))
+
+
 class CreateRejectsBadHeaderShape(RequiresTarpm):
     """A header.json with the wrong JSON shape is named and refused, not aborted on"""
 
@@ -1711,6 +1848,7 @@ class CreateRejectsBadTranslations(TranslatedTree):
             ([LOCALES], {"C": "a", "es": "b"}, 'names the locale "es"'),
             ([], {"C": "a"}, "has no Headeri18ntable tag"),
             ([LOCALES], {}, "has no strings"),
+            ([LOCALES], {"de": "b"}, 'no string for "C", the first locale'),
             ([LOCALES], {"C": 7}, 'value for locale "C" that is not a string'),
             ([LOCALES], {"C": None}, 'value for locale "C" that is not a string'),
         ]
@@ -2179,11 +2317,71 @@ class CreateRejectsBadDependencies(RequiresTarpm):
             self.assertFalse(os.path.isfile(pkg))
 
 
+class CreateRejectsBadComparison(RequiresTarpm):
+    """A comparison tarpm does not know, or one without a version, is turned away"""
+
+    def runTest(self):
+        cases = [
+            (
+                {"name": "sh", "comparison": "=>", "version": "1"},
+                'entry 0 (sh) in requires has the comparison "=>"',
+            ),
+            (
+                {"name": "sh", "comparison": "", "version": "1"},
+                'entry 0 (sh) in requires has the comparison ""',
+            ),
+            (
+                {"name": "sh", "comparison": ">="},
+                "entry 0 (sh) in requires has a comparison but no version",
+            ),
+            (
+                {"name": "sh", "comparison": ">=", "version": ""},
+                "entry 0 (sh) in requires has a comparison but no version",
+            ),
+            (
+                {"name": "sh", "version": "1"},
+                "entry 0 (sh) in requires has a version but no comparison",
+            ),
+        ]
+
+        for i, (entry, message) in enumerate(cases):
+            tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i))
+            edit_header(
+                os.path.join(tree, "header.json"),
+                lambda h: h.update({"dependencies": {"requires": [entry]}}),
+            )
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg=err)
+            self.assertIn(message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+        # every comparison we write on extract still goes in
+        for i, comparison in enumerate(["<", "<=", "=", ">=", ">"]):
+            tree = write_minimal_tree(os.path.join(self.output_dir, "good%d" % i))
+            entry = {"name": "sh", "comparison": comparison, "version": "1"}
+            edit_header(
+                os.path.join(tree, "header.json"),
+                lambda h: h.update({"dependencies": {"requires": [entry]}}),
+            )
+            pkg = os.path.join(self.output_dir, "good%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 0, msg=err)
+            self.assertIn(
+                "sh %s 1" % comparison,
+                query_rpm(
+                    pkg, "[%{requirename} %{requireflags:depflags} %{requireversion}\n]"
+                ).splitlines(),
+            )
+
+
 class CreateRejectsBadChangelogText(RequiresTarpm):
     """Changelog text lines that are not strings are turned away"""
 
     def runTest(self):
-        for i, text in enumerate([[None], ["one", 2]]):
+        for i, text in enumerate([[None], ["one", 2], "- fixed it", {"a": 1}]):
             tree = write_minimal_tree(os.path.join(self.output_dir, "tree%d" % i))
             changelog = [
                 {

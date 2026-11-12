@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <limits.h>
 #include <ctype.h>
+#include <time.h>
 #include <json_object.h>
 #include <rpm/header.h>
 #include <rpm/rpmbase64.h>
@@ -2637,12 +2638,120 @@ compare_tag_value(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
+/* True if s is an octal string of permission bits from 0 to 07777 */
+static bool
+valid_mode_string(const char *s)
+{
+    long mode = 0;
+    const char *c = NULL;
+
+    if (s == NULL || *s == '\0') {
+        return false;
+    }
+
+    for (c = s; *c != '\0'; c++) {
+        if (*c < '0' || *c > '7') {
+            return false;
+        }
+    }
+
+    errno = 0;
+    mode = strtol(s, NULL, 8);
+
+    if (errno != 0 || mode > 07777) {
+        return false;
+    }
+
+    return true;
+}
+
+/* True if s is an ISO 8601 time in UTC that fits in a 32-bit mtime */
+static bool
+valid_mtime_string(const char *s)
+{
+    int64_t t = 0;
+    const char *end = NULL;
+    struct tm tm_info;
+
+    if (s == NULL) {
+        return false;
+    }
+
+    memset(&tm_info, 0, sizeof(tm_info));
+    end = strptime(s, RPM_FILE_MTIME_FORMAT, &tm_info);
+
+    if (end == NULL || *end != '\0') {
+        return false;
+    }
+
+    t = (int64_t) timegm(&tm_info);
+
+    if (t < 0 || t > UINT32_MAX) {
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * Check the "files" entry values we would otherwise turn in to
+ * something else without a word.  The mode is an octal string of the
+ * permission bits, the mtime an ISO 8601 time from 1970 on that fits
+ * in 32 bits, and the user and group are strings.  A null counts as a
+ * missing key.  Returns 0 if they are fine, -1 otherwise.
+ */
+static int
+check_file_entry(struct json_object *entry, const size_t index, const char *file)
+{
+    int r = 0;
+    size_t i = 0;
+    char *name = NULL;
+    const char *path = NULL;
+    const char *owners[] = { RPM_FILE_USER_DESC, RPM_FILE_GROUP_DESC };
+    struct json_object *value = NULL;
+
+    if (json_object_object_get_ex(entry, RPM_FILE_PATH_DESC, &value)) {
+        path = json_object_get_string(value);
+    }
+
+    if (path != NULL && *path != '\0') {
+        name = xstrdup(path);
+    } else {
+        xasprintf(&name, _("entry %zu of the files in %s"), index, file);
+    }
+
+    if (json_object_object_get_ex(entry, RPM_FILE_MODE_DESC, &value) && value != NULL) {
+        if (json_object_get_type(value) != json_type_string || !valid_mode_string(json_object_get_string(value))) {
+            warnx_escaped(_("*** %s has a mode that is not an octal string from 0000 to 7777"), name);
+            r = -1;
+        }
+    }
+
+    if (json_object_object_get_ex(entry, RPM_FILE_MTIME_DESC, &value) && value != NULL) {
+        if (json_object_get_type(value) != json_type_string || !valid_mtime_string(json_object_get_string(value))) {
+            warnx_escaped(_("*** %s has an mtime that is not a time such as 2026-01-16T00:00:00Z from 1970 to 2106"), name);
+            r = -1;
+        }
+    }
+
+    for (i = 0; i < sizeof(owners) / sizeof(owners[0]); i++) {
+        if (json_object_object_get_ex(entry, owners[i], &value) && value != NULL && json_object_get_type(value) != json_type_string) {
+            warnx_escaped(_("*** %s has a %s that is not a string"), name, owners[i]);
+            r = -1;
+        }
+    }
+
+    free(name);
+    return r;
+}
+
 /*
  * The "files" key in header.json has to be an array of objects and
  * the "changelog" key an array.  json-c aborts on an array call made
  * on anything else, a file entry that is not an object would be
  * skipped, and a changelog that is not an array would be dropped.
- * Either key may be missing.  Returns 0 if the shape is right, -1
+ * Either key may be missing.  check_file_entry() looks at the values
+ * in each file entry.  Returns 0 if the shape is right, -1
  * otherwise.
  */
 static int
@@ -2661,6 +2770,8 @@ check_header_keys(struct json_object *header, const char *file)
         for (i = 0; i < json_object_array_length(value); i++) {
             if (json_object_get_type(json_object_array_get_idx(value, i)) != json_type_object) {
                 warnx_escaped(_("*** entry %zu of the files in %s is not an object"), i, file);
+                r = -1;
+            } else if (check_file_entry(json_object_array_get_idx(value, i), i, file) != 0) {
                 r = -1;
             }
         }
@@ -2730,8 +2841,9 @@ warn_duplicate_tags(struct json_object *header)
  * Check that every path in the "files" array stays in the payload
  * tree.  The path is joined to payload_dir to find the file, so ".."
  * or a symlinked directory in the tree would let a crafted header.json
- * put any file we can read in to the package.  Every bad path gets a
- * warning.  Returns 0 if all of them are fine, -1 otherwise.
+ * put any file we can read in to the package.  A path listed twice
+ * would go in to the package twice.  Every bad path gets a warning.
+ * Returns 0 if all of them are fine, -1 otherwise.
  */
 static int
 check_payload_paths(struct json_object *header, const char *payload_dir)
@@ -2742,6 +2854,7 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
     struct json_object *files = NULL;
     struct json_object *value = NULL;
     struct json_object *seen = NULL;
+    struct json_object *listed = NULL;
 
     if (!json_object_object_get_ex(header, RPM_FILES_DESC, &files) || json_object_get_type(files) != json_type_array) {
         return 0;
@@ -2749,6 +2862,7 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
 
     /* the files share their directories, so we check each of those once */
     seen = json_object_new_object();
+    listed = json_object_new_object();
 
     for (i = 0; i < json_object_array_length(files); i++) {
         if (!json_object_object_get_ex(json_object_array_get_idx(files, i), RPM_FILE_PATH_DESC, &value)) {
@@ -2765,8 +2879,21 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
             warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
             r = -1;
         }
+
+        /* an empty path names no file, so it cannot be a repeat */
+        if (*path == '\0') {
+            continue;
+        }
+
+        if (json_object_object_get_ex(listed, path, NULL)) {
+            warnx_escaped(_("*** %s is in the files array more than once"), path);
+            r = -1;
+        } else {
+            json_object_object_add(listed, path, NULL);
+        }
     }
 
+    json_object_put(listed);
     json_object_put(seen);
     return r;
 }
@@ -2890,6 +3017,11 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
     warn_duplicate_tags(header);
 
+    /* a tree holding raw file list tags hears about that before anything else */
+    if (check_raw_tags(header) != 0) {
+        goto create_cleanup;
+    }
+
     /* everything below reads the dependencies, so check them first */
     if (!json_object_object_get_ex(header, RPM_DEPENDENCIES_DESC, &dependencies)) {
         dependencies = NULL;
@@ -2907,10 +3039,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     warn_nevr_slash(header);
-
-    if (check_raw_tags(header) != 0) {
-        goto create_cleanup;
-    }
 
     /* pick up the files added to the payload tree */
     if (json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {

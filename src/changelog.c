@@ -216,9 +216,9 @@ split_changelog_text(const char *text)
 }
 
 /*
- * Join JSON array of strings into text with newlines.
- * Returns allocated string or NULL if a line is not a string.  Caller
- * must free.
+ * Join JSON array of strings into text with newlines.  A null is
+ * empty text.  Returns allocated string or NULL if lines is not an
+ * array or a line is not a string.  Caller must free.
  */
 static char *
 join_changelog_text(struct json_object *lines)
@@ -231,8 +231,13 @@ join_changelog_text(struct json_object *lines)
     struct json_object *line = NULL;
     const char *ls = NULL;
 
-    if (lines == NULL || json_object_get_type(lines) != json_type_array) {
+    if (lines == NULL) {
         return xstrdup("");
+    }
+
+    /* a bare string would otherwise become empty text */
+    if (json_object_get_type(lines) != json_type_array) {
+        return NULL;
     }
 
     len = json_object_array_length(lines);

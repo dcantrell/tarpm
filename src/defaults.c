@@ -266,6 +266,8 @@ apply_header_defaults(struct json_object *header, const int format)
 {
     char *buf = NULL;
     const char *name = NULL;
+    const char *version = NULL;
+    const char *release = NULL;
     const char *arch = NULL;
     const char *compressor = NULL;
     bool source_package = false;
@@ -290,9 +292,17 @@ apply_header_defaults(struct json_object *header, const int format)
     }
 
     name = get_tag_value(tags, RPMTAG_NAME, false);
+    version = get_tag_value(tags, RPMTAG_VERSION, false);
+    release = get_tag_value(tags, RPMTAG_RELEASE, false);
 
-    if (name == NULL || get_tag_value(tags, RPMTAG_VERSION, false) == NULL || get_tag_value(tags, RPMTAG_RELEASE, false) == NULL) {
+    if (name == NULL || version == NULL || release == NULL) {
         warnx(_("*** missing %s, %s, or %s in header data"), rpmTagGetName(RPMTAG_NAME), rpmTagGetName(RPMTAG_VERSION), rpmTagGetName(RPMTAG_RELEASE));
+        return -1;
+    }
+
+    /* rpm takes an empty one but the package has no usable NEVRA */
+    if (*name == '\0' || *version == '\0' || *release == '\0') {
+        warnx(_("*** %s, %s, and %s cannot be empty"), rpmTagGetName(RPMTAG_NAME), rpmTagGetName(RPMTAG_VERSION), rpmTagGetName(RPMTAG_RELEASE));
         return -1;
     }
 

@@ -341,8 +341,9 @@ i18n_table_has(struct json_object *table, const size_t index, const char *locale
  * Gather the translations of an i18n string tag.  key is an object of
  * locale to string, or to the name of a file holding the string.  The
  * strings go in the order of Headeri18ntable, one after another, which
- * is how they sit in the header.  A locale in the table with no string
- * here gets an empty one if a later locale has a string.  Returns 0 on
+ * is how they sit in the header.  The first locale in the table needs
+ * a string.  Any other locale in the table with no string here gets
+ * an empty one if a later locale has a string.  Returns 0 on
  * success, -1 on failure.
  */
 static int
@@ -394,6 +395,14 @@ read_i18n_strings(struct json_object *tags, const rpmTagVal tag_number, struct j
 
     if (count == 0) {
         warnx(_("*** the %s tag has no strings"), name);
+        return -1;
+    }
+
+    /* rpm falls back to the first locale, so an empty string there is all most users see */
+    locale = json_object_get_string(json_object_array_get_idx(table, 0));
+
+    if (locale == NULL || !json_object_object_get_ex(key, locale, NULL)) {
+        warnx(_("*** the %s tag has no string for \"%s\", the first locale in %s"), name, str_or_empty(locale), rpmTagGetName(RPMTAG_HEADERI18NTABLE));
         return -1;
     }
 
