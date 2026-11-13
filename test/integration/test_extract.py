@@ -433,16 +433,25 @@ class VerifyBrokenPayloadSaysWhy(TestUnpackRPM):
             if pad:
                 offset += (8 - (offset % 8)) % 8
 
+        # damage the cpio archive itself and wrap it in a good gzip stream
+        head = data[:offset]
+        cpio = gzip.decompress(data[offset:])
+        trailer = cpio.rfind(b"070701")
+        self.assertGreater(trailer, 0)
+
+        # name, the broken package, and whether the message names big
         half = offset + ((len(data) - offset) // 2)
         cases = [
-            ("cut", data[:half]),
+            ("cut", data[:half], True),
+            ("short", head + gzip.compress(cpio[: trailer // 2]), True),
             (
-                "zeroed",
-                data[:half] + (b"\0" * 4096) + data[half + 4096 :],
-            ),  # noqa: E203
+                "junk",
+                head + gzip.compress(cpio[:trailer] + b"\xff" * (len(cpio) - trailer)),
+                False,
+            ),
         ]
 
-        for name, broken in cases:
+        for name, broken, named in cases:
             pkg = os.path.join(self.output_dir, name + ".rpm")
             f = open(pkg, "wb")
             f.write(broken)
@@ -469,8 +478,8 @@ class VerifyBrokenPayloadSaysWhy(TestUnpackRPM):
             self.assertNotIn("(null)", err)
             self.assertEqual(len(err.splitlines()), 1, msg=err)
 
-            # a cut short gzip stream fails reading the entry it cut
-            if name == "cut":
+            # a payload cut short fails reading the entry it cut
+            if named:
                 s = "unable to read ./usr/share/%s/big from the payload" % NAME
                 self.assertIn(s, err)
 

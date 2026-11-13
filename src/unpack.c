@@ -29,8 +29,27 @@
 #include "tarpm.h"
 
 /* Local prototypes */
+static const char *read_error(struct archive *);
 static int copy_data(struct archive *, struct archive *, const char *, bool *);
 static int extract_entry(struct archive *, struct archive *, struct archive_entry *, bool *);
+
+/*
+ * Say why reading the payload failed.  libarchive does not always set
+ * an error string, so we fall back to our own.
+ */
+static const char *
+read_error(struct archive *ar)
+{
+    const char *msg = NULL;
+
+    msg = archive_error_string(ar);
+
+    if (msg == NULL) {
+        msg = _("the payload is corrupt or cut short");
+    }
+
+    return msg;
+}
 
 /*
  * From:
@@ -50,7 +69,7 @@ copy_data(struct archive *ar, struct archive *aw, const char *path, bool *readfa
     while ((r = archive_read_data_block(ar, &buf, &s, &o)) != ARCHIVE_EOF) {
         if (r != ARCHIVE_OK) {
             /* a payload cut short or corrupt lands here */
-            warnx_escaped(_("*** unable to read %s from the payload: %s"), str_or_empty(path), archive_error_string(ar));
+            warnx_escaped(_("*** unable to read %s from the payload: %s"), str_or_empty(path), read_error(ar));
             *readfailed = true;
             return r;
         }
@@ -193,7 +212,6 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
     int ret = 0;
     size_t nread = 0;
     bool readfailed = false;
-    const char *msg = NULL;
     char cwd[PATH_MAX + 1];
     struct archive *input = NULL;
     struct archive *output = NULL;
@@ -242,14 +260,7 @@ unpack_archive(const char *archive, const char *dest, const bool verbose)
              * read copy_data() has already said why.
              */
             if (nread > 0 && !readfailed) {
-                msg = archive_error_string(input);
-
-                /* libarchive does not always say what went wrong */
-                if (msg == NULL) {
-                    msg = _("the payload is corrupt or cut short");
-                }
-
-                warnx_escaped(_("*** unable to read the next entry in the payload: %s"), msg);
+                warnx_escaped(_("*** unable to read the next entry in the payload: %s"), read_error(input));
             }
 
             ret = -1;
