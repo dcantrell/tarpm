@@ -268,7 +268,8 @@ human_size(const uint64_t bytes, char *buf, const size_t len)
 
     value /= 1024.0;
 
-    while (value >= 1024.0 && i < (sizeof(units) / sizeof(units[0])) - 1) {
+    /* %.1f rounds 1023.95 up to 1024.0, so that already goes in the next unit */
+    while (value >= 1023.95 && i < (sizeof(units) / sizeof(units[0])) - 1) {
         value /= 1024.0;
         i++;
     }

@@ -2838,6 +2838,46 @@ warn_duplicate_tags(struct json_object *header)
 }
 
 /*
+ * Returns true if path has an empty or "." component, such as
+ * "/usr//bin", "/usr/./bin", or "/usr/bin/".  One leading slash is
+ * fine.
+ */
+static bool
+odd_component(const char *path)
+{
+    bool r = false;
+    size_t len = 0;
+    const char *start = path;
+    const char *end = NULL;
+
+    if (*start == '/') {
+        start++;
+    }
+
+    while (!r) {
+        end = strchr(start, '/');
+
+        if (end == NULL) {
+            end = start + strlen(start);
+        }
+
+        len = end - start;
+
+        if (len == 0 || (len == 1 && *start == '.')) {
+            r = true;
+        }
+
+        if (*end == '\0') {
+            break;
+        }
+
+        start = end + 1;
+    }
+
+    return r;
+}
+
+/*
  * Check that every path in the "files" array stays in the payload
  * tree.  The path is joined to payload_dir to find the file, so ".."
  * or a symlinked directory in the tree would let a crafted header.json
@@ -2875,14 +2915,27 @@ check_payload_paths(struct json_object *header, const char *payload_dir)
             continue;
         }
 
+        /* the root of the payload tree is in the filesystem package */
+        if (!strcmp(path, "/")) {
+            continue;
+        }
+
+        /* these name a file but not the way the header would spell it */
+        if (*path == '\0') {
+            warnx(_("*** entry %zu of the files in %s has an empty path"), i, OUTPUT_HEADER);
+            r = -1;
+            continue;
+        }
+
+        if (odd_component(path)) {
+            warnx_escaped(_("*** %s has an empty or \".\" component in it"), path);
+            r = -1;
+            continue;
+        }
+
         if (!path_beneath_seen(payload_dir, path, true, seen)) {
             warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), path);
             r = -1;
-        }
-
-        /* an empty path names no file, so it cannot be a repeat */
-        if (*path == '\0') {
-            continue;
         }
 
         if (json_object_object_get_ex(listed, path, NULL)) {

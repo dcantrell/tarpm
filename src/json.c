@@ -380,6 +380,11 @@ write_json_file(struct json_object *data, const char *path)
         return -1;
     }
 
+#ifdef JSON_C_TO_STRING_NOSLASHESCAPE
+    /* paths read better as /etc/gai.conf than \/etc\/gai.conf */
+    flags |= JSON_C_TO_STRING_NOSLASHESCAPE;
+#endif
+
     js = json_object_to_json_string_ext(data, flags);
 
     if (js == NULL) {

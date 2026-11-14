@@ -240,6 +240,18 @@ test_human_size(void)
     TARPM_ASSERT_STRING_EQUAL(buf, "1.5 KiB");
     human_size(5 * 1024 * 1024, buf, sizeof(buf));
     TARPM_ASSERT_STRING_EQUAL(buf, "5.0 MiB");
+
+    /* a value that rounds up to 1024.0 takes the next unit */
+    human_size(1048524, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1023.9 KiB");
+    human_size(1048525, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.0 MiB");
+    human_size(1048575, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.0 MiB");
+    human_size(1073689395ULL, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1023.9 MiB");
+    human_size(1073689396ULL, buf, sizeof(buf));
+    TARPM_ASSERT_STRING_EQUAL(buf, "1.0 GiB");
     human_size(UINT64_MAX, buf, sizeof(buf));
     TARPM_ASSERT_STRING_EQUAL(buf, "16777216.0 TiB");
 

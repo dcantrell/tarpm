@@ -48,6 +48,11 @@ test_write_json_file(void)
 {
     char tmpfile[] = "/tmp/tarpm-test-json-XXXXXX";
     int fd = -1;
+#ifdef JSON_C_TO_STRING_NOSLASHESCAPE
+    size_t len = 0;
+    FILE *fp = NULL;
+    char buf[BUFSIZ];
+#endif
     struct json_object *data = NULL;
     struct json_object *value = NULL;
 
@@ -55,6 +60,7 @@ test_write_json_file(void)
 
     data = json_object_new_object();
     json_object_object_add(data, "name", json_object_new_string("tarpm"));
+    json_object_object_add(data, "path", json_object_new_string("/etc/gai.conf"));
 
     /* a missing path is an error */
     TARPM_ASSERT_TRUE(write_json_file(data, NULL) == -1);
@@ -68,10 +74,23 @@ test_write_json_file(void)
 
     json_object_put(data);
 
+#ifdef JSON_C_TO_STRING_NOSLASHESCAPE
+    /* a slash is written as it is, not as \/ */
+    fp = fopen(tmpfile, "r");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    len = fread(buf, 1, sizeof(buf) - 1, fp);
+    buf[len] = '\0';
+    TARPM_ASSERT_TRUE(fclose(fp) == 0);
+    TARPM_ASSERT_PTR_NOT_NULL(strstr(buf, "\"/etc/gai.conf\""));
+    TARPM_ASSERT_PTR_NULL(strstr(buf, "\\/"));
+#endif
+
     data = read_json_file(tmpfile);
     TARPM_ASSERT_PTR_NOT_NULL(data);
     TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "name", &value));
     TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "tarpm");
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "path", &value));
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(value), "/etc/gai.conf");
 
     json_object_put(data);
     TARPM_ASSERT_TRUE(unlink(tmpfile) == 0);

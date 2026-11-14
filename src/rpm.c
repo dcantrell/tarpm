@@ -17,6 +17,25 @@
 
 #include "tarpm.h"
 
+/* Returns true if file index fx is in the hard link set of the current entry */
+static bool
+in_link_set(rpmfi fi, const int fx)
+{
+    uint32_t i = 0;
+    uint32_t n = 0;
+    const int *links = NULL;
+
+    n = rpmfiFLinks(fi, &links);
+
+    for (i = 0; i < n; i++) {
+        if (links[i] == fx) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /*
  * Write the data of a regular file entry to disk.  We read all of it
  * even when a write fails so the iterator stays in step with the
@@ -98,6 +117,7 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
     const char *dn = NULL;
     char *filename = NULL;
     char *hardlink = NULL;
+    int hardlinkfx = -1;
     char *errstr = NULL;
 
     if (rpm == NULL || dest == NULL) {
@@ -236,9 +256,15 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
             if (rpmfiArchiveHasContent(fi)) {
                 free(hardlink);
                 hardlink = xstrdup(archive_entry_pathname(entry));
-            } else if (hardlink != NULL) {
+                hardlinkfx = rpmfiFX(fi);
+            } else if (hardlink != NULL && in_link_set(fi, hardlinkfx)) {
                 archive_entry_set_hardlink(entry, hardlink);
                 archive_entry_set_size(entry, 0);
+            } else {
+                /* an empty file of the recorded size would be wrong */
+                warnx_escaped(_("*** %s is a hard link with no earlier link to point at, skipping it"), archive_entry_pathname(entry));
+                ret = -1;
+                continue;
             }
         }
 

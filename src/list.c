@@ -171,7 +171,7 @@ list_rpm(const char *rpm)
     while ((rc = rpmfiNext(fi)) >= 0) {
         dn = rpmfiDN(fi);
 
-        if (!strcmp(dn, "")) {
+        if (dn == NULL || !strcmp(dn, "")) {
             dn = "/";
         }
 

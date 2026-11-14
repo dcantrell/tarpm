@@ -1556,6 +1556,58 @@ class CreateRejectsRepeatedPath(FileListTree):
         self.assertNotIn("more than once", err)
 
 
+class CreateRejectsOddPath(FileListTree):
+    """A path with an empty or "." component says so, not that it leaves the tree"""
+
+    def runTest(self):
+        odd = 'has an empty or "." component in it'
+        cases = [
+            ("/usr//README", odd),
+            ("/usr/./README", odd),
+            ("./usr/README", odd),
+            ("/usr/README/", odd),
+            ("", "entry 1 of the files in header.json has an empty path"),
+            ("/usr/../usr/README", "leaves the payload tree"),
+        ]
+
+        for i, (path, message) in enumerate(cases):
+            tree = self.tree("tree%d" % i, [self.readme(), self.readme(path=path)])
+            pkg = os.path.join(self.output_dir, "hello%d.rpm" % i)
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+            self.assertEqual(rc, 1, msg="%r %s" % (path, err))
+            self.assertIn(message, err)
+            self.assertFalse(os.path.isfile(pkg))
+
+            if ".." not in path:
+                self.assertNotIn("leaves the payload tree", err)
+
+
+class CreateAcceptsRootDirectory(FileListTree):
+    """The filesystem package lists / itself, and that goes in"""
+
+    def runTest(self):
+        root = {
+            "path": "/",
+            "type": "dir",
+            "mode": "0555",
+            "user": "root",
+            "group": "root",
+            "mtime": "2026-01-16T00:00:00Z",
+        }
+        usr = dict(root, path="/usr", mode="0755")
+        tree = self.tree("tree", [root, usr, self.readme()])
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(verify_rpm(pkg)[0], 0)
+        self.assertEqual(
+            query_rpm(pkg, "[%{filenames} %{filemodes:perms}\n]"),
+            "/ dr-xr-xr-x\n/usr drwxr-xr-x\n/usr/README -rw-r--r--\n",
+        )
+
+
 class CreateRejectsEmptyNevr(RequiresTarpm):
     """An empty Name, Version, or Release is refused"""
 
