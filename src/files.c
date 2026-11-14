@@ -114,6 +114,7 @@ struct payload_scan {
     struct json_object *names;          /* paths the list names */
     struct json_object *parents;        /* directories leading to them */
     uint32_t digestalgo;
+    int format;
     bool source_package;
 };
 
@@ -190,6 +191,7 @@ struct file_list_build {
     uint32_t digestalgo;
     size_t nkept;
     int64_t totalsize;
+    bool source_package;
     bool failed;
 };
 
@@ -1449,6 +1451,34 @@ cleanup_mkfiledigest:
     return r;
 }
 
+/*
+ * The userdata we hang on a digest string mkfiledigest() computed in
+ * this run.  file_digest_value() sees it and does not read the file
+ * again.  The address is all that matters.
+ */
+static char fresh_digest_mark;
+
+/*
+ * Return a JSON string for a digest we just computed from the payload
+ * file, marked so file_digest_value() keeps it as it is.
+ */
+static struct json_object *
+new_fresh_digest(const char *digest)
+{
+    struct json_object *value = NULL;
+
+    value = json_object_new_string(digest);
+    json_object_set_userdata(value, &fresh_digest_mark, NULL);
+    return value;
+}
+
+/* True if a digest string carries the mark new_fresh_digest() sets */
+static bool
+is_fresh_digest(struct json_object *value)
+{
+    return (value != NULL && json_object_get_userdata(value) == &fresh_digest_mark);
+}
+
 /* Returns true if an entry in the "files" array is a %ghost file */
 static bool
 is_ghost(struct json_object *file)
@@ -1625,6 +1655,30 @@ set_file_mime(struct json_object *file, const char *path, const char *file_path,
 }
 
 /*
+ * Set the file class or the MIME type, whichever the format we write
+ * keeps.  A v4 format package keeps the class and a v6 format package
+ * keeps the MIME type.  A source package keeps neither, so we skip
+ * libmagic for it.  Each one is a libmagic pass over the file.
+ */
+static void
+classify_file(struct json_object *file, const char *path, const char *file_path, const struct stat *sb, const int format, const bool source_package)
+{
+    if (source_package) {
+        return;
+    }
+
+    if (format != RPM_FORMAT_V6) {
+        set_file_class(file, path, file_path, sb);
+    }
+
+    if (format != RPM_FORMAT_V4) {
+        set_file_mime(file, path, file_path, sb);
+    }
+
+    return;
+}
+
+/*
  * Read the target of a symlink.  Some file systems report a symlink
  * size of 0, so we grow the buffer until readlink() leaves room for
  * the NUL.  Returns NULL if readlink() fails.  The caller has to free
@@ -1741,14 +1795,13 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
         digest = mkfiledigest(file_path, scan->digestalgo);
 
         if (digest != NULL) {
-            json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+            json_object_object_add(file, RPM_FILE_DIGEST_DESC, new_fresh_digest(digest));
             free(digest);
         }
     }
 
     /* what kind of thing the file is, the way rpmbuild works it out */
-    set_file_class(file, path, file_path, sb);
-    set_file_mime(file, path, file_path, sb);
+    classify_file(file, path, file_path, sb, scan->format, scan->source_package);
 
     /* rpmbuild starts every file out verifying all of its attributes */
     verifyflags = verifyflag_names(RPMVERIFY_ALL);
@@ -1845,10 +1898,12 @@ file_digest_algo(struct json_object *tags)
 /*
  * Add entries to the "files" array for the files and directories added
  * to the payload tree.  Done when creating an RPM so a file put in the
- * payload lands in the file list of the new package.
+ * payload lands in the file list of the new package.  The format is
+ * the RPM format we are writing, which decides whether a new file gets
+ * a class or a MIME type.
  */
 void
-add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir)
+add_payload_files(struct json_object *tags, struct json_object *files, const char *payload_dir, const int format)
 {
     struct payload_scan scan = { 0 };
     struct stat sb;
@@ -1869,6 +1924,7 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
     scan.digestalgo = file_digest_algo(tags);
 
     scan.files = files;
+    scan.format = format;
     scan.source_package = false;
 
     if (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL) {
@@ -1890,7 +1946,7 @@ add_payload_files(struct json_object *tags, struct json_object *files, const cha
  * rest of its metadata to suit the new type.
  */
 static void
-fix_type_mismatch(struct json_object *file, const char *path, const char *file_path, const struct stat *sb, const uint32_t digestalgo)
+fix_type_mismatch(const struct file_list_build *build, struct json_object *file, const char *path, const char *file_path, const struct stat *sb)
 {
     ssize_t len = 0;
     char *target = NULL;
@@ -1926,11 +1982,11 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
     if (S_ISREG(sb->st_mode)) {
         json_object_object_add(file, RPM_FILE_SIZE_DESC, json_object_new_int64((int64_t) sb->st_size));
 
-        if (digestalgo != 0) {
-            digest = mkfiledigest(file_path, digestalgo);
+        if (build->digestalgo != 0) {
+            digest = mkfiledigest(file_path, build->digestalgo);
 
             if (digest != NULL) {
-                json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+                json_object_object_add(file, RPM_FILE_DIGEST_DESC, new_fresh_digest(digest));
                 free(digest);
             }
         }
@@ -1956,8 +2012,7 @@ fix_type_mismatch(struct json_object *file, const char *path, const char *file_p
     }
 
     /* the class went with the old type, so work it out again */
-    set_file_class(file, path, file_path, sb);
-    set_file_mime(file, path, file_path, sb);
+    classify_file(file, path, file_path, sb, build->format, build->source_package);
 
     return;
 }
@@ -2103,7 +2158,7 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
 
         if (digest != NULL) {
             report_missing(path, RPM_FILE_DIGEST_DESC, true);
-            json_object_object_add(file, RPM_FILE_DIGEST_DESC, json_object_new_string(digest));
+            json_object_object_add(file, RPM_FILE_DIGEST_DESC, new_fresh_digest(digest));
             free(digest);
         }
     }
@@ -2565,6 +2620,11 @@ file_digest_value(struct json_object *file, const char *file_path, const struct 
         return xstrdup(str);
     }
 
+    /* we computed this one from the payload file already */
+    if (str[0] != '\0' && is_fresh_digest(key_object(file, RPM_FILE_DIGEST_DESC))) {
+        return xstrdup(str);
+    }
+
     /* the file is there, so a digest we cannot compute is an error */
     if (str[0] != '\0' && digestalgo != 0 && sb != NULL && S_ISREG(sb->st_mode)) {
         digest = mkfiledigest(file_path, digestalgo);
@@ -2870,7 +2930,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
          */
         olddigest = xstrdup(key_string(file, RPM_FILE_DIGEST_DESC, ""));
 
-        fix_type_mismatch(file, path, file_path, psb, build->digestalgo);
+        fix_type_mismatch(build, file, path, file_path, psb);
         add_missing_metadata(file, path, file_path, psb, build->digestalgo);
         apply_payload_overrides(file, path, file_path, psb);
     }
@@ -2920,8 +2980,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     }
 
     if (olddigest != NULL && strcmp(olddigest, str)) {
-        set_file_class(file, path, file_path, psb);
-        set_file_mime(file, path, file_path, psb);
+        classify_file(file, path, file_path, psb, build->format, build->source_package);
         drop_file_signatures(file, path);
     }
 
@@ -2930,11 +2989,11 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * file class arrays.  In v6 format packages that is now a MIME type.
      * Probably the most noticeable difference is that in a v4 format
      * package, a file can have an empty file class.  In the v6 format,
-     * everything gets a MIME type.
+     * everything gets a MIME type.  A source package carries neither.
      */
-    if (psb != NULL && build->format == RPM_FORMAT_V6 && !json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL)) {
+    if (!build->source_package && psb != NULL && build->format == RPM_FORMAT_V6 && !json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL)) {
         set_file_mime(file, path, file_path, psb);
-    } else if (psb != NULL && build->format == RPM_FORMAT_V4 && json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL) && !json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, NULL)) {
+    } else if (!build->source_package && psb != NULL && build->format == RPM_FORMAT_V4 && json_object_object_get_ex(file, RPM_FILE_MIME_DESC, NULL) && !json_object_object_get_ex(file, RPM_FILE_CLASS_DESC, NULL)) {
         set_file_class(file, path, file_path, psb);
     }
 
@@ -3103,6 +3162,13 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     build.deplookup = index_dependencies(dependencies);
 
     /*
+     * rpmbuild only classifies the files of binary packages, so a
+     * source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags.
+     */
+    source_package = (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL);
+    build.source_package = source_package;
+
+    /*
      * We read the digests back out of the payload, so we need the
      * algorithm the header names up front.
      */
@@ -3191,12 +3257,7 @@ add_file_list_tags(struct json_object *tags, struct json_object *files, const ch
     add_tag_array(tags, RPMTAG_FILELINKTOS, RPM_STRING_ARRAY_TYPE, out.filelinktos);
     add_tag_array(tags, RPMTAG_FILEINODES, RPM_INT32_TYPE, out.fileinodes);
 
-    /*
-     * rpmbuild only classifies the files of binary packages, so a
-     * source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags.
-     */
-    source_package = (get_tag_value(tags, RPMTAG_SOURCEPACKAGE, false) != NULL);
-
+    /* a source RPM carries no FILECLASS, CLASSDICT or FILECOLORS tags */
     if (source_package) {
         json_object_put(out.fileclass);
         json_object_put(out.classdict);

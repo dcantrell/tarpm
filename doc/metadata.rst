@@ -534,6 +534,10 @@ Six of those are worth a few more words.
     key.  Writing a v4 format package works out the class of an entry
     with a ``mime`` key and no ``class`` key.
 
+    For a new or changed file, tarpm only works out the one the format
+    records.  That is the class for a v4 format package and the MIME
+    type for a v6 format package.  A source package gets neither.
+
 ``provides``
     Despite the name, both provides and requires show up here, because
     RPM records a dependency against the file the generator read it out

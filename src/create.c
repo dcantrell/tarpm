@@ -3103,7 +3103,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
 
         verbose_stage(_("Scanning the payload tree %s"), payload_dir);
         nfiles = json_object_array_length(files);
-        add_payload_files(tags, files, payload_dir);
+        add_payload_files(tags, files, payload_dir, rpmformat);
         nfiles = json_object_array_length(files) - nfiles;
 
         if (nfiles == 0) {

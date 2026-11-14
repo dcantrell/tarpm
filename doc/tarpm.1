@@ -939,6 +939,9 @@ read is application/octet-stream.
 \f[B]tarpm\f[R] works the MIME type out again under the same
 conditions as the class. A file you did not touch keeps the MIME type
 the original package gave it.
+It only works out the one the format records, the class for a v4
+format package and the MIME type for a v6 format package.
+A source package gets neither.
 .PP
 A file list out of a v4 format package carries no \f[B]mime\f[R]
 key. When you write a v6 format package from it, \f[B]tarpm\f[R] works out the MIME

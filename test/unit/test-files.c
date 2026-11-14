@@ -1892,12 +1892,12 @@ test_add_payload_files_null(void)
     files = json_object_new_array();
     add_file(files, "/usr/bin/ls");
 
-    add_payload_files(NULL, files, payload_dir);
-    add_payload_files(tags, NULL, payload_dir);
-    add_payload_files(tags, files, NULL);
+    add_payload_files(NULL, files, payload_dir, RPM_FORMAT_DEFAULT);
+    add_payload_files(tags, NULL, payload_dir, RPM_FORMAT_DEFAULT);
+    add_payload_files(tags, files, NULL, RPM_FORMAT_DEFAULT);
 
     /* and there is no payload tree here to walk */
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
 
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 1);
 
@@ -1905,7 +1905,7 @@ test_add_payload_files_null(void)
 
     /* the files value has to be an array */
     files = json_object_new_object();
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
 
     json_object_put(tags);
     json_object_put(files);
@@ -1942,7 +1942,7 @@ test_add_payload_files_new(void)
     add_file(files, "/usr/bin");
     add_file(files, "/usr/bin/known");
 
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
 
     /*
      * The two entries the list had are joined by the five new ones.
@@ -1985,7 +1985,7 @@ test_add_payload_files_new(void)
     TARPM_ASSERT_STRING_EQUAL(file_str(json_object_array_get_idx(files, 6), "path"), "/usr/share/newdir/note.txt");
 
     /* a second run finds nothing new */
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 7);
 
     json_object_put(tags);
@@ -2037,17 +2037,101 @@ test_add_payload_files_source(void)
     files = json_object_new_array();
     add_file(files, "known.spec");
 
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
 
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 2);
     TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "added.tar.gz"));
     TARPM_ASSERT_TRUE(find_file(files, "/added.tar.gz") == NULL);
+
+    /* a source package keeps no class and no MIME type */
+    TARPM_ASSERT_TRUE(file_str(find_file(files, "added.tar.gz"), "class") == NULL);
+    TARPM_ASSERT_TRUE(file_str(find_file(files, "added.tar.gz"), "mime") == NULL);
 
     json_object_put(tags);
     json_object_put(files);
 
     remove_payload(payload_dir, "/known.spec");
     remove_payload(payload_dir, "/added.tar.gz");
+
+    TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
+    free(payload_dir);
+
+    TARPM_ASSERT_TRUE(rmdir(input_dir) == 0);
+
+    return;
+}
+
+/*
+ * Test add_payload_files() gives a new file only the class or the MIME
+ * type the format keeps, and that its digest reaches the file list.
+ */
+void
+test_add_payload_files_format(void)
+{
+    char input_dir[] = "/tmp/tarpm-test-files-XXXXXX";
+    char *payload_dir = NULL;
+    const char *name = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *files = NULL;
+    struct json_object *file = NULL;
+    struct json_object *values = NULL;
+
+    /* the MD5 of the sixteen bytes write_payload() puts in README */
+    const char *readme_digest = "45ed9cc2f92b77cd8b2f5bd59ff635f8";
+
+    TARPM_ASSERT_TRUE(mkdtemp(input_dir) != NULL);
+    payload_dir = joinpath(input_dir, PAYLOAD_SUBDIR, NULL);
+
+    mkdir_payload(payload_dir, "/usr/share/doc");
+    write_payload(payload_dir, "/usr/share/doc/README", 16);
+
+    /* a v4 format package keeps the class and not the MIME type */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/share/doc");
+
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_V4);
+
+    file = find_file(files, "/usr/share/doc/README");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    name = file_str(file, "class");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) name);
+    TARPM_ASSERT_PTR_NOT_NULL((void *) strstr(name, "text"));
+    TARPM_ASSERT_TRUE(file_str(file, "mime") == NULL);
+    TARPM_ASSERT_STRING_EQUAL(file_str(file, "digest"), readme_digest);
+
+    /* the digest the scan computed is the one the file list carries */
+    TARPM_ASSERT_EQUAL(add_file_list_tags(tags, files, payload_dir, NULL, RPM_FORMAT_V4), 0);
+    values = get_tag_values(tags, rpmTagGetName(RPMTAG_FILEDIGESTS));
+    TARPM_ASSERT_PTR_NOT_NULL(values);
+    TARPM_ASSERT_EQUAL(json_object_array_length(values), 2);
+    TARPM_ASSERT_STRING_EQUAL(json_object_get_string(json_object_array_get_idx(values, 1)), readme_digest);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* a v6 format package keeps the MIME type and not the class */
+    tags = json_object_new_array();
+    files = json_object_new_array();
+    add_file(files, "/usr/share/doc");
+
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_V6);
+
+    file = find_file(files, "/usr/share/doc/README");
+    TARPM_ASSERT_PTR_NOT_NULL(file);
+    name = file_str(file, "mime");
+    TARPM_ASSERT_PTR_NOT_NULL((void *) name);
+    TARPM_ASSERT_PTR_NOT_NULL((void *) strstr(name, "text"));
+    TARPM_ASSERT_TRUE(file_str(file, "class") == NULL);
+
+    json_object_put(tags);
+    json_object_put(files);
+
+    /* clean up the payload tree */
+    remove_payload(payload_dir, "/usr/share/doc/README");
+    remove_payload(payload_dir, "/usr/share/doc");
+    remove_payload(payload_dir, "/usr/share");
+    remove_payload(payload_dir, "/usr");
 
     TARPM_ASSERT_TRUE(rmdir(payload_dir) == 0);
     free(payload_dir);
@@ -2082,7 +2166,7 @@ test_payload_dir_elsewhere(void)
     add_file(files, "/usr/bin/known");
 
     /* the file put in the tree by hand joins the list */
-    add_payload_files(tags, files, payload_dir);
+    add_payload_files(tags, files, payload_dir, RPM_FORMAT_DEFAULT);
     TARPM_ASSERT_EQUAL(json_object_array_length(files), 3);
     TARPM_ASSERT_PTR_NOT_NULL(find_file(files, "/usr/bin/added"));
 
@@ -3618,6 +3702,7 @@ get_suite(void)
         CU_add_test(pSuite, "test add_payload_files() with NULL", test_add_payload_files_null) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with new payload files", test_add_payload_files_new) == NULL ||
         CU_add_test(pSuite, "test add_payload_files() with a source package", test_add_payload_files_source) == NULL ||
+        CU_add_test(pSuite, "test add_payload_files() with each format", test_add_payload_files_format) == NULL ||
         CU_add_test(pSuite, "test a payload tree of its own", test_payload_dir_elsewhere) == NULL ||
         CU_add_test(pSuite, "test add_file_list_tags() with class values", test_add_file_list_tags_class) == NULL ||
 #ifdef _HAS_RPMFORMAT_TAGS
