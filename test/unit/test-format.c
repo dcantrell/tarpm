@@ -406,7 +406,20 @@ void
 test_format_tag_groups(void)
 {
     size_t i = 0;
-    static const rpmTagVal common[] = { RPMFORMAT_COMMON_HEADER_TAGS };
+
+    /*
+     * The main header tags common to all format versions.  This is not
+     * every tag a header carries, just the ones sitting next to a
+     * group: the SHA256 payload digests arrived in v4 and v6 kept them,
+     * and the 64 bit size tags cover every v6 package as well as a v4
+     * one too large to count in 32 bits.
+     */
+    static const rpmTagVal common[] = {
+        RPMTAG_PAYLOADSHA256_VALUE,
+        RPMTAG_PAYLOADSHA256ALT_VALUE,
+        RPMTAG_LONGSIZE,
+        RPMTAG_LONGFILESIZES
+    };
     static const rpmTagVal v4only[] = { RPMFORMAT_V4_ONLY_HEADER_TAGS };
     static const rpmTagVal v6only[] = { RPMFORMAT_V6_ONLY_HEADER_TAGS };
 

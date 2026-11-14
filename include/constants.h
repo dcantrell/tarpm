@@ -219,19 +219,6 @@
     RPMTAG_PAYLOADSHA3_256ALT_VALUE
 
 /*
- * The main header tags common to all format versions.  This is not
- * every tag a header carries, just the ones sitting next to a group
- * above: the SHA256 payload digests arrived in v4 and v6 kept them,
- * and the 64 bit size tags cover every v6 package as well as a v4 one
- * too large to count in 32 bits.
- */
-#define RPMFORMAT_COMMON_HEADER_TAGS         \
-    RPMTAG_PAYLOADSHA256_VALUE,              \
-    RPMTAG_PAYLOADSHA256ALT_VALUE,           \
-    RPMTAG_LONGSIZE,                         \
-    RPMTAG_LONGFILESIZES
-
-/*
  * Default v6 format payload compression algorithm.  The
  * %_binary_payload macro in macros.in in the rpm source expands to
  * w19.zstdio starting with the v6 format.

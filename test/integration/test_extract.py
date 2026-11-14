@@ -1107,6 +1107,71 @@ class VerifyExtractStrippedPayloadHardLinks(TestUnpackRPM):
         self.assertEqual(len(inodes), 1)
 
 
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyStrippedHardLinkWithoutDataFails(TestUnpackRPM):
+    """Test a hard link set whose data entry is gone fails and writes no empty file"""
+
+    def setUp(self):
+        super().setUp()
+
+        # an uncompressed payload lets us cut an entry out of it
+        self.rpm.header += "\n%global _rpmformat 6\n"
+        self.rpm.header += "%define _binary_payload w.ufdio\n"
+
+        for name in ["one.txt", "two.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"the same content\n"),
+            )
+
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/two.txt\n" % (NAME, NAME)
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = f.read()
+        f.close()
+
+        # the entry carrying the data is the one the content follows
+        content = data.find(b"the same content\n")
+        self.assertNotEqual(content, -1)
+        start = data.rfind(b"07070X", 0, content)
+        end = data.find(b"07070", content)
+        self.assertNotEqual(start, -1)
+        self.assertNotEqual(end, -1)
+
+        pkg = os.path.join(self.output_dir, "nodata.rpm")
+        f = open(pkg, "wb")
+        f.write(data[:start] + data[end:])
+        f.close()
+
+        out = os.path.join(self.output_dir, "out")
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", pkg, "-O", out],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, err = proc.communicate()
+
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("error reading RPM payload", err.decode())
+
+        # neither link may come out as an empty file of the recorded size
+        docdir = os.path.join(out, "payload", "usr/share", NAME)
+
+        for name in ["one.txt", "two.txt"]:
+            path = os.path.join(docdir, name)
+
+            if os.path.exists(path):
+                self.assertNotEqual(os.path.getsize(path), 0, msg=name)
+
+
 class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
     """Test the temporary tar file goes away when the fallback reader fails"""
 
