@@ -516,6 +516,95 @@ test_create_header_int16(void)
     return;
 }
 
+/* Make a header holding a Name and a Version of the given type */
+static struct json_object *
+make_name_version(const char *version_type, struct json_object *version)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+
+    data = json_object_new_object();
+    tags = json_object_new_array();
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Name"));
+    json_object_object_add(entry, "type", json_object_new_string("string"));
+    json_object_object_add(entry, "value", json_object_new_string("testpkg"));
+    json_object_array_add(tags, entry);
+
+    entry = json_object_new_object();
+    json_object_object_add(entry, "tag", json_object_new_string("Version"));
+    json_object_object_add(entry, "type", json_object_new_string(version_type));
+    json_object_object_add(entry, "value", version);
+    json_object_array_add(tags, entry);
+
+    json_object_object_add(data, "tags", tags);
+
+    return data;
+}
+
+/* Test check_header() turns away what create_header() turns away */
+void
+test_check_header(void)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+
+    /* NULL data and data with no tags array are errors */
+    TARPM_ASSERT_EQUAL(check_header(NULL, NULL, NULL, false), -1);
+
+    data = json_object_new_object();
+    TARPM_ASSERT_EQUAL(check_header(data, NULL, NULL, false), -1);
+    json_object_put(data);
+
+    /* a Version of a type rpm does not give it is an error */
+    data = make_name_version("int32", json_object_new_int(7));
+    TARPM_ASSERT_EQUAL(check_header(data, NULL, NULL, false), -1);
+    json_object_put(data);
+
+    /* a good header passes and the caller's tags are left alone */
+    data = make_name_version("string", json_object_new_string("1.0"));
+    TARPM_ASSERT_EQUAL(check_header(data, NULL, NULL, false), 0);
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "tags", &tags));
+    TARPM_ASSERT_EQUAL(json_object_array_length(tags), 2);
+    json_object_put(data);
+
+    return;
+}
+
+/* Test header_size() gives the size create_header() builds */
+void
+test_header_size(void)
+{
+    size_t size = 0;
+    struct json_object *data = NULL;
+    struct rpmhdr *hdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+
+    /* NULL data and data create_header() turns away have no size */
+    TARPM_ASSERT_EQUAL(header_size(NULL, NULL, NULL, false), 0);
+
+    data = make_name_version("int32", json_object_new_int(7));
+    TARPM_ASSERT_EQUAL(header_size(data, NULL, NULL, false), 0);
+    json_object_put(data);
+
+    /* a good header is the size of the one create_header() builds */
+    data = make_name_version("string", json_object_new_string("1.0"));
+    TARPM_ASSERT_EQUAL(create_header(data, &hdr, &hdrinfo, NULL, NULL, false), 0);
+    TARPM_ASSERT_PTR_NOT_NULL(hdr);
+    size = sizeof(*hdr) + (ntohl(hdr->nentries) * sizeof(struct rpmhdrentry)) + ntohl(hdr->nbytes);
+    TARPM_ASSERT_EQUAL(header_size(data, NULL, NULL, false), size);
+
+    free(hdrinfo->estart);
+    free(hdrinfo->datastart);
+    free(hdrinfo);
+    free(hdr);
+    json_object_put(data);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -543,7 +632,9 @@ get_suite(void)
         CU_add_test(pSuite, "test fix_trailer_offset()", test_fix_trailer_offset) == NULL ||
         CU_add_test(pSuite, "test create_header() with invalid data", test_create_header_invalid) == NULL ||
         CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL ||
-        CU_add_test(pSuite, "test create_header() with int16 values", test_create_header_int16) == NULL) {
+        CU_add_test(pSuite, "test create_header() with int16 values", test_create_header_int16) == NULL ||
+        CU_add_test(pSuite, "test check_header()", test_check_header) == NULL ||
+        CU_add_test(pSuite, "test header_size()", test_header_size) == NULL) {
         return NULL;
     }
 

@@ -1609,61 +1609,35 @@ read_header(const int fd, const char *dest_dir, bool *raw_tags)
 }
 
 /*
- * Create a new header to write to an RPM file later.  A header
- * starts with the magic number, the record count and the size of the
- * storage area.  The storage area is a run of header index structs
- * followed by the data those records point at.  This mostly sets the
- * header up and the caller adds records to it after.
- *
- * Returns 0 on success, non-zero otherwise.  The caller passes in
- * pointers for the rpmhdr and the rpmhdrinfo, which we allocate and
- * fill in.  Caller must free both.
+ * Get the tags of a header ready to lay out.  This copies the tags
+ * array, adds the changelog and dependency tags, drops what the
+ * format does not carry, sorts the copy, reads the files backing the
+ * file tags and checks everything rpm would turn away.  On success
+ * the caller gets the copy and the tag files and must free both.
+ * Returns 0 on success, -1 otherwise.
  */
-int
-create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature)
+static int
+prepare_header_tags(const struct json_object *data, const char *payload_dir, const char *tagfile_dir, bool is_signature, struct json_object **tagsp, struct tagfile **tagfilesp)
 {
-    int r = 0;
-    struct rpmhdr *s;
-    struct rpmhdrinfo *v;
     struct json_object *tags = NULL;
     struct json_object *changelog = NULL;
     struct json_object *dependencies = NULL;
     struct json_object *tags_copy = NULL;
     struct tagfile *tagfiles = NULL;
     size_t ntags = 0;
-    size_t totalsize = 0;
-    int32_t trailer_index = -1;
-    size_t trailer_size = 0;
     size_t i = 0;
 
-    if (data == NULL || hdr == NULL || hdrinfo == NULL) {
-        return -1;
-    }
-
-    /* the caller gets nothing back unless we succeed */
-    *hdr = NULL;
-    *hdrinfo = NULL;
-
-    /* allocate the two structures for the header */
-    s = xalloc(sizeof(*s));
-    v = xalloc(sizeof(*v));
-
-    /* fill out the beginning with the magic and reserved values */
-    s->magic = htonl(RPM_SIGNATURE_MAGIC);
-    s->reserved = htonl(RPM_SIGNATURE_RESERVED);
+    *tagsp = NULL;
+    *tagfilesp = NULL;
 
     /* get the tags for this header */
     if (json_object_object_get_ex(data, RPM_ENTRY_TAGS_DESC, &tags) == 0) {
         warnx(_("*** missing tags in header data"));
-        free(s);
-        free(v);
         return -1;
     }
 
     if (json_object_get_type(tags) != json_type_array) {
         warnx(_("*** create_header: tags must be an array"));
-        free(s);
-        free(v);
         return -1;
     }
 
@@ -1678,14 +1652,10 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
         json_object_array_add(tags_copy, json_object_get(json_object_array_get_idx(tags, i)));
     }
 
-    tags = tags_copy;
-
     /* Check if there's a changelog array that needs to be converted to tags */
     if (json_object_object_get_ex(data, RPM_CHANGELOG_DESC, &changelog)) {
         if (add_changelog_tags(tags_copy, changelog) == -1) {
-            json_object_put(tags);
-            free(s);
-            free(v);
+            json_object_put(tags_copy);
             return -1;
         }
     }
@@ -1718,25 +1688,145 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
      * header and writing it both work from the same bytes.  A file
      * named here that cannot be read is fatal for rpm.
      */
-    ntags = json_object_array_length(tags);
+    ntags = json_object_array_length(tags_copy);
     tagfiles = xcalloc(ntags, sizeof(*tagfiles));
 
-    if (check_tag_numbers(tags, is_signature) == -1 || check_region_tags(tags, is_signature) == -1 || read_tag_files(tags, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags, tagfiles, is_signature) == -1 || check_tag_types(tags, is_signature) == -1) {
+    if (check_tag_numbers(tags_copy, is_signature) == -1 || check_region_tags(tags_copy, is_signature) == -1 || read_tag_files(tags_copy, tagfiles, tagfile_dir, payload_dir, is_signature) == -1 || check_tag_values(tags_copy, tagfiles, is_signature) == -1 || check_tag_types(tags_copy, is_signature) == -1) {
         free_tag_files(tagfiles, ntags);
-        json_object_put(tags);
-        free(s);
-        free(v);
+        json_object_put(tags_copy);
         return -1;
     }
 
-    /* number of header index entries (excluding the tags we skip) */
-    s->nentries = 0;
+    *tagsp = tags_copy;
+    *tagfilesp = tagfiles;
+
+    return 0;
+}
+
+/* Count the index entries a header gets, leaving out the skipped tags */
+static uint32_t
+count_header_entries(struct json_object *tags, bool is_signature)
+{
+    uint32_t nentries = 0;
+    size_t i = 0;
 
     for (i = 0; i < json_object_array_length(tags); i++) {
         if (!is_skipped_tag(json_object_array_get_idx(tags, i), is_signature)) {
-            s->nentries++;
+            nentries++;
         }
     }
+
+    return nentries;
+}
+
+/*
+ * Run the checks create_header() runs without building the header.
+ * Returns 0 if create_header() would accept the data, -1 otherwise.
+ */
+int
+check_header(const struct json_object *data, const char *payload_dir, const char *tagfile_dir, bool is_signature)
+{
+    struct json_object *tags = NULL;
+    struct tagfile *tagfiles = NULL;
+
+    if (data == NULL) {
+        return -1;
+    }
+
+    if (prepare_header_tags(data, payload_dir, tagfile_dir, is_signature, &tags, &tagfiles) == -1) {
+        return -1;
+    }
+
+    free_tag_files(tagfiles, json_object_array_length(tags));
+    json_object_put(tags);
+
+    return 0;
+}
+
+/*
+ * Return the number of bytes create_header() would make the header,
+ * not counting the padding that follows it.  That is the header
+ * start, the index entries and the data area with the trailer.  We
+ * add it up without laying the header out.  Returns 0 on failure.
+ */
+size_t
+header_size(const struct json_object *data, const char *payload_dir, const char *tagfile_dir, bool is_signature)
+{
+    size_t size = 0;
+    size_t datasize = 0;
+    int32_t trailer_index = -1;
+    size_t trailer_size = 0;
+    struct json_object *tags = NULL;
+    struct tagfile *tagfiles = NULL;
+
+    if (data == NULL) {
+        return 0;
+    }
+
+    if (prepare_header_tags(data, payload_dir, tagfile_dir, is_signature, &tags, &tagfiles) == -1) {
+        return 0;
+    }
+
+    datasize = get_data_buffer_size(tags, tagfiles, &trailer_index, &trailer_size, is_signature);
+
+    /* nbytes counts the trailer even though it is not in the data area */
+    if (trailer_index >= 0) {
+        datasize += trailer_size;
+    }
+
+    size = sizeof(struct rpmhdr) + (count_header_entries(tags, is_signature) * sizeof(struct rpmhdrentry)) + datasize;
+
+    free_tag_files(tagfiles, json_object_array_length(tags));
+    json_object_put(tags);
+
+    return size;
+}
+
+/*
+ * Create a new header to write to an RPM file later.  A header
+ * starts with the magic number, the record count and the size of the
+ * storage area.  The storage area is a run of header index structs
+ * followed by the data those records point at.  This mostly sets the
+ * header up and the caller adds records to it after.
+ *
+ * Returns 0 on success, non-zero otherwise.  The caller passes in
+ * pointers for the rpmhdr and the rpmhdrinfo, which we allocate and
+ * fill in.  Caller must free both.
+ */
+int
+create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdrinfo **hdrinfo, const char *payload_dir, const char *tagfile_dir, bool is_signature)
+{
+    int r = 0;
+    struct rpmhdr *s;
+    struct rpmhdrinfo *v;
+    struct json_object *tags = NULL;
+    struct tagfile *tagfiles = NULL;
+    size_t totalsize = 0;
+    int32_t trailer_index = -1;
+    size_t trailer_size = 0;
+
+    if (data == NULL || hdr == NULL || hdrinfo == NULL) {
+        return -1;
+    }
+
+    /* the caller gets nothing back unless we succeed */
+    *hdr = NULL;
+    *hdrinfo = NULL;
+
+    if (prepare_header_tags(data, payload_dir, tagfile_dir, is_signature, &tags, &tagfiles) == -1) {
+        return -1;
+    }
+
+    /* allocate the two structures for the header */
+    s = xalloc(sizeof(*s));
+    v = xalloc(sizeof(*v));
+
+    /* fill out the beginning with the magic and reserved values */
+    s->magic = htonl(RPM_SIGNATURE_MAGIC);
+    s->reserved = htonl(RPM_SIGNATURE_RESERVED);
+
+    /* number of header index entries (excluding the tags we skip) */
+    s->nentries = count_header_entries(tags, is_signature);
 
     /* allocate an array for the header index entries */
     v->estart = xcalloc(s->nentries, sizeof(*(v->estart)));
@@ -1767,9 +1857,8 @@ create_header(const struct json_object *data, struct rpmhdr **hdr, struct rpmhdr
     r = add_header_tags(tags, tagfiles, v, totalsize, trailer_index, trailer_size, is_signature);
 
     /* free our copy of the tags array */
+    free_tag_files(tagfiles, json_object_array_length(tags));
     json_object_put(tags);
-
-    free_tag_files(tagfiles, ntags);
 
     if (r != 0) {
         free(v->estart);

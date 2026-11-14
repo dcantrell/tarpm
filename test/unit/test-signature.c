@@ -272,6 +272,42 @@ test_make_signature_default(void)
     return;
 }
 
+/*
+ * Test header_size() gives the size create_header() builds for a
+ * signature header, which carries a region trailer
+ */
+void
+test_header_size_signature(void)
+{
+    size_t i = 0;
+    size_t size = 0;
+    const int formats[] = { RPM_FORMAT_V4, RPM_FORMAT_V6 };
+    struct json_object *signature = NULL;
+    struct rpmhdr *sig = NULL;
+    struct rpmhdrinfo *siginfo = NULL;
+
+    for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++) {
+        signature = make_signature(formats[i]);
+        TARPM_ASSERT_PTR_NOT_NULL(signature);
+
+        TARPM_ASSERT_EQUAL(create_header(signature, &sig, &siginfo, NULL, NULL, true), 0);
+        TARPM_ASSERT_PTR_NOT_NULL(sig);
+        size = sizeof(*sig) + (ntohl(sig->nentries) * sizeof(struct rpmhdrentry)) + ntohl(sig->nbytes);
+
+        TARPM_ASSERT_EQUAL(header_size(signature, NULL, NULL, true), size);
+
+        free(siginfo->estart);
+        free(siginfo->datastart);
+        free(siginfo);
+        free(sig);
+        sig = NULL;
+        siginfo = NULL;
+        json_object_put(signature);
+    }
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -302,6 +338,10 @@ get_suite(void)
     }
 
     if (CU_add_test(pSuite, "test make_signature() default format", test_make_signature_default) == NULL) {
+        return NULL;
+    }
+
+    if (CU_add_test(pSuite, "test header_size() with a signature header", test_header_size_signature) == NULL) {
         return NULL;
     }
 

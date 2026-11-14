@@ -1735,17 +1735,7 @@ verbose_header_size(const struct rpmhdr *h)
 static size_t
 signature_size(struct json_object *signature)
 {
-    size_t size = 0;
-    struct rpmhdr *sig = NULL;
-    struct rpmhdrinfo *siginfo = NULL;
-
-    if (create_header(signature, &sig, &siginfo, NULL, NULL, true) == -1) {
-        return 0;
-    }
-
-    size = sizeof(*sig) + (ntohl(sig->nentries) * sizeof(struct rpmhdrentry)) + ntohl(sig->nbytes);
-    free_header(sig, siginfo);
-    return size;
+    return header_size(signature, NULL, NULL, true);
 }
 
 /*
@@ -3183,8 +3173,12 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         }
     }
 
-    /* create the header (the main header) */
-    if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
+    /*
+     * Check the main header before we write the payload, so a header
+     * rpm would turn away fails before the slow part.  We build it
+     * once the payload digests are in.
+     */
+    if (check_header(header, payload_dir, header_dir, false) == -1) {
         warnx(_("*** unable to construct RPM header"));
         goto create_cleanup;
     }
@@ -3205,16 +3199,11 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
-    /* free the old header structures before regenerating */
-    free_header(hdr, hdrinfo);
-    hdr = NULL;
-    hdrinfo = NULL;
-
-    /* regenerate the header with updated digests */
+    /* build the main header with the payload digests in it */
     verbose_stage(_("Building the main header"));
 
     if (create_header(header, &hdr, &hdrinfo, payload_dir, header_dir, false) == -1) {
-        warnx(_("*** unable to reconstruct RPM header"));
+        warnx(_("*** unable to construct RPM header"));
         goto create_cleanup;
     }
 
