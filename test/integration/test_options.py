@@ -15,23 +15,87 @@ except ImportError:
     from rpmfluff import get_expected_arch
 
 
-# Verify --help gives help output
+# Verify --help and -? give help output
 class TarpmHelp(RequiresTarpm):
     def runTest(self):
+        for opt in ["--help", "-?"]:
+            p = subprocess.Popen(
+                [self.tarpm, opt],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            out, err = p.communicate()
+            self.assertEqual(p.returncode, 0, opt)
+
+            out = out.splitlines()
+            t1 = list(filter(lambda x: x.startswith(b"Usage:"), out))
+            t2 = list(filter(lambda x: x.startswith(b"Options:"), out))
+
+            self.assertEqual(len(t1), 1, opt)
+            self.assertEqual(len(t2), 1, opt)
+
+
+# Verify a bad option is an error that says what is wrong
+class TarpmBadOption(RequiresTarpm):
+    def runTest(self):
+        cases = [
+            (["-Q"], "*** unknown option -Q"),
+            (["-vQ"], "*** unknown option -Q"),
+            (["-h"], "*** unknown option -h"),
+            (["--bogus"], '*** unrecognized option "--bogus"'),
+            (["-t", "-f"], "*** -f needs an argument"),
+            (["-t", "--filename"], "*** -f needs an argument"),
+            (["--verbose=yes"], '*** "--verbose=yes" does not take an argument'),
+            (["--help=yes"], '*** "--help=yes" does not take an argument'),
+        ]
+
+        for args, s in cases:
+            p = subprocess.Popen(
+                [self.tarpm] + args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            out, err = p.communicate()
+            err = err.decode("utf-8")
+            self.assertEqual(p.returncode, 1, args)
+            self.assertEqual(out, b"", args)
+            self.assertIn(s, err, args)
+            self.assertEqual(len(err.splitlines()), 1, err)
+
+
+# Verify arguments tarpm would not use are an error
+class TarpmExtraArgument(TestUnpackRPM):
+    def runTest(self):
+        self.rpm.do_make()
+        pkg = self.rpm.get_built_rpm(get_expected_arch())
+        tree = os.path.join(self.output_dir, "tree")
+        newpkg = os.path.join(self.output_dir, "new.rpm")
+
         p = subprocess.Popen(
-            [self.tarpm, "--help"],
+            [self.tarpm, "-x", "-f", pkg, "-O", tree],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         out, err = p.communicate()
-        self.assertEqual(p.returncode, 0)
+        self.assertEqual(p.returncode, 0, err.decode("utf-8"))
 
-        out = out.splitlines()
-        t1 = list(filter(lambda x: x.startswith(b"Usage:"), out))
-        t2 = list(filter(lambda x: x.startswith(b"Options:"), out))
+        cases = [
+            ([self.tarpm, "-x", "-f", pkg, "-O", tree, "extra"], "extra"),
+            ([self.tarpm, "-t", "-f", pkg, "extra"], "extra"),
+            ([self.tarpm, "tf", pkg, "extra"], "extra"),
+            ([self.tarpm, "-c", "-f", newpkg, tree, "second"], "second"),
+            ([self.tarpm, "cf", newpkg, tree, "second"], "second"),
+        ]
 
-        self.assertEqual(len(t1), 1)
-        self.assertEqual(len(t2), 1)
+        for args, extra in cases:
+            p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = p.communicate()
+            err = err.decode("utf-8")
+            self.assertEqual(p.returncode, 1, args)
+            self.assertIn('*** unexpected argument "%s"' % extra, err)
+
+        # nothing was created from the first directory either
+        self.assertFalse(os.path.exists(newpkg))
 
 
 # Verify -t, -x, or -c is required
@@ -244,7 +308,9 @@ class TarpmShortLettersOnlyFirst(TestUnpackRPM):
             stderr=subprocess.PIPE,
         )
         out, err = p.communicate()
-        self.assertEqual(p.returncode, 0, err.decode("utf-8"))
+        err = err.decode("utf-8")
+        self.assertEqual(p.returncode, 1, err)
+        self.assertIn('*** unexpected argument "cx"', err)
 
         # the bundled form still works as the first argument
         dest = os.path.join(self.output_dir, "out")

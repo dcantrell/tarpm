@@ -278,10 +278,31 @@ class VerifyListNotAnRPM(RequiresTarpm):
         )
         out, err = proc.communicate()
 
-        # nothing is listed and tarpm says why
+        # nothing is listed and tarpm says why, with no left over errno
+        err = err.decode("utf-8")
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(out.decode("utf-8"), "")
-        self.assertNotEqual(err.decode("utf-8").find("rpmReadPackageFile"), -1)
+        self.assertIn("*** %s is not a valid RPM" % self.tarpm, err)
+        self.assertNotIn("No such file or directory", err)
+
+
+class VerifyListMissingFile(RequiresTarpm):
+    """Listing a file that is not there says so and names it"""
+
+    def runTest(self):
+        missing = os.path.join(self.output_dir, "missing.rpm")
+        proc = subprocess.Popen(
+            [self.tarpm, "-t", "-f", missing],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        err = err.decode("utf-8")
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(out.decode("utf-8"), "")
+        self.assertIn("Fopen failed for %s: No such file or directory" % missing, err)
+        self.assertNotIn("[none]", err)
 
 
 class VerifyListCorruptPayload(TestUnpackRPM):

@@ -994,6 +994,28 @@ class CreateVerboseReportsChanges(RequiresTarpm):
             "  /usr/bin/hello: the payload file changed, computed a new digest", lines
         )
 
+        # with no signature.json there is nothing there to keep
+        os.unlink(os.path.join(x, "signature.json"))
+        rc, out, err = run_tarpm(
+            [
+                self.tarpm,
+                "-c",
+                "-v",
+                "-D",
+                "-k",
+                "-f",
+                os.path.join(self.output_dir, "nosig.rpm"),
+                x,
+            ]
+        )
+        self.assertEqual(rc, 0, msg=err)
+        lines = out.splitlines()
+
+        self.assertIn("  the file digests in header.json (-D)", lines)
+        self.assertNotIn("  the signature digests in signature.json (-D)", lines)
+        self.assertNotIn("  the package signatures in signature.json (-k)", lines)
+        self.assertNotIn("  Sha256: kept from signature.json", lines)
+
 
 class CreateVerboseReportsRemovedFiles(RequiresTarpm):
     """-v names a file removed from the payload tree under the file list stage"""

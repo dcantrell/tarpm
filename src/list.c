@@ -108,10 +108,23 @@ list_rpm(const char *rpm)
 
     /* open the package */
     fdi = Fopen(rpm, "r.ufdio");
-    rc = rpmReadPackageFile(ts, fdi, COMMAND_NAME, &hdr);
 
+    if (fdi == NULL || Ferror(fdi)) {
+        warnx(_("Fopen failed for %s: %s"), rpm, Fstrerror(fdi));
+
+        if (fdi) {
+            Fclose(fdi);
+        }
+
+        rpmtsFree(ts);
+        return -1;
+    }
+
+    rc = rpmReadPackageFile(ts, fdi, rpm, &hdr);
+
+    /* librpm says why, errno here is left over from something else */
     if (rc == RPMRC_NOTFOUND || rc == RPMRC_FAIL) {
-        warn("*** rpmReadPackageFile");
+        warnx(_("*** %s is not a valid RPM"), rpm);
         Fclose(fdi);
         rpmtsFree(ts);
         return -1;

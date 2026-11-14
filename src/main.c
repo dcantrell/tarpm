@@ -23,6 +23,9 @@ static bool c_flag = false;
 static bool v_flag = false;
 static bool n_flag = false;
 
+/* --help gets a value no short option has, so -? is told apart from errors */
+#define OPT_HELP 256
+
 /*
  * Work out where one of the JSON metadata files lives.  A single
  * hyphen means stdout and is kept as it is.  A relative path is taken
@@ -68,6 +71,38 @@ metadata_path(const char *path, const char *name)
     }
 
     return r;
+}
+
+/*
+ * Say what getopt_long() did not like and exit.  It always moves optind
+ * past a long option, so arg names that one.  A short option is named by
+ * opt because optind stays put until the rest of its group is read.
+ */
+static void
+bad_option(const char *arg, const int opt, const char *short_opts)
+{
+    const char *p = NULL;
+
+    /* an unknown or ambiguous long option */
+    if (opt == 0) {
+        errx(EXIT_FAILURE, _("*** unrecognized option \"%s\""), arg);
+    }
+
+    if (opt < OPT_HELP) {
+        p = strchr(short_opts, opt);
+    }
+
+    if (p != NULL && p[1] == ':') {
+        errx(EXIT_FAILURE, _("*** -%c needs an argument"), opt);
+    }
+
+    /* only the long form of an option can be handed an argument */
+    if (p != NULL || opt == OPT_HELP) {
+        errx(EXIT_FAILURE, _("*** \"%s\" does not take an argument"), arg);
+    }
+
+    errx(EXIT_FAILURE, _("*** unknown option -%c"), opt);
+    return;
 }
 
 static void
@@ -126,7 +161,7 @@ main(int argc, char **argv)
     char *opt = NULL;
     char *first = NULL;
     struct json_paths paths;
-    char *short_opts = "txcvf:O:L:S:H:P:F:muglaDknV?";
+    char *short_opts = "txcvf:O:L:S:H:P:F:muglaDknV";
     struct option long_opts[] = {
         { "list", no_argument, 0, 't' },
         { "extract", no_argument, 0, 'x' },
@@ -148,7 +183,7 @@ main(int argc, char **argv)
         { "keep-digests", no_argument, 0, 'D' },
         { "keep-signatures", no_argument, 0, 'k' },
         { "version", no_argument, 0, 'V' },
-        { "help", no_argument, 0, '?' },
+        { "help", no_argument, 0, OPT_HELP },
         { 0, 0, 0, 0 }
     };
 
@@ -176,6 +211,9 @@ main(int argc, char **argv)
     if (argc > 1) {
         first = argv[1];
     }
+
+    /* we say what is wrong with an option ourselves */
+    opterr = 0;
 
     /* Parse command line options */
     while (1) {
@@ -322,9 +360,18 @@ main(int argc, char **argv)
             case 'V':
                 printf(_("%s version %s\n"), COMMAND_NAME, PACKAGE_VERSION);
                 exit(EXIT_SUCCESS);
-            case '?':
+            case OPT_HELP:
                 usage();
                 exit(EXIT_SUCCESS);
+            case '?':
+                /* -? is not in short_opts, so getopt_long() calls it unknown */
+                if (optopt == '?') {
+                    usage();
+                    exit(EXIT_SUCCESS);
+                }
+
+                bad_option(argv[optind - 1], optopt, short_opts);
+                break;
             default:
                 errx(EXIT_FAILURE, _("*** ?? getopt returned character code 0%o ??"), c);
         }
@@ -411,12 +458,16 @@ main(int argc, char **argv)
     }
 
     /* Pick up the input directory for -c */
-    if (c_flag && optind < argc && !access(argv[optind], R_OK|X_OK)) {
-        input_dir = realpath(argv[optind], NULL);
+    if (c_flag && optind < argc) {
+        if (!access(argv[optind], R_OK|X_OK)) {
+            input_dir = realpath(argv[optind], NULL);
 
-        if (input_dir == NULL) {
-            err(EXIT_FAILURE, "realpath");
+            if (input_dir == NULL) {
+                err(EXIT_FAILURE, "realpath");
+            }
         }
+
+        optind++;
     }
 
     /* Ensure we only have one of -t, -x, or -c */
@@ -431,6 +482,11 @@ main(int argc, char **argv)
 
     if (filename == NULL) {
         errx(EXIT_FAILURE, _("*** missing filename (-f) argument"));
+    }
+
+    /* anything left over would be quietly ignored */
+    if (optind < argc) {
+        errx(EXIT_FAILURE, _("*** unexpected argument \"%s\""), argv[optind]);
     }
 
     /* the payload metadata options only mean something when we create an RPM */

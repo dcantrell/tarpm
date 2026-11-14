@@ -3064,8 +3064,13 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
+    /* with -D and -k what signature.json carries goes in as-is */
+    if (read_kept_signature(paths, &keptsig) != 0) {
+        goto create_cleanup;
+    }
+
     /* tell the user what goes in unchecked or exactly as given */
-    if (tags != NULL && (raw_tag_count(tags, RPMTAG_CHANGELOGTIME) > 0 || keep_digests || keep_signatures)) {
+    if (tags != NULL && (raw_tag_count(tags, RPMTAG_CHANGELOGTIME) > 0 || keep_digests || keptsig != NULL)) {
         verbose_stage(_("Using data as-is"));
 
         if (raw_tag_count(tags, RPMTAG_CHANGELOGTIME) > 0) {
@@ -3080,11 +3085,12 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     /* note the payload digests header.json carries before placeholders go in */
     keptpayload = kept_payload_digests(header);
 
-    if (keep_digests) {
+    /* with no signature.json we compute every signature digest */
+    if (keptsig != NULL && keep_digests) {
         verbose_detail(_("the signature digests in %s (-D)"), OUTPUT_SIGNATURE);
     }
 
-    if (keep_signatures) {
+    if (keptsig != NULL && keep_signatures) {
         verbose_detail(_("the package signatures in %s (-k)"), OUTPUT_SIGNATURE);
     }
 
@@ -3160,11 +3166,6 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     verbose_header_size(hdr);
-
-    /* with -D and -k what signature.json carries goes in as-is */
-    if (read_kept_signature(paths, &keptsig) != 0) {
-        goto create_cleanup;
-    }
 
     /* recalculate the digests and update the signature data using the updated header */
     verbose_stage(_("Building the signature header"));
