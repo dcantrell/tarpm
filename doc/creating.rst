@@ -9,8 +9,8 @@ what it finds, and fills in the header tags a package needs but you
 have no reason to name.
 
 Only three tags have no value tarpm can work out, which are ``Name``,
-``Version``, and ``Release``.  A header missing any of them is an
-error.  ``License`` has no sensible default either, so tarpm warns
+``Version``, and ``Release``.  A header missing any of them, or
+holding an empty string for one, is an error.  ``License`` has no sensible default either, so tarpm warns
 rather than invent a license string, and carries on.  ``Summary`` is
 worth writing as well, since queries look wrong without it.
 
@@ -237,7 +237,8 @@ This is what the stages tell you:
 * ``Using data as-is`` shows up for raw changelog tags in
   ``header.json`` and for ``-D`` and ``-k``.  tarpm does not check this
   data.  A digest kept this way is wrong for the package if the payload
-  changed.
+  changed.  The ``signature.json`` lines only show up when there is a
+  ``signature.json`` to read.
 * The format stage names the tags the format drops, the size tags that
   change spelling, and the tags it adds.
 * The file list stage names each file whose size or contents changed

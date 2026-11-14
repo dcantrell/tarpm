@@ -166,7 +166,14 @@ Six keys at the top::
     }
 
 ``magic`` and ``reserved`` describe the binary header and are not
-yours to change.  The other four hold everything else.  ``tags`` is the
+yours to change.  The other four hold everything else.
+
+tarpm checks the shape before it reads anything else.  The file has to
+hold a JSON object.  ``tags`` and ``files`` have to be arrays of dicts,
+``changelog`` an array, and ``dependencies`` a dict.  tarpm names the
+key or the index that is wrong and does not create the package.  The
+same goes for ``signature.json`` and its ``tags`` when ``-D`` or ``-k``
+reads it.  ``tags`` is the
 flat list of values that do not belong to one of the three structured
 groups, and those three groups are the parallel array sets unwound.
 
@@ -245,6 +252,12 @@ a tag with no values.
 * A ``type`` not in the table above is refused.  This includes
   ``(null)`` and ``(unknown)``, which tarpm writes when it extracts a
   tag of type RPM_NULL_TYPE or a type rpm does not define.
+* A tag rpm knows has to carry the type rpm gives it, because rpm(8)
+  refuses a header that does not.  Version is a ``string`` and Epoch
+  an ``int32``, so a Version of type ``int32`` is refused.  The three
+  string types count as one, so a ``string`` Summary is fine.  A tag
+  rpm does not know, such as ``#5999``, takes any type.  This only
+  applies to ``header.json``.
 
 A JSON ``null`` for a ``tag`` name, or for the ``path`` or ``type`` of
 a ``files`` entry, counts as an empty string.  A ``null`` tag name is an
@@ -321,6 +334,8 @@ Rules for the object:
 * Every locale has to be in ``Headeri18ntable``.  tarpm does not add
   locales to that tag.
 * Every value has to be a string.
+* The first locale in ``Headeri18ntable``, normally ``C``, needs a key.
+  rpm(8) shows that string for every locale with no translation.
 * A locale with no key gets an empty string if a later locale has a
   key.  rpm(8) shows that locale as blank, the same as for a package
   from rpmbuild(8).  A tag stops at the last locale that has a key, and
@@ -363,8 +378,11 @@ the dependency type::
     }
 
 ``name`` is the only required key.  ``comparison`` is ``=``, ``<``,
-``>``, ``<=``, or ``>=``, and needs a ``version`` to go with it.  That
-pair is the comparison bits of the flags word.
+``>``, ``<=``, or ``>=``, and needs a ``version`` to go with it.  A
+``version`` needs a ``comparison`` too.  That pair is the comparison
+bits of the flags word.  tarpm refuses any other comparison, a
+comparison with no version, and a version with no comparison.  An
+empty ``version`` counts as none.
 
 ``sense_flags`` is the rest of that flags word, as names rather than
 bits.  These are the ``RPMSENSE_`` macros in ``/usr/include/rpm/rpmds.h``.
@@ -454,6 +472,14 @@ key               header tags
 ``verity``        Veritysignatures in the signature header
 ================= =======================================================
 
+tarpm checks four of the values before it writes anything.  ``mode``
+has to be a string of octal digits from ``0000`` to ``7777``.  ``mtime``
+has to be a time written like ``2026-01-16T00:00:00Z``, from 1970 up to
+``2106-02-07T06:28:15Z``, which is the largest time Filemtimes holds.
+``user`` and ``group`` have to be strings.  If one of them is wrong,
+tarpm names the file and does not create the package.  A ``null``
+counts as a missing key.
+
 Six of those are worth a few more words.
 
 ``path``
@@ -464,11 +490,14 @@ Six of those are worth a few more words.
     has no directories, so those paths have no leading slash.
 
     When creating a package, tarpm finds each file by joining its path to
-    the payload directory.  A path with an empty, ``.``, or ``..``
-    component is refused.  So is a path that goes through a symlinked
-    directory in the payload tree.  The file itself may be a symlink.
-    Either one stops the create, since the path would reach a file
-    outside the payload tree.  tarpm opens each regular file without
+    the payload directory.  An empty path is refused.  So is a path with
+    an empty or ``.`` component, such as ``/usr//bin`` or ``/usr/bin/``.
+    A path with a ``..`` component is refused because it can leave the
+    payload tree.  So is a path that goes through a symlinked directory
+    in the payload tree.  The file itself may be a symlink.  A path
+    listed twice in ``files`` is refused too.  Any of these stops the
+    create.  The path ``/`` on its own names the payload directory.  The
+    filesystem package lists it.  tarpm opens each regular file without
     following a symlink anywhere in its path, so a symlink put in the
     tree while tarpm runs is refused too.
 
@@ -574,8 +603,8 @@ what is in it.  ``text`` is one
 string in the header and tarpm splits it on newlines so diffs are
 readable.  A blank line is an empty string in the array.  The array is
 joined back together with newlines when the package is written, so
-the text comes back exactly as it was.  Every line in ``text`` must be
-a JSON string.
+the text comes back exactly as it was.  ``text`` must be an array of
+JSON strings.  A bare string such as ``"- fixed it"`` is refused.
 
 Newest entry first, which is the order rpm(8) expects.
 

@@ -200,6 +200,17 @@ non-zero.  Only a payload libarchive cannot read at all can print a
 complaint from each reader.
 
 A payload that is corrupt or cut short makes tarpm exit non-zero.
+tarpm names the entry it could not read when it knows it::
+
+    tarpm: *** unable to read ./usr/bin/ldconfig from the payload: Truncated zstd input
+
+The entries before it are on disk, and that entry may be partly
+written.  Do not repack from a tree like that.
+
+In a v6 format payload one link of a hard link set carries the data and
+the rest point at it.  A link with no earlier link of its set to point
+at is skipped with a warning, and tarpm exits non-zero.  rpmbuild does
+not make such a package.
 
 Watching it work
 ================

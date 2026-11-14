@@ -43,3 +43,6 @@ A few things worth knowing about this listing:
 
 List mode shows none of the header metadata.  For that, extract the
 package.  See :doc:`extracting`.
+
+A file that is not there, or is not an RPM, makes tarpm print an error
+naming it and exit non-zero.  Nothing is listed.
