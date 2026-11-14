@@ -206,11 +206,13 @@ pad_payload(void)
 /*
  * Copy the contents of a file in the payload tree to the payload.  The
  * file has to hold exactly the size the header lists for it.  We open
- * it with open_beneath() so a symlink put in the tree after
- * check_payload_paths() ran is not followed.
+ * it with open_beneath_at() below payload_dirfd, the payload tree
+ * create_payload() opened, so a symlink put in the tree after
+ * check_payload_paths() ran is not followed.  payload_dir is the same
+ * tree by name, for the messages.
  */
 static int
-write_file_data(const char *payload_dir, const char *relative_path, const uint64_t size)
+write_file_data(const int payload_dirfd, const char *payload_dir, const char *relative_path, const uint64_t size)
 {
     int fd = -1;
     int r = 0;
@@ -225,7 +227,7 @@ write_file_data(const char *payload_dir, const char *relative_path, const uint64
 
     file_path = joinpath(payload_dir, relative_path, NULL);
 
-    if ((fd = open_beneath(payload_dir, relative_path)) == -1) {
+    if ((fd = open_beneath_at(payload_dirfd, relative_path)) == -1) {
         if (errno == ELOOP || errno == EXDEV || errno == EINVAL) {
             warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
         } else {
@@ -268,7 +270,7 @@ write_file_data(const char *payload_dir, const char *relative_path, const uint64
  * only in the last entry of its group, same as in a newc payload.
  */
 static int
-add_file_to_stripped_payload(const char *payload_dir, const struct file_params *params)
+add_file_to_stripped_payload(const int payload_dirfd, const char *payload_dir, const struct file_params *params)
 {
     int r = 0;
     char *relative_path = NULL;
@@ -290,7 +292,7 @@ add_file_to_stripped_payload(const char *payload_dir, const struct file_params *
         }
     } else if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
         relative_path = joinpath(params->dirname, params->basename, NULL);
-        r = write_file_data(payload_dir, relative_path, params->size);
+        r = write_file_data(payload_dirfd, payload_dir, relative_path, params->size);
         free(relative_path);
     }
 
@@ -327,7 +329,7 @@ write_stripped_trailer(void)
  * than walking the filesystem tree.
  */
 static int
-add_file_to_payload(const char *payload_dir, const struct file_params *params)
+add_file_to_payload(const int payload_dirfd, const char *payload_dir, const struct file_params *params)
 {
     int r = 0;
     char *relative_path = NULL;
@@ -408,7 +410,7 @@ add_file_to_payload(const char *payload_dir, const struct file_params *params)
 
     /* write the data to the payload for regular files but not hardlinks */
     if (S_ISREG(params->mode) && params->size > 0 && params->hardlink == NULL) {
-        if (write_file_data(payload_dir, relative_path, params->size) != 0) {
+        if (write_file_data(payload_dirfd, payload_dir, relative_path, params->size) != 0) {
             r = -1;
             goto file_cleanup;
         }
@@ -1209,6 +1211,7 @@ create_payload(struct json_object *header, const char *payload_dir)
 {
     int payloadfd = -1;
     int tmp_payloadfd = -1;
+    int payload_dirfd = -1;
     int dirindex = 0;
     bool stripped = false;
     bool failed = false;
@@ -1504,6 +1507,16 @@ create_payload(struct json_object *header, const char *payload_dir)
     order = xcalloc(numfiles, sizeof(size_t));
     ordered = order_payload_files(&hfl, numfiles, &hl, order);
 
+    /*
+     * Open the payload tree once for every file below.  The forked
+     * compression child is already running, so it does not get this.
+     */
+    if (ordered > 0 && (payload_dirfd = open_beneath_base(payload_dir)) == -1) {
+        warn_escaped("open: %s", payload_dir);
+        failed = true;
+        goto close_payload;
+    }
+
     /* Write each file from the header to the payload */
     for (n = 0; n < ordered; n++) {
         i = order[n];
@@ -1548,12 +1561,12 @@ create_payload(struct json_object *header, const char *payload_dir)
 
         /* the header lists every file, so a missing one is fatal */
         if (stripped) {
-            if (add_file_to_stripped_payload(payload_dir, &params) != 0) {
+            if (add_file_to_stripped_payload(payload_dirfd, payload_dir, &params) != 0) {
                 warnx_escaped("failed to add file: %s%s", params.dirname, params.basename);
                 failed = true;
                 break;
             }
-        } else if (add_file_to_payload(payload_dir, &params) != 0) {
+        } else if (add_file_to_payload(payload_dirfd, payload_dir, &params) != 0) {
             warnx_escaped("failed to add file: %s%s", params.dirname, params.basename);
             failed = true;
             break;
@@ -1569,6 +1582,10 @@ create_payload(struct json_object *header, const char *payload_dir)
 
     /* close the payload so data can be flushed */
 close_payload:
+    if (payload_dirfd != -1) {
+        close(payload_dirfd);
+    }
+
     if (archive_write_close(payload) != ARCHIVE_OK) {
         warnx("archive_write_close: %s", archive_error_string(payload));
         failed = true;

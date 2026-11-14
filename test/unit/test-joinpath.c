@@ -291,6 +291,120 @@ test_open_beneath_walk(void)
     return;
 }
 
+/*
+ * Run the descriptor cases against open_beneath_at() and its fallback.
+ * One base descriptor serves every open and stays open after.
+ */
+static void
+check_opener_at(int (*opener)(const int, const char *))
+{
+    int i = 0;
+    int fd = -1;
+    int basefd = -1;
+    char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
+    char *path = NULL;
+    char buf[8];
+    FILE *fp = NULL;
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+
+    /* usr/file is a file and lib a symlink to usr */
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/file", tmpdir);
+    fp = fopen(path, "w");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    fputs("data", fp);
+    fclose(fp);
+    free(path);
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(symlink("usr", path) == 0);
+    free(path);
+
+    basefd = open_beneath_base(tmpdir);
+    TARPM_ASSERT_TRUE(basefd >= 0);
+
+    /* the don't crash cases */
+    errno = 0;
+    TARPM_ASSERT_EQUAL(opener(basefd, NULL), -1);
+    TARPM_ASSERT_EQUAL(errno, EINVAL);
+    errno = 0;
+    TARPM_ASSERT_EQUAL(opener(-1, "usr/file"), -1);
+    TARPM_ASSERT_EQUAL(errno, EBADF);
+
+    /* the same base opens the file again and again */
+    for (i = 0; i < 3; i++) {
+        fd = opener(basefd, "/usr/file");
+        TARPM_ASSERT_TRUE(fd >= 0);
+        memset(buf, 0, sizeof(buf));
+        TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
+        TARPM_ASSERT_STRING_EQUAL(buf, "data");
+        close(fd);
+    }
+
+    /* a symlink on the way is refused and the base is still open */
+    errno = 0;
+    TARPM_ASSERT_EQUAL(opener(basefd, "lib/file"), -1);
+    TARPM_ASSERT_EQUAL(errno, ELOOP);
+    TARPM_ASSERT_TRUE(fcntl(basefd, F_GETFD) != -1);
+
+    close(basefd);
+
+    /* clean up */
+    xasprintf(&path, "%s/lib", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr/file", tmpdir);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    xasprintf(&path, "%s/usr", tmpdir);
+    TARPM_ASSERT_TRUE(rmdir(path) == 0);
+    free(path);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+
+    return;
+}
+
+void
+test_open_beneath_at(void)
+{
+    check_opener_at(open_beneath_at);
+    return;
+}
+
+void
+test_open_beneath_walk_at(void)
+{
+    check_opener_at(open_beneath_walk_at);
+    return;
+}
+
+/* Test open_beneath_base() only opens a directory */
+void
+test_open_beneath_base(void)
+{
+    int fd = -1;
+
+    errno = 0;
+    TARPM_ASSERT_EQUAL(open_beneath_base(NULL), -1);
+    TARPM_ASSERT_EQUAL(errno, EINVAL);
+
+    errno = 0;
+    TARPM_ASSERT_EQUAL(open_beneath_base("/nonexistent-tarpm-dir"), -1);
+    TARPM_ASSERT_EQUAL(errno, ENOENT);
+
+    errno = 0;
+    TARPM_ASSERT_EQUAL(open_beneath_base("/dev/null"), -1);
+    TARPM_ASSERT_EQUAL(errno, ENOTDIR);
+
+    fd = open_beneath_base("/");
+    TARPM_ASSERT_TRUE(fd >= 0);
+    close(fd);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -307,7 +421,10 @@ get_suite(void)
     if (CU_add_test(pSuite, "test joinpath()", test_joinpath) == NULL ||
         CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL ||
         CU_add_test(pSuite, "test open_beneath()", test_open_beneath) == NULL ||
-        CU_add_test(pSuite, "test open_beneath_walk()", test_open_beneath_walk) == NULL) {
+        CU_add_test(pSuite, "test open_beneath_walk()", test_open_beneath_walk) == NULL ||
+        CU_add_test(pSuite, "test open_beneath_at()", test_open_beneath_at) == NULL ||
+        CU_add_test(pSuite, "test open_beneath_walk_at()", test_open_beneath_walk_at) == NULL ||
+        CU_add_test(pSuite, "test open_beneath_base()", test_open_beneath_base) == NULL) {
         return NULL;
     }
 

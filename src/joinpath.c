@@ -298,14 +298,14 @@ plain_relative(const char *path)
 }
 
 /*
- * Open path below base for reading one component at a time with
- * O_NOFOLLOW, so no symlink in it is followed.  This is the fallback
- * for open_beneath() where openat2() is missing.  Returns the
- * descriptor or -1 with errno set.  A plain name check that fails
- * sets EINVAL and a symlink sets ELOOP.
+ * Open path below the directory basefd for reading one component at a
+ * time with O_NOFOLLOW, so no symlink in it is followed.  This is the
+ * fallback for open_beneath_at() where openat2() is missing.  basefd
+ * stays open.  Returns the descriptor or -1 with errno set.  A plain
+ * name check that fails sets EINVAL and a symlink sets ELOOP.
  */
 int
-open_beneath_walk(const char *base, const char *path)
+open_beneath_walk_at(const int basefd, const char *path)
 {
     int fd = -1;
     int next = -1;
@@ -316,15 +316,17 @@ open_beneath_walk(const char *base, const char *path)
     const char *relative = NULL;
     struct stat sb;
 
-    if (base == NULL || path == NULL || (relative = plain_relative(path)) == NULL) {
+    if (path == NULL || (relative = plain_relative(path)) == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if ((fd = open(base, O_PATH | O_DIRECTORY | O_CLOEXEC)) == -1) {
+    if (basefd < 0) {
+        errno = EBADF;
         return -1;
     }
 
+    fd = basefd;
     copy = xstrdup(relative);
     name = copy;
 
@@ -339,7 +341,11 @@ open_beneath_walk(const char *base, const char *path)
             saved = ELOOP;
         }
 
-        close(fd);
+        /* the caller owns basefd */
+        if (fd != basefd) {
+            close(fd);
+        }
+
         errno = saved;
 
         if (next == -1) {
@@ -353,7 +359,11 @@ open_beneath_walk(const char *base, const char *path)
 
     next = openat(fd, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     saved = errno;
-    close(fd);
+
+    if (fd != basefd) {
+        close(fd);
+    }
+
     free(copy);
     errno = saved;
 
@@ -361,40 +371,38 @@ open_beneath_walk(const char *base, const char *path)
 }
 
 /*
- * Open path below base for reading without following a symlink
- * anywhere in it.  The kernel checks the whole path with openat2()
- * and RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS, so a component swapped
- * for a symlink after path_beneath() looked at it is not followed.
- * Without openat2() we walk the components ourselves.  Returns the
- * descriptor or -1 with errno set.  ELOOP, EXDEV and EINVAL mean the
- * path leaves base or goes through a symlink.
+ * Open path below the directory basefd for reading without following
+ * a symlink anywhere in it.  The kernel checks the whole path with
+ * openat2() and RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS, so a component
+ * swapped for a symlink after path_beneath() looked at it is not
+ * followed.  Without openat2() we walk the components ourselves.
+ * basefd stays open, so a caller opening many files below one
+ * directory opens that directory once.  Returns the descriptor or -1
+ * with errno set.  ELOOP, EXDEV and EINVAL mean the path leaves the
+ * directory or goes through a symlink.
  */
 int
-open_beneath(const char *base, const char *path)
+open_beneath_at(const int basefd, const char *path)
 {
 #ifdef _HAVE_OPENAT2
     int fd = -1;
-    int dirfd = -1;
-    int saved = 0;
     const char *relative = NULL;
     struct open_how how;
 
-    if (base == NULL || path == NULL || (relative = plain_relative(path)) == NULL) {
+    if (path == NULL || (relative = plain_relative(path)) == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if ((dirfd = open(base, O_PATH | O_DIRECTORY | O_CLOEXEC)) == -1) {
+    if (basefd < 0) {
+        errno = EBADF;
         return -1;
     }
 
     memset(&how, 0, sizeof(how));
     how.flags = O_RDONLY | O_NOFOLLOW | O_CLOEXEC;
     how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS;
-    fd = (int) syscall(SYS_openat2, dirfd, relative, &how, sizeof(how));
-    saved = errno;
-    close(dirfd);
-    errno = saved;
+    fd = (int) syscall(SYS_openat2, basefd, relative, &how, sizeof(how));
 
     /* an older kernel or a seccomp filter may not let us have it */
     if (fd != -1 || (errno != ENOSYS && errno != EPERM)) {
@@ -402,5 +410,63 @@ open_beneath(const char *base, const char *path)
     }
 #endif
 
-    return open_beneath_walk(base, path);
+    return open_beneath_walk_at(basefd, path);
+}
+
+/*
+ * Open the directory base for use as the basefd of open_beneath_at()
+ * and open_beneath_walk_at().  Returns the descriptor or -1 with errno
+ * set.  The caller has to close it.
+ */
+int
+open_beneath_base(const char *base)
+{
+    if (base == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return open(base, O_PATH | O_DIRECTORY | O_CLOEXEC);
+}
+
+/*
+ * Run one of the _at openers with base opened for it.  Returns the
+ * descriptor or -1 with errno set.
+ */
+static int
+open_with_base(int (*opener)(const int, const char *), const char *base, const char *path)
+{
+    int fd = -1;
+    int basefd = -1;
+    int saved = 0;
+
+    if (base == NULL || path == NULL || plain_relative(path) == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if ((basefd = open_beneath_base(base)) == -1) {
+        return -1;
+    }
+
+    fd = opener(basefd, path);
+    saved = errno;
+    close(basefd);
+    errno = saved;
+
+    return fd;
+}
+
+/* open_beneath_walk_at() below the directory named base */
+int
+open_beneath_walk(const char *base, const char *path)
+{
+    return open_with_base(open_beneath_walk_at, base, path);
+}
+
+/* open_beneath_at() below the directory named base */
+int
+open_beneath(const char *base, const char *path)
+{
+    return open_with_base(open_beneath_at, base, path);
 }
