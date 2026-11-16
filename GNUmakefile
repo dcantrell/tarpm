@@ -57,20 +57,13 @@ setup:
 debug: setup-debug
 	$(NINJA) -C $(MESON_BUILD_DIR) -v
 
+setup-debug:
+	$(MESON) setup $(MESON_BUILD_DIR) --werror --buildtype=debug $(MESON_OPTIONS)
+
 # The HTML manual builds with everything else, this just skips the
 # rest of the tree.  Output lands in $(MESON_BUILD_DIR)/doc/html.
 docs: setup
 	$(NINJA) -C $(MESON_BUILD_DIR) -v doc/html
-
-setup-debug:
-	$(MESON) setup $(MESON_BUILD_DIR) --werror --buildtype=debug $(MESON_OPTIONS)
-
-update-pot: setup
-	find src -type f -name "*.c" > po/POTFILES.new
-	find include -type f -name "*.h" >> po/POTFILES.new
-	sort -u po/POTFILES.new > po/POTFILES
-	rm -f po/POTFILES.new
-	$(NINJA) -C $(MESON_BUILD_DIR) $(PROJECT_NAME)-pot
 
 # To keep intermediate files and results files for each test case, set
 # KEEP=y (or to any value) in the calling environment when you run
@@ -97,6 +90,13 @@ black:
 
 shellcheck:
 	$(SHELLCHECK) $(SHELL_SCRIPTS)
+
+update-pot: setup
+	find src -type f -name "*.c" > po/POTFILES.new
+	find include -type f -name "*.h" >> po/POTFILES.new
+	sort -u po/POTFILES.new > po/POTFILES
+	rm -f po/POTFILES.new
+	$(NINJA) -C $(MESON_BUILD_DIR) $(PROJECT_NAME)-pot
 
 srpm:
 	$(topdir)/utils/srpm.sh
@@ -134,6 +134,9 @@ koji: srpm
 	fi
 	$(topdir)/utils/submit-koji-builds.sh $(RELEASED_TARBALL) $(RELEASED_TARBALL_ASC) $$(basename $(topdir))
 
+clean:
+	-rm -rf $(MESON_BUILD_DIR)
+
 # Set to 'y' in the calling environment to skip the pip package
 # installation in instreqs.
 SKIP_PIP ?= n
@@ -151,9 +154,6 @@ instreqs:
 	if [ -x $(topdir)/osdeps/$(OS)/post.sh ]; then \
 		env OSDEPS=$(topdir)/osdeps/$(OS) $(topdir)/osdeps/$(OS)/post.sh ; \
 	fi
-
-clean:
-	-rm -rf $(MESON_BUILD_DIR)
 
 authors:
 	echo "Primary Authors" > AUTHORS.md
