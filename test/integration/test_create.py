@@ -2751,6 +2751,7 @@ class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
             self.assertFalse(os.path.exists(pkg))
 
 
+@unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")
 class CreateFailsOnUnreadableDigest(RequiresTarpm):
     """A file list digest that cannot be recomputed is an error"""
 
