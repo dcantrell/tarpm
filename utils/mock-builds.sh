@@ -19,12 +19,11 @@ rm -f tarpm-*.tar.gz tarpm-*.src.rpm
 make copr-srpm
 
 # collect the archive names
-SRC="$(/bin/ls -1 tarpm-*.tar.gz)"
 SRPM="$(/bin/ls -1 tarpm-*.src.rpm)"
 
 # build for some mock targets
 cd /etc/mock || exit 1
-for target in fedora*${ARCH}.cfg centos-stream+epel*${ARCH}.cfg ; do
+for target in fedora*"${ARCH}".cfg centos-stream+epel*"${ARCH}".cfg ; do
     [ -L "${target}" ] && continue
     rname="$(basename "${target}")"
     mock -r "${rname}" --rebuild "${CWD}"/"${SRPM}"
