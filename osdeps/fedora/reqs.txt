@@ -3,9 +3,11 @@ doxygen
 file-devel
 gcc
 gettext
+groff
 json-c-devel
 libarchive-devel
 libzstd-devel
+mandoc
 meson
 ninja-build
 openssl-devel

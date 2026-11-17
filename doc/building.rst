@@ -16,7 +16,8 @@ tarpm is C and builds with meson and ninja.  The libraries it needs are:
 * OpenSSL, for the digests
 
 The test suite also wants CUnit, python3, python3-rpm, rpm-build, and
-the rpmfluff Python module.
+the rpmfluff Python module.  It checks the man page with groff and
+mandoc too, and skips that check when either one is missing.
 The HTML manual wants doxygen, sphinx, breathe, and the Read the Docs
 sphinx theme.
 

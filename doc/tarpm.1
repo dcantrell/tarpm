@@ -1,7 +1,7 @@
 .\" Copyright The tarpm Project Authors
 .\"SPDX-License-Identifier: GPL-3.0-or-later
 
-.TH TARPM "1" "September 2026" "tarpm"
+.TH TARPM "1" "November 17, 2026" "tarpm"
 .SH NAME
 tarpm \- list, create, modify, and extract RPM packages without using
 rpmbuild(1)
@@ -61,8 +61,8 @@ List the contents of the RPM package without metadata (cannot be used
 with \f[B]\-c\f[R] or \f[B]\-x\f[R]).
 If the package or its payload cannot be read, \f[B]tarpm\f[R] exits
 non\-zero.
-Control characters in a path are printed as \f[C]\\ooo\f[R] octal
-escapes and a backslash is printed as \f[C]\\\\\f[R], the same as
+Control characters in a path are printed as \f[CR]\\ooo\f[R] octal
+escapes and a backslash is printed as \f[CR]\\\\\f[R], the same as
 \f[B]ls \-b\f[R].
 The same goes for the paths that \f[B]\-v\f[R] prints and the paths
 in warnings.
@@ -119,8 +119,8 @@ The name of the input or output RPM file.
 The name of the output directory when extracting an RPM.  Without this
 option the extracted package goes in to a subdirectory of the
 directory you are in named after the NEVRA of the package.
-A NEVRA that holds a slash or a control character, or is \f[C].\f[R]
-or \f[C]..\f[R], is refused and this option is required.
+A NEVRA that holds a slash or a control character, or is \f[CR].\f[R]
+or \f[CR]..\f[R], is refused and this option is required.
 .RS
 .PP
 The directory is only made when a file actually goes in it.  Send
@@ -268,15 +268,15 @@ v6 format keeps the ones rpm(8) only adds for v4 format.  Edit
 \f[B]dependencies\f[R] yourself if you do not want them.
 .PP
 Sourcenevr does survive, even though it is a v6 format tag a v4
-format package cannot carry.  It is the Sourcerpm value with the \(dq.src.rpm\(dq
-ending taken off, so \f[B]tarpm\f[R] works it out again on the way
-back to the v6 format.
+format package cannot carry.  It is the Sourcerpm value with the
+\(dq.src.rpm\(dq ending taken off, so \f[B]tarpm\f[R] works it out
+again on the way back to the v6 format.
 .PP
 The lead records the format in its major version, which is 3 for the
-v4 format and 4 for the v6 format.  Switching formats does not change a payload compressor
-the metadata names.  A package whose metadata names none gets the
-rpm(8) default for the format.  The payload of a v6 format package is
-a stripped cpio archive.  See PAYLOAD below.
+v4 format and 4 for the v6 format.  Switching formats does not change
+a payload compressor the metadata names.  A package whose metadata
+names none gets the rpm(8) default for the format.  The payload of a
+v6 format package is a stripped cpio archive.  See PAYLOAD below.
 .RE
 .TP
 \f[B]\-m\f[R], \f[B]\-\-payload\-mtime\f[R]
@@ -450,7 +450,7 @@ The file has to hold a JSON object. The tags and files keys have to be
 arrays of dicts, changelog an array, and dependencies a dict.
 \f[B]tarpm\f[R] names the key or index that is wrong and does not
 create the package. The same goes for \f[B]signature.json\f[R] and
-its tags when \f[B]-D\f[R] or \f[B]-k\f[R] reads it.
+its tags when \f[B]\-D\f[R] or \f[B]\-k\f[R] reads it.
 .PP
 The arrays in \f[B]header.json\f[R] containing metadata:
 .TP
@@ -466,9 +466,10 @@ the type is an array, the value will be an array of that type.
 A string tag needs a JSON string for its value. tarpm will not create
 a package from one holding a number, a boolean, or null. An i18n string
 tag holds the same, or an object of locale to string when it has
-translations, such as {\(dqC\(dq: \(dqhello\(dq, \(dqde\(dq: \(dqhallo\(dq}. Every locale
-has to be in the Headeri18ntable tag, and the first locale there,
-normally C, needs a string. A translated Description keeps
+translations, such as {\(dqC\(dq: \(dqhello\(dq, \(dqde\(dq:
+\(dqhallo\(dq}. Every locale has to be in the Headeri18ntable tag,
+and the first locale there, normally C, needs a string. A translated
+Description keeps
 each string in a file, so its \f[B]file\f[R] key holds the object,
 with \f[B]description.txt\f[R] for the first locale and
 \f[B]description.\f[R]\f[I]locale\f[R]\f[B].txt\f[R] for the others.
@@ -553,10 +554,10 @@ The absolute path the file has once the package is installed. This is
 the only key every entry carries. It is also where the file sits
 inside the \f[B]payload\f[R] subdirectory. A path listed twice is an
 error.
-So is an empty path, a path with an empty, \f[C].\f[R], or
-\f[C]..\f[R] component, such as \f[C]/usr//bin\f[R], and a path
+So is an empty path, a path with an empty, \f[CR].\f[R], or
+\f[CR]..\f[R] component, such as \f[CR]/usr//bin\f[R], and a path
 through a symlinked directory in the payload tree.
-The path \f[C]/\f[R] on its own is the \f[B]payload\f[R]
+The path \f[CR]/\f[R] on its own is the \f[B]payload\f[R]
 subdirectory itself.
 .TP
 \f[B]size\f[R]
@@ -704,9 +705,10 @@ changelog line. Usually this is the packager\(cqs name, email address,
 a hyphen, and the version\-release value of that update (but without
 the dist tag), but this is just a common convention. The text value is
 an array of strings containing everything for that changelog
-entry. A bare string is an error. The actual value in the header is one long string, but tarpm
-splits that on newlines and presents it as an array in the JSON file
-for easier editing. A blank line is an empty string in the array. The
+entry. A bare string is an error. The actual value in the header is
+one long string, but tarpm splits that on newlines and presents it as
+an array in the JSON file for easier editing. A blank line is an empty
+string in the array. The
 entire array is joined together with newlines when constructing an
 RPM, so the text comes back exactly as it was.
 .SH MINIMAL PACKAGES
@@ -841,11 +843,11 @@ newc, and librpm knows both.  A package whose header carries
 Longfilesizes goes straight to librpm.  Any other package goes to
 libarchive first, and to librpm only when libarchive cannot read a
 single entry.  Each entry librpm reads is written straight to the
-payload tree, so nothing goes to \f[B]$TMPDIR\f[R].  An entry that fails after others went in is reported once
-and \f[B]tarpm\f[R] exits non-zero without trying the second
-reader.  \f[B]tarpm\f[R] writes a stripped
-archive whenever the header carries Longfilesizes and newc otherwise,
-the same as rpm(8).
+payload tree, so nothing goes to \f[B]$TMPDIR\f[R].  An entry that
+fails after others went in is reported once and \f[B]tarpm\f[R] exits
+non\-zero without trying the second reader.  \f[B]tarpm\f[R] writes a
+stripped archive whenever the header carries Longfilesizes and newc
+otherwise, the same as rpm(8).
 .PP
 One link of a hard link set carries the data and the rest point at it.
 A set the payload carries out of order stops the librpm reader where
@@ -853,7 +855,7 @@ it is, and librpm reports that as the end of the payload rather than
 as an error.
 \f[B]tarpm\f[R] counts the entries it got against the files in the
 header, leaving out the %ghost files the payload never carries, and
-exits non-zero when it comes up short.
+exits non\-zero when it comes up short.
 Whole sets may move.
 Only a link separated from the rest of its set reads short.
 .PP
@@ -884,8 +886,8 @@ status lines with \f[B]\-v\f[R].
 Files you changed
 The type, the size, the symlink target, the device number, the digest,
 the class, and the MIME type are taken from the file on disk rather
-than from the entry. Swapping a file for a symlink, or for any other kind of thing,
-rewrites the rest of the entry to suit the new type.
+than from the entry. Swapping a file for a symlink, or for any other
+kind of thing, rewrites the rest of the entry to suit the new type.
 .TP
 Keys you left out
 An entry that is missing a key the header needs gets one, read off the
@@ -971,13 +973,12 @@ format package and the MIME type for a v6 format package.
 A source package gets neither.
 .PP
 A file list out of a v4 format package carries no \f[B]mime\f[R]
-key. When you write a v6 format package from it, \f[B]tarpm\f[R] works out the MIME
-type of each entry that has no \f[B]mime\f[R] key.
+key. When you write a v6 format package from it, \f[B]tarpm\f[R]
+works out the MIME type of each entry that has no \f[B]mime\f[R] key.
 .SH SEE ALSO
 \f[B]rpmbuild\f[R](1), \f[B]rpmsign\f[R](1), \f[B]tar\f[R](1),
 \f[B]file\f[R](1), \f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)
 .SH AUTHOR
-.PP
 .nf
 Dave Cantrell <dcantrell@burdell.org>
 .fi

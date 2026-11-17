@@ -21,7 +21,8 @@ if python.found()
         'test_create.py',
         'test_class.py',
         'test_mime.py',
-        'test_roundtrip.py'
+        'test_roundtrip.py',
+        'test_manpage.py'
     ]
 
     foreach suite : test_suites
