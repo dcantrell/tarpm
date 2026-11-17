@@ -167,9 +167,11 @@ extract_dir(Header h, const char *cwd, const char *output_dir)
  * create turns a missing tag in to the default compressor, so we name
  * it in header.json.  rpm reads a missing tag as gzip and an old
  * package can really be that, so we look at the start of the payload,
- * which is where fd sits, and go by the cpio magic.
+ * which is where fd sits, and go by the cpio magic.  Returns true if
+ * the payload is uncompressed, which is what the -v stage line needs
+ * so it does not name a compressor the package never used.
  */
-static void
+static bool
 mark_uncompressed_payload(const int fd, struct json_object *header)
 {
     char magic[5];
@@ -177,15 +179,15 @@ mark_uncompressed_payload(const int fd, struct json_object *header)
     struct json_object *entry = NULL;
 
     if (!json_object_object_get_ex(header, RPM_ENTRY_TAGS_DESC, &tags)) {
-        return;
+        return false;
     }
 
     if (has_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, false)) {
-        return;
+        return false;
     }
 
     if (read(fd, magic, sizeof(magic)) != (ssize_t) sizeof(magic) || memcmp(magic, "07070", sizeof(magic))) {
-        return;
+        return false;
     }
 
     entry = json_object_new_object();
@@ -194,16 +196,18 @@ mark_uncompressed_payload(const int fd, struct json_object *header)
     json_object_object_add(entry, RPM_ENTRY_VALUE_DESC, json_object_new_string(PAYLOADCOMPRESSOR_NONE));
     json_object_array_add(tags, entry);
 
-    return;
+    return true;
 }
 
 /*
  * Read the lead, the signature, and the header out of the RPM and
- * write each one to its JSON file.  Returns 0 if that worked, 1 if
- * we had to keep raw tags in header.json, and -1 if it did not work.
+ * write each one to its JSON file.  uncompressed comes back true for
+ * a payload with no compressor, which only the payload stage line
+ * uses.  Returns 0 if that worked, 1 if we had to keep raw tags in
+ * header.json, and -1 if it did not work.
  */
 static int
-extract_metadata(const char *filename, const char *dest_dir, const char *header_dir, const struct json_paths *paths)
+extract_metadata(const char *filename, const char *dest_dir, const char *header_dir, const struct json_paths *paths, bool *uncompressed)
 {
     int r = 0;
     int rpmfd = -1;
@@ -213,9 +217,11 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     struct json_object *header = NULL;
     bool raw_tags = false;
 
-    if (filename == NULL || dest_dir == NULL || header_dir == NULL || paths == NULL) {
+    if (filename == NULL || dest_dir == NULL || header_dir == NULL || paths == NULL || uncompressed == NULL) {
         return -1;
     }
+
+    *uncompressed = false;
 
     /* open the RPM file (this handle will be passed around) */
     rpmfd = open(filename, O_RDONLY);
@@ -270,7 +276,7 @@ extract_metadata(const char *filename, const char *dest_dir, const char *header_
     }
 
     /* the payload starts here, right after the main header */
-    mark_uncompressed_payload(rpmfd, header);
+    *uncompressed = mark_uncompressed_payload(rpmfd, header);
 
     /* close the RPM after reading headers */
     if (close(rpmfd) == -1) {
@@ -413,13 +419,22 @@ verbose_package(Header h, const char *filename, const char *dest_dir)
     return;
 }
 
-/* Print the payload stage line with -v */
+/*
+ * Print the payload stage line with -v.  uncompressed is what
+ * mark_uncompressed_payload() made of the start of the payload, so
+ * the line agrees with the Payloadcompressor header.json carries.
+ */
 static void
-verbose_payload_stage(Header h, const char *payload_dir)
+verbose_payload_stage(Header h, const char *payload_dir, const bool uncompressed)
 {
     const char *compressor = NULL;
 
     if (!verbose) {
+        return;
+    }
+
+    if (uncompressed) {
+        verbose_stage(_("Unpacking the uncompressed payload in to %s"), payload_dir);
         return;
     }
 
@@ -481,6 +496,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     Header h;
     int metadata = 0;
     int r = -1;
+    bool uncompressed = false;
 
     if (cwd == NULL) {
         warnx(_("missing cwd in %s call"), __func__);
@@ -532,7 +548,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
     }
 
     /* read the RPM headers and write them out as JSON */
-    metadata = extract_metadata(filename, dest_dir, header_dir, paths);
+    metadata = extract_metadata(filename, dest_dir, header_dir, paths, &uncompressed);
 
     if (metadata < 0) {
         goto cleanup;
@@ -550,7 +566,7 @@ extract_rpm(const char *filename, const char *cwd, const char *output_dir, const
             goto cleanup;
         }
 
-        verbose_payload_stage(h, payload_dir);
+        verbose_payload_stage(h, payload_dir, uncompressed);
 
         if (extract_payload(filename, payload_dir, verbose, headerIsEntry(h, RPMTAG_LONGFILESIZES)) != 0) {
             goto cleanup;

@@ -258,6 +258,13 @@ tarpm is trying librpm.  The last line counts the entries and gives the
 installed size the header records.  With ``-n`` the payload stage says
 the payload was skipped.
 
+The payload stage names the compressor the package used, which is the
+same one ``Payloadcompressor`` gets in ``header.json``.  rpmbuild
+leaves the tag off an uncompressed payload, so the stage line says
+uncompressed for those::
+
+    >>> Unpacking the uncompressed payload in to /home/you/hello-1.0-1.x86_64/payload
+
 The status lines go to standard output.  When ``-L``, ``-S``, or ``-H``
 sends JSON to standard output, the status lines go to standard error
 instead.  That keeps the JSON clean for a pipe, the same as

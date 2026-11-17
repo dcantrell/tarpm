@@ -94,6 +94,10 @@ Each stage line starts with \f[B]>>>\f[R] and the details of each stage
 are indented two spaces under it.
 With \f[B]\-x\f[R] the stages are the package, the lead, the signature
 header, the main header, the JSON files written, and the payload.
+The payload stage names the compressor the package used, which is the
+same one Payloadcompressor gets in \f[B]header.json\f[R].
+rpmbuild leaves the tag off an uncompressed payload, so the stage line
+says uncompressed for those.
 Each payload entry gets a line as it is unpacked.
 When \f[B]\-L\f[R], \f[B]\-S\f[R], or \f[B]\-H\f[R] sends JSON to
 standard output, the status lines go to standard error instead.

@@ -877,6 +877,57 @@ class VerifyVerboseExtractStages(TestUnpackRPM):
         self.assertEqual(self.err, b"")
 
 
+class VerifyVerboseNamesTheCompressor(TestUnpackRPM):
+    """-v names the compressor header.json gets, not a default"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v"]
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        tags = {t["tag"]: t.get("value") for t in json.load(f)["tags"]}
+        f.close()
+
+        line = [
+            x for x in self.out.decode("utf-8").splitlines() if "Unpacking the" in x
+        ]
+        self.assertEqual(len(line), 1, msg=self.out)
+        self.assertIn("%s compressed payload" % tags["Payloadcompressor"], line[0])
+
+
+class VerifyVerboseNamesAnUncompressedPayload(TestUnpackRPM):
+    """-v says uncompressed for a package rpmbuild left uncompressed"""
+
+    def setUp(self):
+        super().setUp()
+        self.opts = ["-v"]
+
+        # rpmbuild leaves the compressor tag off, and rpm reads a
+        # missing tag as gzip, so -v used to say gzip here
+        self.rpm.header += "\n%global _binary_payload w.ufdio\n"
+        self.rpm.add_installed_file(
+            "/usr/share/%s/README" % NAME, rpmfluff.SourceFile("README", b"readme\n")
+        )
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        tags = {t["tag"]: t.get("value") for t in json.load(f)["tags"]}
+        f.close()
+        self.assertEqual(tags["Payloadcompressor"], "none")
+
+        out = self.out.decode("utf-8")
+        self.assertIn("Unpacking the uncompressed payload", out)
+        self.assertNotIn("gzip", out)
+
+
 class VerifyQuietExtract(TestUnpackRPM):
     """Without -v an extract prints nothing"""
 
