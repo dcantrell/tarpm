@@ -5,7 +5,8 @@ Building
 Requirements
 ============
 
-tarpm is C and builds with meson and ninja.  The libraries it needs are:
+tarpm is written in C and builds with meson and ninja.  The libraries
+it needs are:
 
 * librpm, for the tag tables and a few helpers
 * json-c, for reading and writing the JSON metadata
@@ -17,12 +18,13 @@ tarpm is C and builds with meson and ninja.  The libraries it needs are:
 
 The test suite also wants CUnit, python3, python3-rpm, rpm-build, and
 the rpmfluff Python module.  It checks the man page with groff and
-mandoc too, and skips that check when either one is missing.
+mandoc as well, and skips that check when either one is missing.
 The HTML manual wants doxygen, sphinx, breathe, and the Read the Docs
 sphinx theme.
 
 On Fedora the packages are listed in ``osdeps/fedora/reqs.txt`` and
-the Python modules in ``osdeps/fedora/pip.txt``.  This installs both::
+the Python modules in ``osdeps/fedora/pip.txt``.  This installs both
+of them::
 
     make instreqs
 
@@ -35,8 +37,8 @@ steps so you do not have to remember them::
     make
 
 That runs ``meson setup build`` and then ``ninja -C build``.  The
-binary lands at ``build/src/tarpm`` and runs out of the build directory
-without installing anything.
+binary lands at ``build/src/tarpm`` and runs out of the build
+directory without installing anything.
 
 For a debug build with warnings as errors::
 
@@ -45,6 +47,8 @@ For a debug build with warnings as errors::
 To start over::
 
     make clean
+
+Run ``make help`` for the rest of the targets.
 
 Documentation
 =============
@@ -58,8 +62,8 @@ build only that::
 doxygen turns the header files in ``include/`` in to XML and sphinx
 reads that through breathe alongside the rst files in ``doc/``.  A
 missing piece skips the manual with a warning rather than failing the
-build of the program, so you can build tarpm without any of it.  Turn
-it off outright with::
+build of the program, so you can always build tarpm without any of
+it.  To turn it off outright::
 
     meson setup build -Ddocs=false
 
@@ -71,11 +75,11 @@ Everything written along the way stays under the build directory, so
 
 ``build/doc/Doxyfile``
     The doxygen configuration, made from ``doc/Doxyfile.in`` with the
-    paths filled in.  Edit the ``.in`` file, not this one.
+    paths filled in.  Edit the ``.in`` file rather than this one.
 
 ``build/doc/doxygen``
-    What doxygen wrote, with the ``xml`` breathe reads next to an
-    ``html`` copy you can look at on its own.
+    What doxygen wrote, with the ``xml`` breathe reads sitting next to
+    an ``html`` copy you can look at on its own.
 
 ``build/doc/html``
     The manual.
@@ -94,11 +98,11 @@ Run everything::
 
 That is ``meson test -C build -v``, which covers the CUnit unit tests
 and the Python integration tests.  The integration tests build real
-packages with rpmfluff and then run tarpm over them, so rpm-build has
-to be installed.
+packages with rpmfluff and then run tarpm over them, so you need
+rpm-build installed.
 
-To run one integration test script, name it without the ``test_``
-prefix and the ``.py`` suffix::
+To run a single integration test script, name it without the
+``test_`` prefix and the ``.py`` suffix::
 
     make check create
 
