@@ -69,7 +69,7 @@ package is usable by rpm(8).
 
 
 %files
-%doc AUTHORS.md CODE_OF_CONDUCT.md CONTRIBUTING.md README.md TODO.org
+%doc AUTHORS.md CODE_OF_CONDUCT.md CONTRIBUTING.md README.md RELEASE.org TODO.org
 %license COPYING COPYING.LIB LICENSE-2.0.txt LICENSE-BSD.txt
 %{_bindir}/tarpm
 %{_mandir}/man1/tarpm.1*
