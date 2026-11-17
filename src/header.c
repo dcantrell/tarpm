@@ -696,6 +696,11 @@ valid_binary_value(struct json_object *value)
  * know, and we refuse those.  The region tags have their own check in
  * check_region_tags().
  *
+ * An entry with no value at all is refused here too.  add_header_tags()
+ * turns it away when it lays the header out, which is after the
+ * payload is written, and get_item_size() sizes it as nothing while
+ * count_header_entries() still counts it.
+ *
  * Returns 0 on success, -1 if any value has the wrong type.
  */
 static int
@@ -727,11 +732,17 @@ check_tag_values(struct json_object *tags, const struct tagfile *tagfiles, bool 
             continue;
         }
 
+        name = report_tag_name(tag_number, is_signature);
+
+        /*
+         * A tag whose value lives in a file is skipped above, so
+         * getting here with nothing means the entry carries no value.
+         */
         if (!json_object_object_get_ex(entry, entry_value_key(entry, tag_number), &key)) {
+            warnx(_("*** the %s tag has no \"%s\""), name, RPM_ENTRY_VALUE_DESC);
+            r = -1;
             continue;
         }
-
-        name = report_tag_name(tag_number, is_signature);
 
         /* rpm turns away a tag with a count of zero */
         if (json_object_get_type(key) == json_type_array && json_object_array_length(key) == 0) {

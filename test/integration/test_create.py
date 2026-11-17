@@ -1556,6 +1556,29 @@ class CreateRejectsRepeatedPath(FileListTree):
         self.assertNotIn("more than once", err)
 
 
+class CreateRejectsTagWithoutValue(RequiresTarpm):
+    """A tag entry with no value is named and refused before the payload"""
+
+    def runTest(self):
+        tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
+        edit_header(
+            os.path.join(tree, "header.json"),
+            lambda h: [
+                t.pop("value", None) for t in h["tags"] if t["tag"] == "License"
+            ],
+        )
+
+        pkg = os.path.join(self.output_dir, "hello.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-v", "-f", pkg, tree])
+
+        self.assertEqual(rc, 1, msg=err)
+        self.assertIn('the License tag has no "value"', err)
+        self.assertFalse(os.path.isfile(pkg))
+
+        # the header check runs first, so the payload is never written
+        self.assertNotIn("Writing the payload", out)
+
+
 class CreateRejectsOddPath(FileListTree):
     """A path with an empty or "." component says so, not that it leaves the tree"""
 

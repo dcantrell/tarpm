@@ -479,6 +479,8 @@ a type rpm does not define.
 A tag rpm knows has to carry the type rpm gives it, so a Version of
 type int32 is refused. The string, string array, and i18n string types
 count as one. A tag rpm does not know takes any type.
+An entry with no value at all is refused as well, unless it names a
+file instead, and \f[B]tarpm\f[R] says which tag it was.
 .PP
 If an entry in the tags array contains a file key rather than value,
 then that key corresponds to a text file in the extracted RPM

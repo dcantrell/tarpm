@@ -605,6 +605,37 @@ test_header_size(void)
     return;
 }
 
+/*
+ * Test a tag entry with no value is turned away by every pass.
+ * create_header() always refused it.  The other two let it through,
+ * so a header create_rpm() had already checked failed at the build,
+ * which is after the payload is written.
+ */
+void
+test_header_entry_without_value(void)
+{
+    struct json_object *data = NULL;
+    struct json_object *tags = NULL;
+    struct json_object *entry = NULL;
+    struct rpmhdr *hdr = NULL;
+    struct rpmhdrinfo *hdrinfo = NULL;
+
+    data = make_name_version("string", json_object_new_string("1.0"));
+    TARPM_ASSERT_TRUE(json_object_object_get_ex(data, "tags", &tags));
+    entry = json_object_array_get_idx(tags, 1);
+    json_object_object_del(entry, "value");
+
+    TARPM_ASSERT_EQUAL(create_header(data, &hdr, &hdrinfo, NULL, NULL, false), -1);
+    TARPM_ASSERT_PTR_NULL(hdr);
+    TARPM_ASSERT_PTR_NULL(hdrinfo);
+    TARPM_ASSERT_EQUAL(check_header(data, NULL, NULL, false), -1);
+    TARPM_ASSERT_EQUAL(header_size(data, NULL, NULL, false), 0);
+
+    json_object_put(data);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -634,7 +665,8 @@ get_suite(void)
         CU_add_test(pSuite, "test create_header() with valid data", test_create_header_valid) == NULL ||
         CU_add_test(pSuite, "test create_header() with int16 values", test_create_header_int16) == NULL ||
         CU_add_test(pSuite, "test check_header()", test_check_header) == NULL ||
-        CU_add_test(pSuite, "test header_size()", test_header_size) == NULL) {
+        CU_add_test(pSuite, "test header_size()", test_header_size) == NULL ||
+        CU_add_test(pSuite, "test a tag entry with no value", test_header_entry_without_value) == NULL) {
         return NULL;
     }
 

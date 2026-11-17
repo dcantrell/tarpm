@@ -231,7 +231,10 @@ same number of values.  tarpm refuses them otherwise.
 
 The other types are checked the same way before the header is built.
 An empty array is refused for every type, because rpm(8) does not read
-a tag with no values.
+a tag with no values.  So is an entry carrying no ``value`` at all,
+unless it names a ``file`` instead.  tarpm names the tag::
+
+    tarpm: *** the License tag has no "value"
 
 * A ``string array`` holds an array of JSON strings.  A bare string or
   a ``null`` in the array is refused.
