@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Telling the v4 format and the v6 format apart.
+ *
+ * Each format owns main header tags the other one never uses, so
+ * switching formats means dropping one set and adding the other.
+ * The payload digests and sizes land here too.
+ */
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>

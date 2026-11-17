@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Dependencies.
+ *
+ * RPM stores each kind of dependency as three parallel arrays.  We
+ * gather each triple in to one array of dicts keyed by the
+ * dependency type.
+ */
+
 #include <string.h>
 #include <err.h>
 #include <errno.h>

@@ -30,7 +30,11 @@ if build_docs
     # against the directory it runs in.  The filled in copy and
     # everything doxygen writes stay under the meson build directory.
     doxyconf = configuration_data()
-    doxyconf.set('INPUT_DIR', meson.project_source_root() / 'include')
+    doxyconf.set('INPUT_DIR', ' '.join([
+        meson.project_source_root() / 'include',
+        meson.project_source_root() / 'src'
+    ]))
+    doxyconf.set('EXCLUDE_DIR', meson.project_source_root() / 'include' / 'compat')
     doxyconf.set('OUTPUT_DIR', meson.current_build_dir() / 'doxygen')
 
     doxyfile = configure_file(

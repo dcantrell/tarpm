@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Small helper macros.
+ */
+
 #ifndef _TARPM_HELPERS_H
 #define _TARPM_HELPERS_H
 

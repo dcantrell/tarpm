@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Canonicalizing paths.
+ *
+ * We work the path out by hand rather than with realpath(3) so a
+ * path that is not on disk yet still resolves.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

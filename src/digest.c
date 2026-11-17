@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The digests an RPM carries.
+ *
+ * This covers the signature header digests over the main header and
+ * the payload digests the main header records.  We read the payload
+ * once and decompress it once however many digests we need.
+ */
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <err.h>

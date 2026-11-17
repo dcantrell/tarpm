@@ -3,6 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Creating an RPM, which is -c mode.
+ *
+ * This drives the whole build.  We read the JSON, fill in the tags
+ * the tree did not name, reconcile the file list against the payload
+ * tree, write the payload, and then lay out the two headers around
+ * it.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

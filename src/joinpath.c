@@ -9,6 +9,14 @@
  * (where a, b, and c are char *)
  */
 
+/**
+ * @file
+ * @brief Joining paths and keeping them where they belong.
+ *
+ * Nothing we open from the payload tree may leave it or go through a
+ * symlink, so the open helpers here check the whole path.
+ */
+
 /* {{{ Apache License version 2.0
  */
 /*

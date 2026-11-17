@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Reading a binary header in to memory.
+ *
+ * This checks that the header holds together before anything reads
+ * the values, using the same limits rpm(8) uses.
+ */
+
 #include <string.h>
 #include <unistd.h>
 #include <err.h>

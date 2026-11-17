@@ -33,8 +33,15 @@ if os.environ.get("READTHEDOCS", None) == "True":
     doxyfile = f.read()
     f.close()
 
+    topdir = os.path.dirname(doc_dir)
     doxyfile = doxyfile.replace(
-        "@INPUT_DIR@", os.path.join(os.path.dirname(doc_dir), "include")
+        "@INPUT_DIR@",
+        " ".join(
+            [os.path.join(topdir, "include"), os.path.join(topdir, "src")]
+        ),
+    )
+    doxyfile = doxyfile.replace(
+        "@EXCLUDE_DIR@", os.path.join(topdir, "include", "compat")
     )
     doxyfile = doxyfile.replace("@OUTPUT_DIR@", doxygen_dir)
 

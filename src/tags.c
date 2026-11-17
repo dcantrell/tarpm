@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Tag names, types and values.
+ *
+ * A tag name in the JSON is an RPMTAG_ name with only the first
+ * letter capitalized.  A tag rpm has no name for gets the "#XXXX"
+ * form so we can read it back.
+ */
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

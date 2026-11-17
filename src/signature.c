@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The signature header.
+ *
+ * We build this from scratch for the format we are asked for rather
+ * than carry over whatever a package we extracted happened to hold.
+ */
+
 #include <err.h>
 #include <string.h>
 #include <arpa/inet.h>

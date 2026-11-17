@@ -59,11 +59,18 @@ build only that::
 
     make docs
 
-doxygen turns the header files in ``include/`` in to XML and sphinx
-reads that through breathe alongside the rst files in ``doc/``.  A
-missing piece skips the manual with a warning rather than failing the
-build of the program, so you can always build tarpm without any of
-it.  To turn it off outright::
+doxygen turns the Doxygen comments in ``include/`` and ``src/`` in to
+XML and sphinx reads that through breathe alongside the rst files in
+``doc/``.  The API lives in ``include/``, so that is where the
+function, type and constant documentation sits.  Each file in
+``src/`` carries a ``@file`` block saying what that source file does.
+The static helpers inside ``src/`` are left alone on purpose, and
+``include/compat/queue.h`` is skipped because it is an imported copy
+of the BSD ``sys/queue.h``.
+
+A missing piece skips the manual with a warning rather than failing
+the build of the program, so you can always build tarpm without any
+of it.  To turn it off outright::
 
     meson setup build -Ddocs=false
 

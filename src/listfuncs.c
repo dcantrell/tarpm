@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The linked lists tarpm carries values around in.
+ *
+ * Every helper here is NULL safe so callers can treat a missing list
+ * as a missing value.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

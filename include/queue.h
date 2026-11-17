@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Pick up the BSD queue macros.
+ *
+ * Some systems need the imported copy under compat/ rather than the
+ * one in libc.
+ */
+
 #ifdef __cplusplus
 extern "C"
 {

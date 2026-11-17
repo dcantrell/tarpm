@@ -29,6 +29,14 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @file
+ * @brief Write a file mode out the way ls(1) prints it.
+ *
+ * This is the BSD strmode(3) brought in for systems that do not
+ * carry it.  It is imported code, so we leave the body alone.
+ */
+
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "@(#)strmode.c        8.3 (Berkeley) 8/15/94";
 #endif /* LIBC_SCCS and not lint */

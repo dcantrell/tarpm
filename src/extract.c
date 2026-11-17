@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Extracting an RPM, which is -x mode.
+ *
+ * We read the lead, the two headers and the payload, and write the
+ * JSON metadata and the payload tree out.
+ */
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>

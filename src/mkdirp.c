@@ -2,6 +2,15 @@
  * Perform a 'mkdir -p' operation on a given path.
  */
 
+/**
+ * @file
+ * @brief Making directories and output files.
+ *
+ * We only make a directory when a file is about to go in it, so an
+ * extraction that sends every piece elsewhere leaves nothing
+ * behind.
+ */
+
 /*
  * Copyright Dave Cantrell <dcantrell@burdell.org>
  *

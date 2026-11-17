@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The binary header.
+ *
+ * Both the signature header and the main header use this layout, so
+ * this reads and writes either one.  A header is a run of index
+ * entries followed by the data area those entries point at.
+ */
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>

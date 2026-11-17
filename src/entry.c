@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Reading the value of one header index entry.
+ *
+ * The value lands under a "value" key, or under a "file" key naming
+ * the text file we wrote it to for a long text tag.
+ */
+
 #include <string.h>
 #include <ctype.h>
 #include <err.h>

@@ -15,6 +15,15 @@
  * limitations under the License.
  */
 
+/**
+ * @file
+ * @brief Payload unpacking with libarchive.
+ *
+ * libarchive is quick but only reads newc, so a package it cannot
+ * read goes to the librpm reader in rpm.c instead.  Both share the
+ * disk writer here.
+ */
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>

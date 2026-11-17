@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The changelog array.
+ *
+ * RPM keeps the changelog in three parallel tag arrays.  We gather
+ * them in to one entry per changelog block on the way out and take
+ * them back apart on the way in.
+ */
+
 #include <string.h>
 #include <err.h>
 #include <errno.h>

@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The librpm payload reader and a few header helpers.
+ *
+ * librpm reads the stripped cpio archive libarchive cannot, which is
+ * every v6 format payload and a v4 format one with Longfilesizes.
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The main header tags we fill in.
+ *
+ * A tag the header already carries is never touched, which is what
+ * lets an extracted tree go back out unchanged.
+ */
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>

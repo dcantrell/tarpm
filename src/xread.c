@@ -3,6 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief A read(2) wrapper that reads the full count.
+ */
+
 #include <unistd.h>
 #include <err.h>
 #include "tarpm.h"

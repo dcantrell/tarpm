@@ -3,6 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Reading and writing the JSON metadata files.
+ *
+ * This turns a header in to the JSON structure tarpm writes and
+ * reads it back again.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

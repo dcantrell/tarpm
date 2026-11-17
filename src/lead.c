@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The RPM lead.
+ *
+ * The lead is the first 96 bytes of every package and nothing reads
+ * it for anything meaningful any more.  We show it on extract and
+ * build a fresh one from the header tags on create.
+ */
+
 #include <string.h>
 #include <err.h>
 #include <arpa/inet.h>

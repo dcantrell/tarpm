@@ -3,46 +3,55 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The constants tarpm shares between source files.
+ *
+ * Most of these name a value rpm itself defines, or a key tarpm
+ * writes in to the JSON metadata.  The comment on each family says
+ * where in the rpm source the value comes from.
+ */
+
 #ifndef _TARPM_CONSTANTS_H
 #define _TARPM_CONSTANTS_H
 
-/* the name of the program and, ideally, the executable command */
+/** the name of the program and, ideally, the executable command */
 #define COMMAND_NAME                   "tarpm"
 
-/* the "architecture" name for source RPMs */
+/** the "architecture" name for source RPMs */
 #define SRPM_ARCH_NAME                 "src"
 
-/* what the filename of a source RPM ends with */
+/** what the filename of a source RPM ends with */
 #define SRPM_FILE_ENDING               ".src.rpm"
 
-/* the subdirectory where the RPM payload is unpacked */
+/** the subdirectory where the RPM payload is unpacked */
 #define PAYLOAD_SUBDIR                 "payload"
 
-/* unpack_archive() read no entry, so another reader may do better */
+/** unpack_archive() read no entry, so another reader may do better */
 #define UNPACK_UNREADABLE              (-2)
 
-/* the path meaning stdout rather than a file */
+/** the path meaning stdout rather than a file */
 #define OUTPUT_STDOUT                  "-"
 
-/* output filenames for headers */
+/** output filenames for headers */
 #define OUTPUT_LEAD                    "lead.json"
 #define OUTPUT_SIGNATURE               "signature.json"
 #define OUTPUT_HEADER                  "header.json"
 
-/* output file endings (extensions) */
+/** output file endings (extensions) */
 #define OUTPUT_TXT_ENDING              "txt"
 
-/* mode for output directories we create */
+/** mode for output directories we create */
 #define OUTPUT_DIR_MODE                (S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)
 
-/* room for what human_size() writes */
+/** room for what human_size() writes */
 #define HUMAN_SIZE_LEN                 32
 
-/* what starts a -v stage line and what indents the details under it */
+/** what starts a -v stage line and what indents the details under it */
 #define VERBOSE_STAGE_PREFIX           ">>> "
 #define VERBOSE_DETAIL_INDENT          "  "
 
-/* RPM lead -- all from rpm headers and source */
+/** RPM lead -- all from rpm headers and source */
 #define RPMLEAD_MAGIC0                 0xED
 #define RPMLEAD_MAGIC1                 0xAB
 #define RPMLEAD_MAGIC2                 0xEE
@@ -52,7 +61,7 @@
 
 #define RPMLEAD_SIZE                   96
 
-/* RPM lead fields and descriptions */
+/** RPM lead fields and descriptions */
 #define RPM_LEAD_MAGIC                 "lead magic"
 #define RPM_LEAD_VERSION               "version"
 #define RPM_LEAD_TYPE                  "type"
@@ -61,7 +70,7 @@
 #define RPM_LEAD_OS                    "os"
 #define RPM_LEAD_SIGTYPE               "signature type"
 
-/*
+/**
  * Main header payload tags.
  *
  * rpm spells the payload digest algorithm tag as
@@ -85,7 +94,7 @@
 #define RPMTAG_PAYLOADSHA3_256_VALUE      5123
 #define RPMTAG_PAYLOADSHA3_256ALT_VALUE   5124
 
-/*
+/**
  * Signature header tags.  rpm names these in enum rpmSigTag_e in
  * include/rpm/rpmtag.h.  Everything from 256 up is in the signature
  * range (HEADER_SIGBASE in the rpm source) and 999 is the top of that
@@ -100,7 +109,7 @@
 #define RPMSIGTAG_SHA3_256_VALUE            279
 #define RPMSIGTAG_RESERVED_VALUE            999
 
-/*
+/**
  * The signature header tags rpmsign(1) is responsible for.  These are
  * the tags deleteSigs() and deleteFileSigs() in sign/rpmgensig.cc in
  * the rpm source discard before rpmsign writes new ones, which makes
@@ -122,7 +131,7 @@
     RPMSIGTAG_GPG,                           \
     RPMSIGTAG_PGP5
 
-/*
+/**
  * The RPM package formats we can write a signature header for.  rpm
  * picks between the two with the %_rpmformat macro.
  */
@@ -130,7 +139,7 @@
 #define RPM_FORMAT_V6                6
 #define RPM_FORMAT_DEFAULT           RPM_FORMAT_V4
 
-/*
+/**
  * The signature header tags rpm writes by default, one group per
  * format version.  rpmGenerateSignature() in lib/signature.cc in the
  * rpm source puts these in and nothing else, so we build the same
@@ -152,7 +161,7 @@
     RPMSIGTAG_SHA3_256_VALUE,                \
     RPMSIGTAG_RESERVED_VALUE
 
-/*
+/**
  * The main payload digest header tags specific to different RPM
  * format versions.  writeRPM() in build/pack.cc in the rpm source
  * puts these in before it writes the header out, so we add the group
@@ -177,7 +186,7 @@
     RPMTAG_PAYLOADSIZE_VALUE,                \
     RPMTAG_PAYLOADSIZEALT_VALUE
 
-/*
+/**
  * The main header tags exclusive to different RPM format versions.
  * These are the tags writeRPM() in build/pack.cc,
  * genCpioListAndHeader() in build/files.cc, rpmfcClassify() in
@@ -218,7 +227,7 @@
     RPMTAG_PAYLOADSHA3_256_VALUE,            \
     RPMTAG_PAYLOADSHA3_256ALT_VALUE
 
-/*
+/**
  * Default v6 format payload compression algorithm.  The
  * %_binary_payload macro in macros.in in the rpm source expands to
  * w19.zstdio starting with the v6 format.
@@ -228,14 +237,14 @@
 #define RPMFORMAT_V6_COMPRESSOR        "zstd"
 #define RPMFORMAT_V6_COMPRESSOR_LEVEL  "19"
 
-/*
+/**
  * The lead version byte.  rpmLeadFromHeader() in lib/rpmlead.cc in the
  * rpm source writes 3 for a v4 package and 4 for a v6 one.
  */
 #define RPM_LEAD_MAJOR_V4              3
 #define RPM_LEAD_MAJOR_V6              4
 
-/*
+/**
  * The cpio payload pieces rpm writes by hand.  rpmfiArchiveWriteHeader()
  * in lib/rpmfi.cc in the rpm source writes a stripped entry for every
  * file when the header carries Longfilesizes, which a v6 format
@@ -252,20 +261,20 @@
 #define CPIO_TRAILER_NAME              "TRAILER!!!"
 #define CPIO_ALIGNMENT                 4
 
-/*
+/**
  * The space rpm reserves in the signature header for rpmsign to write
  * in to.  rpm always keeps 32 bytes and adds whatever
  * %__gpg_reserved_space asks for, which is 4096.
  */
 #define RPM_SIGNATURE_RESERVED_SIZE    4128
 
-/*
+/**
  * The size of a region trailer, which is one index entry sitting at
  * the end of the data area rather than in the index.
  */
 #define RPM_TRAILER_SIZE               16
 
-/* RPM signature/header fields and values */
+/** RPM signature/header fields and values */
 #define RPM_SIGNATURE_MAGIC_DESC       "magic"
 #define RPM_SIGNATURE_RESERVED_DESC    "reserved"
 #define RPM_SIGNATURE_MAGIC            0x8EADE801
@@ -285,7 +294,7 @@
 #define RPM_DEPENDENCY_TYPE_DESC       "type"
 #define RPM_DEPENDENCY_PROVIDES_KEY    "provides"
 
-/*
+/**
  * The values apply_header_defaults() writes for the main header tags
  * a package needs but a user has no reason to name.  Name, Version
  * and Release are the only three with no value we can determine, so
@@ -296,7 +305,7 @@
 #define RPM_DEFAULT_PAYLOADCOMPRESSOR  "gzip"
 #define RPM_DEFAULT_PAYLOADFLAGS       "9"
 
-/*
+/**
  * The Payloadcompressor value in header.json for an uncompressed
  * payload.  rpm has no name for this, so it stays out of the package,
  * which carries no Payloadcompressor tag.  rpmbuild writes the flags
@@ -307,15 +316,16 @@
 #define RPM_UNCOMPRESSED_PAYLOADFLAGS  "0"
 #define RPM_DEFAULT_SOURCERPM          "(none)"
 
-/*
+/**
  * RPMTAG_BUILDTIME is an int32 in the header, but it is recorded in
  * header.json as an ISO 8601 timestamp in UTC.  This is the same
  * format the "files" array uses for file mtimes.
  */
 #define RPM_BUILDTIME_FORMAT           "%Y-%m-%dT%H:%M:%SZ"
 
-/* how the depends dictionary packs a dependency type and index */
-/*
+/**
+ * @brief How the depends dictionary packs a dependency type and index.
+ *
  * See rpmfcGenerateDepends() in build/rpmfc.cc in the rpm source.
  * The high byte of each value is the dependency type abbreviation and
  * the remaining three bytes are an index in to that type's dependency
@@ -326,7 +336,7 @@
 #define DEPENDS_DICT_TYPE_SHIFT        24
 #define DEPENDS_DICT_INDEX_MASK        0x00FFFFFF
 
-/* keys used by the entries in the "files" array */
+/** keys used by the entries in the "files" array */
 #define RPM_FILE_PATH_DESC             "path"
 #define RPM_FILE_SIZE_DESC             "size"
 #define RPM_FILE_MODE_DESC             "mode"
@@ -349,14 +359,15 @@
 #define RPM_FILE_SIGNATURE_DESC        "signature"
 #define RPM_FILE_VERITY_DESC           "verity"
 
-/*
+/**
  * The fs-verity hash algorithm rpmsign(1) uses when %_verity_algorithm
  * names none.  FS_VERITY_HASH_ALG_SHA256 in linux/fsverity.h.
  */
 #define RPM_VERITY_ALGO_DEFAULT        1
 
-/* file metadata we can take from the payload tree */
-/*
+/**
+ * @brief File metadata we can take from the payload tree.
+ *
  * Each bit names one value in a "files" entry that we take from the
  * file in the payload tree instead of from header.json.  We pick them
  * up one at a time, so taking the owner does not mean we take the
@@ -369,8 +380,9 @@
 #define PAYLOAD_OVERRIDE_LINKTO        0x08
 #define PAYLOAD_OVERRIDE_ALL           (PAYLOAD_OVERRIDE_MTIME | PAYLOAD_OVERRIDE_USER | PAYLOAD_OVERRIDE_GROUP | PAYLOAD_OVERRIDE_LINKTO)
 
-/* values used by the entries in the "files" array */
-/*
+/**
+ * @brief Values used by the entries in the "files" array.
+ *
  * These values were learned from the rpm source code and seem to be
  * good defaults, probably.
  */
@@ -381,8 +393,9 @@
 #define RPM_FILE_MODE_FORMAT           "%04o"
 #define RPM_FILE_MTIME_FORMAT          "%Y-%m-%dT%H:%M:%SZ"
 
-/* names used for the file type bits in the "files" array */
-/*
+/**
+ * @brief Names used for the file type bits in the "files" array.
+ *
  * RPMTAG_FILEMODES holds the file type bits along with the
  * permissions.  The "mode" key carries the permissions and these
  * names carry the type.  See rpmfiWhatis() in lib/rpmfi.cc in the rpm
@@ -396,11 +409,12 @@
 #define RPM_FILE_TYPE_SYMLINK          "symlink"
 #define RPM_FILE_TYPE_SOCKET           "socket"
 
-/* libmagic flags rpm classifies with, see rpmfcClassify() in build/rpmfc.cc */
+/** libmagic flags rpm classifies with, see rpmfcClassify() in build/rpmfc.cc */
 #define RPM_MAGIC_FLAGS                (MAGIC_CHECK | MAGIC_COMPRESS | MAGIC_NO_CHECK_TOKENS | MAGIC_ERROR)
 
-/* class strings rpm writes itself rather than ask libmagic for */
-/*
+/**
+ * @brief Class strings rpm writes itself rather than ask libmagic for.
+ *
  * See rpmfcClassify() in build/rpmfc.cc in the rpm source.  Anything
  * that is not a regular file or a symlink gets one of these names.
  * Files under /dev/ stand in for real device nodes, so rpm gives them
@@ -415,8 +429,9 @@
 #define RPM_FILE_CLASS_NONE            ""
 #define RPM_FILE_CLASS_DEV_PREFIX      "/dev/"
 
-/* MIME types rpm writes itself rather than ask libmagic for */
-/*
+/**
+ * @brief MIME types rpm writes itself rather than ask libmagic for.
+ *
  * See rpmfcClassify() in build/rpmfc.cc in the rpm source.  A file
  * that is not there has no MIME type.  A file libmagic cannot read is
  * application/octet-stream.
@@ -425,12 +440,13 @@
 #define RPM_FILE_MIME_UNKNOWN          "application/octet-stream"
 
 /* names used for the file color bits in the "files" array   */
-/* Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
+/** Lore:  https://dustymabe.com/2013/08/25/rpm-file-colors/  */
 #define RPM_FILE_COLOR_ELF32           "Elf32"
 #define RPM_FILE_COLOR_ELF64           "Elf64"
 
-/* names used for the file flag bits in the "files" array */
-/*
+/**
+ * @brief Names used for the file flag bits in the "files" array.
+ *
  * From enum rpmfileAttrs_e in include/rpm/rpmfiles.h in the rpm
  * source and not public API.  New things may show up in rpm!
  */
@@ -446,7 +462,7 @@
 #define RPM_FILE_FLAG_PUBKEY           "pubkey"
 #define RPM_FILE_FLAG_ARTIFACT         "artifact"
 
-/* names used for the file verify flag bits in the "files" array */
+/** names used for the file verify flag bits in the "files" array */
 #define RPM_FILE_VERIFY_FILEDIGEST     "filedigest"
 #define RPM_FILE_VERIFY_MD5            "md5"
 #define RPM_FILE_VERIFY_FILESIZE       "filesize"
@@ -458,15 +474,16 @@
 #define RPM_FILE_VERIFY_RDEV           "rdev"
 #define RPM_FILE_VERIFY_CAPS           "caps"
 
-/* comparison operator string constants */
+/** comparison operator string constants */
 #define COMPARISON_LE                  "<="
 #define COMPARISON_GE                  ">="
 #define COMPARISON_LT                  "<"
 #define COMPARISON_GT                  ">"
 #define COMPARISON_EQ                  "="
 
-/* general purpose string constants */
-/*
+/**
+ * @brief General purpose string constants.
+ *
  * NOTE: This is a marker for tarpm users only and has no bearing on
  * data in an RPM header.  It goes in the JSON output and is meant to
  * tell the tarpm user that what they are looking at is read-only and
@@ -474,8 +491,9 @@
  */
 #define RPM_METADATA_READ_ONLY         "read-only"
 
-/* sense flag string constants */
-/*
+/**
+ * @brief Sense flag string constants.
+ *
  * See enum rpmsenseFlags_e include/rpm/rpmds.h in the rpm source?
  * Good luck.
  */
@@ -503,7 +521,7 @@
 #define SENSE_FLAG_TRIGGERPREIN        "triggerprein"
 #define SENSE_FLAG_KEYRING             "keyring"
 
-/*
+/**
  * File digest algorithms.  rpm names these in enum pgpHashAlgo_e in
  * include/rpm/rpmpgp.h, but they are enum values and not macros, so
  * we cannot ask the preprocessor whether the release of rpm we build
@@ -513,7 +531,7 @@
 #define PGPHASHALGO_SHA3_256_VALUE     12
 #define PGPHASHALGO_SHA3_512_VALUE     14
 
-/* Digest types used in the headers */
+/** Digest types used in the headers */
 #define TARPM_DIGEST_MD5               1
 #define TARPM_DIGEST_SHA1              2
 #define TARPM_DIGEST_SHA256            3

@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Allocation that exits rather than return NULL.
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <err.h>

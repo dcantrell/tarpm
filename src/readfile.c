@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Reading a whole file in to one buffer.
+ */
+
 #include <string.h>
 #include <errno.h>
 #include <err.h>

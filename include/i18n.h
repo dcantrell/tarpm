@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Translation macros.
+ *
+ * These wrap gettext when the build turned translations on and fall
+ * back to the untranslated string when it did not.
+ */
+
 #ifndef _TARPM_I18N_H
 #define _TARPM_I18N_H
 

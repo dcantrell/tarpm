@@ -8,6 +8,20 @@ PROJECT_NAME           = "tarpm"
 INPUT                  = @INPUT_DIR@
 OUTPUT_DIRECTORY       = @OUTPUT_DIR@
 RECURSIVE              = YES
+# compat/queue.h is an imported copy of the BSD sys/queue.h, so leave
+# it out rather than annotate third party code.
+EXCLUDE                = @EXCLUDE_DIR@
+# tarpm is C, so drop the C++ and Java shapes from the output.
+OPTIMIZE_OUTPUT_FOR_C  = YES
+# We document the API in include/ and give each file in src/ an
+# overview.  The static helpers inside src/ are deliberately left
+# alone, so do not warn about every one of them.
+WARN_IF_UNDOCUMENTED   = NO
+# Many constants come in families under one comment, so list the
+# undocumented ones too rather than drop them from the reference.
+EXTRACT_ALL            = YES
+# The static helpers in src/ are internal, so keep them out.
+EXTRACT_STATIC         = NO
 
 # sphinx reads the XML through breathe.  The HTML is just there to
 # look at on its own.

@@ -3,6 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief File classes and MIME types.
+ *
+ * A v4 format package records the class libmagic gives each file and
+ * a v6 format package records a MIME type instead.  We work out
+ * whichever one the format we are writing needs, the same way
+ * rpmbuild(1) does.
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>

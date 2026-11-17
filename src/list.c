@@ -4,6 +4,13 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Listing an RPM, which is -t mode.
+ *
+ * We walk the payload archive and print it the way tar(1) does.
+ */
+
 #include <string.h>
 #include <inttypes.h>
 #include <err.h>

@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief String helpers and the -v status output.
+ */
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>

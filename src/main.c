@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief Command line handling.
+ *
+ * tarpm mimics tar(1), so the options may be run together and the
+ * leading hyphen on a combined set is optional.  This works out
+ * which mode to run and hands off to it.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>

@@ -3,6 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/**
+ * @file
+ * @brief The file list.
+ *
+ * RPM spreads the file list over about two dozen parallel arrays.
+ * We gather all of that in to one dict per file and take it back
+ * apart when we write the header.  This is also where the payload
+ * tree and the file list get reconciled when we create a package.
+ */
+
 #include <endian.h>
 #include <errno.h>
 #include <inttypes.h>
