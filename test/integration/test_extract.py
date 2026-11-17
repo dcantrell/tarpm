@@ -1172,6 +1172,172 @@ class VerifyStrippedHardLinkWithoutDataFails(TestUnpackRPM):
                 self.assertNotEqual(os.path.getsize(path), 0, msg=name)
 
 
+def stripped_entries(data):
+    """Split a stripped cpio payload in to its entries"""
+    first = data.find(b"07070X")
+    trailer = data.rfind(b"07070", 0, data.find(b"TRAILER!!!"))
+    starts = []
+    at = first
+
+    while at != -1 and at < trailer:
+        starts.append(at)
+        at = data.find(b"07070X", at + 1)
+
+    entries = []
+
+    for i, start in enumerate(starts):
+        if (i + 1) < len(starts):
+            end = starts[i + 1]
+        else:
+            end = trailer
+
+        entries.append(data[start:end])
+
+    return first, trailer, entries
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyStrippedHardLinkOutOfOrderFails(TestUnpackRPM):
+    """Test a hard link set the payload carries out of order fails"""
+
+    def setUp(self):
+        super().setUp()
+
+        # an uncompressed payload lets us move an entry in it
+        self.rpm.header += "\n%global _rpmformat 6\n"
+        self.rpm.header += "%define _binary_payload w.ufdio\n"
+
+        for name in ["one.txt", "two.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"content of the first set\n"),
+            )
+
+        for name in ["three.txt", "four.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"content of the second set\n"),
+            )
+
+        # two sets, so the reader has a second one to stop at
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/two.txt\n" % (NAME, NAME)
+        )
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/three.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/four.txt\n" % (NAME, NAME)
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = f.read()
+        f.close()
+
+        first, trailer, entries = stripped_entries(data)
+        self.assertNotEqual(first, -1)
+        self.assertNotEqual(trailer, -1)
+        self.assertEqual(len(entries), 4)
+
+        # move the link that opens the first set past the second set
+        moved = b"".join([entries[1], entries[2], entries[3], entries[0]])
+        pkg = os.path.join(self.output_dir, "outoforder.rpm")
+        f = open(pkg, "wb")
+        f.write(data[:first] + moved + data[trailer:])
+        f.close()
+
+        out = os.path.join(self.output_dir, "out")
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", pkg, "-O", out],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, err = proc.communicate()
+
+        # librpm calls this the end of the payload, so the short count
+        # is the only thing that catches it
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the RPM payload ended early", err.decode())
+
+        docdir = os.path.join(out, "payload", "usr/share", NAME)
+
+        for name in ["one.txt", "two.txt", "three.txt", "four.txt"]:
+            self.assertFalse(os.path.exists(os.path.join(docdir, name)), msg=name)
+
+
+@unittest.skipUnless(
+    HAVE_RPM_FORMAT_SIX, "rpm is older than 6.0.0 and cannot do format 6"
+)
+class VerifyStrippedHardLinkSetsMayBeReordered(TestUnpackRPM):
+    """Test moving a whole hard link set in the payload still extracts"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.header += "\n%global _rpmformat 6\n"
+        self.rpm.header += "%define _binary_payload w.ufdio\n"
+
+        for name in ["one.txt", "two.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"content of the first set\n"),
+            )
+
+        for name in ["three.txt", "four.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"content of the second set\n"),
+            )
+
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/two.txt\n" % (NAME, NAME)
+        )
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/three.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/four.txt\n" % (NAME, NAME)
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        data = f.read()
+        f.close()
+
+        first, trailer, entries = stripped_entries(data)
+        self.assertEqual(len(entries), 4)
+
+        # the second set first, each set still whole
+        moved = b"".join([entries[2], entries[3], entries[0], entries[1]])
+        pkg = os.path.join(self.output_dir, "swapped.rpm")
+        f = open(pkg, "wb")
+        f.write(data[:first] + moved + data[trailer:])
+        f.close()
+
+        out = os.path.join(self.output_dir, "out")
+        proc = subprocess.Popen(
+            [self.tarpm, "-x", "-f", pkg, "-O", out],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, err = proc.communicate()
+
+        self.assertEqual(proc.returncode, 0, msg=err.decode())
+        self.assertNotIn("ended early", err.decode())
+
+        docdir = os.path.join(out, "payload", "usr/share", NAME)
+
+        for name in ["one.txt", "two.txt", "three.txt", "four.txt"]:
+            path = os.path.join(docdir, name)
+            self.assertTrue(os.path.exists(path), msg=name)
+            self.assertEqual(os.lstat(path).st_nlink, 2, msg=name)
+
+
 class VerifyFailedFallbackLeavesNoTarFile(TestUnpackRPM):
     """Test the temporary tar file goes away when the fallback reader fails"""
 

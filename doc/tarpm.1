@@ -841,6 +841,16 @@ reader.  \f[B]tarpm\f[R] writes a stripped
 archive whenever the header carries Longfilesizes and newc otherwise,
 the same as rpm(8).
 .PP
+One link of a hard link set carries the data and the rest point at it.
+A set the payload carries out of order stops the librpm reader where
+it is, and librpm reports that as the end of the payload rather than
+as an error.
+\f[B]tarpm\f[R] counts the entries it got against the files in the
+header, leaving out the %ghost files the payload never carries, and
+exits non-zero when it comes up short.
+Whole sets may move.
+Only a link separated from the rest of its set reads short.
+.PP
 When you create a package, \f[B]tarpm\f[R] walks the payload tree and
 the file list together and reconciles them:
 .TP

@@ -212,6 +212,17 @@ the rest point at it.  A link with no earlier link of its set to point
 at is skipped with a warning, and tarpm exits non-zero.  rpmbuild does
 not make such a package.
 
+A hard link set the payload carries out of order stops the reader
+where it is, and librpm reports that as the end of the payload rather
+than as an error.  tarpm counts the entries it got against the files
+in the header, leaving out the ``%ghost`` files the payload never
+carries, and exits non-zero when it comes up short::
+
+    tarpm: *** the RPM payload ended early with 2 entries missing
+
+Whole sets may move.  Only a link separated from the rest of its set
+reads short.  rpmbuild does not make such a package either.
+
 Watching it work
 ================
 

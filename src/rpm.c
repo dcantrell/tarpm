@@ -37,6 +37,35 @@ in_link_set(rpmfi fi, const int fx)
 }
 
 /*
+ * Count the entries the payload should hand us.  That is every file
+ * in the header but a %ghost, which is in the header and not the
+ * payload.
+ */
+static size_t
+payload_entries(rpmfiles files)
+{
+    size_t n = 0;
+    rpmfi fi = NULL;
+
+    fi = rpmfilesIter(files, RPMFI_ITER_FWD);
+
+    if (fi == NULL) {
+        return 0;
+    }
+
+    while (rpmfiNext(fi) >= 0) {
+        if (rpmfiFFlags(fi) & RPMFILE_GHOST) {
+            continue;
+        }
+
+        n++;
+    }
+
+    rpmfiFree(fi);
+    return n;
+}
+
+/*
  * Write the data of a regular file entry to disk.  We read all of it
  * even when a write fails so the iterator stays in step with the
  * payload.  Returns 0 on success, -1 when the write failed and -2
@@ -107,6 +136,9 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
     struct archive_entry *entry = NULL;
     char cwd[PATH_MAX + 1];
     char *buf = NULL;
+    size_t seen = 0;
+    size_t expected = 0;
+    size_t missing = 0;
     rpm_mode_t mode = 0;
     int nlink = 0;
     int rc = 0;
@@ -181,6 +213,8 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
         goto cleanup;
     }
 
+    expected = payload_entries(files);
+
     /* a hardlink names an earlier entry, so the content comes first */
     fi = rpmfiNewArchiveReader(gzdi, files, RPMFI_ITER_READ_ARCHIVE_CONTENT_FIRST);
 
@@ -211,6 +245,18 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
         rc = rpmfiNext(fi);
 
         if (rc == RPMERR_ITER_END) {
+            /*
+             * A hard link set the payload carries out of order stops
+             * the content first iterator here rather than at a
+             * missing file, so a short count is all we get to tell us
+             * the rest of the payload never arrived.
+             */
+            if (seen < expected) {
+                missing = expected - seen;
+                warnx(_("*** the RPM payload ended early with %zu %s missing"), missing, N_("entry", "entries", missing));
+                ret = -1;
+            }
+
             break;
         }
 
@@ -223,6 +269,7 @@ unpack_rpm_payload(const char *rpm, const char *dest, const bool verbose)
             break;
         }
 
+        seen++;
         mode = rpmfiFMode(fi);
         nlink = rpmfiFNlink(fi);
 
