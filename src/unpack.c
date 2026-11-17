@@ -22,6 +22,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <err.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <archive.h>
 #include <archive_entry.h>
@@ -166,6 +167,76 @@ print_entry_path(struct archive_entry *entry)
 }
 
 /*
+ * In a newc payload the last entry of a hard link set carries the
+ * data and the earlier ones are empty.  libarchive links the new name
+ * to an earlier one and then opens that name to write the data in, so
+ * a set rpmbuild wrote read only comes out empty with "Can't create".
+ * bsdtar does the same, and no write disk option changes it.  Open the
+ * earlier name and add the owner write bit for the write.  We hold on
+ * to the descriptor so reprotect_hardlink() can put the mode back
+ * without resolving the path a second time.  Returns the descriptor,
+ * or -1 when there is nothing to do.
+ */
+static int
+unprotect_hardlink(struct archive_entry *entry, mode_t *mode)
+{
+    int fd = -1;
+    const char *target = NULL;
+    struct stat sb;
+
+    *mode = 0;
+
+    if (archive_entry_size(entry) <= 0) {
+        return -1;
+    }
+
+    target = archive_entry_hardlink(entry);
+
+    if (target == NULL) {
+        return -1;
+    }
+
+    /* O_NOFOLLOW so a symlink dropped in the tree is not what we chmod */
+    fd = open(target, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+
+    if (fd == -1) {
+        return -1;
+    }
+
+    if (fstat(fd, &sb) != 0 || !S_ISREG(sb.st_mode) || (sb.st_mode & S_IWUSR)) {
+        close(fd);
+        return -1;
+    }
+
+    if (fchmod(fd, sb.st_mode | S_IWUSR) != 0) {
+        close(fd);
+        return -1;
+    }
+
+    *mode = sb.st_mode;
+    return fd;
+}
+
+/* Put back the mode unprotect_hardlink() took off and close its descriptor */
+static void
+reprotect_hardlink(const int fd, const mode_t mode)
+{
+    if (fd == -1) {
+        return;
+    }
+
+    if (fchmod(fd, mode) != 0) {
+        warn("fchmod");
+    }
+
+    if (close(fd) == -1) {
+        warn("close");
+    }
+
+    return;
+}
+
+/*
  * Extract a single entry from an archive and write it to disk.
  * readfailed is set when the entry data could not be read.
  */
@@ -174,7 +245,10 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
 {
     int r = 0;
     int ret = 0;
+    int linkfd = -1;
+    mode_t linkmode = 0;
 
+    linkfd = unprotect_hardlink(entry, &linkmode);
     r = archive_write_header(output, entry);
 
     if (r != ARCHIVE_OK) {
@@ -194,6 +268,8 @@ extract_entry(struct archive *input, struct archive *output, struct archive_entr
     } else if (r != ARCHIVE_OK) {
         warnx_escaped("archive_write_finish_entry: %s", archive_error_string(output));
     }
+
+    reprotect_hardlink(linkfd, linkmode);
 
     return ret;
 }

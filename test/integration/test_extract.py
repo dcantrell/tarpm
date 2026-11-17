@@ -1223,6 +1223,51 @@ class VerifyStrippedHardLinkWithoutDataFails(TestUnpackRPM):
                 self.assertNotEqual(os.path.getsize(path), 0, msg=name)
 
 
+class VerifyReadOnlyHardLinkKeepsItsData(TestUnpackRPM):
+    """Test a read only hard link set in a newc payload comes out whole"""
+
+    def setUp(self):
+        super().setUp()
+
+        # the last entry of the set carries the data and libarchive
+        # opens the earlier name to write it, which a mode of 0444
+        # used to refuse.  Running as root hides this, since root may
+        # write a read only file, so the test passes either way but
+        # only catches a regression as a regular user.
+        for name in ["one.txt", "two.txt"]:
+            self.rpm.add_installed_file(
+                "/usr/share/%s/%s" % (NAME, name),
+                rpmfluff.SourceFile(name, b"the same content\n"),
+                mode="444",
+            )
+
+        self.rpm.section_install += (
+            "ln -f $RPM_BUILD_ROOT/usr/share/%s/one.txt "
+            "$RPM_BUILD_ROOT/usr/share/%s/two.txt\n" % (NAME, NAME)
+        )
+
+    def runTest(self):
+        super().runTest()
+
+        self.assertNotIn("Can't create", self.err.decode())
+
+        docdir = os.path.join(self.output_dir, "payload", "usr/share", NAME)
+        inodes = set()
+
+        for name in ["one.txt", "two.txt"]:
+            path = os.path.join(docdir, name)
+
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(), b"the same content\n", msg=name)
+
+            sb = os.lstat(path)
+            self.assertEqual(sb.st_nlink, 2, msg=name)
+            self.assertEqual(stat.S_IMODE(sb.st_mode), 0o444, msg=name)
+            inodes.add(sb.st_ino)
+
+        self.assertEqual(len(inodes), 1)
+
+
 def stripped_entries(data):
     """Split a stripped cpio payload in to its entries"""
     first = data.find(b"07070X")

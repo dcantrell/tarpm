@@ -223,6 +223,13 @@ carries, and exits non-zero when it comes up short::
 Whole sets may move.  Only a link separated from the rest of its set
 reads short.  rpmbuild does not make such a package either.
 
+A newc payload puts the data in the last entry of a hard link set.
+libarchive links the new name to an earlier one and then opens that
+name to write the data in, so a set the package marked read only
+needs the write bit back for the length of the write.  tarpm adds it
+and takes it off again, and the files land with the mode the header
+gives them.  ``redhat-rpm-config`` is one package that needs this.
+
 Watching it work
 ================
 
