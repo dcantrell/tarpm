@@ -517,6 +517,47 @@ class VerifyUncompressedPackageStaysUncompressed(TestUnpackRPM):
         self.assertEqual(one, two, "the package came out different")
 
 
+class VerifyUncompressedPackageKeepsEmptyPayloadflags(TestUnpackRPM):
+    """An uncompressed package built without a level keeps its empty Payloadflags"""
+
+    def setUp(self):
+        super().setUp()
+
+        # no digit after the w, so rpmbuild writes an empty Payloadflags
+        self.rpm.header += "\n%global _binary_payload w.ufdio\n"
+
+        readme = rpmfluff.SourceFile("README", b"vaporware\n")
+        self.rpm.add_installed_file("/usr/share/doc/%s/README" % NAME, readme)
+
+    def runTest(self):
+        super().runTest()
+
+        f = open(self.header)
+        tags = header_tags(json.load(f))
+        f.close()
+        self.assertEqual(tags["Payloadcompressor"], "none")
+        self.assertEqual(tags["Payloadflags"], "")
+
+        args = [self.tarpm, "-c", "-f"]
+        created = os.path.join(self.output_dir, "created.rpm")
+        args += [created] + RPMBUILD_FORMAT_ARGS + [self.output_dir]
+        rc, out, err = run_tarpm(args)
+        self.assertEqual(rc, 0, msg=err)
+
+        # turning this in to a 0 used to change the package
+        self.assertEqual(query_compressor(created), "(none)|")
+
+        f = open(self.rpm.get_built_rpm(get_expected_arch()), "rb")
+        one = f.read()
+        f.close()
+
+        f = open(created, "rb")
+        two = f.read()
+        f.close()
+
+        self.assertEqual(one, two, "the package came out different")
+
+
 class VerifyRepeatedTagKeepsItsOrder(TestUnpackRPM):
     """The copies of a tag come back out in the order the header has them"""
 

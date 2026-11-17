@@ -741,8 +741,12 @@ The names are gzip, bzip2, xz, lzma, zstd, and none.
 \f[B]tarpm\f[R] refuses any other name.
 none gives an uncompressed payload.
 rpm(8) has no name for this, so the package carries no
-Payloadcompressor tag and Payloadflags is 0, the same as rpmbuild(8)
-writes.
+Payloadcompressor tag.
+Payloadflags is the level the _binary_payload macro held, which
+rpmbuild(8) leaves empty for w.ufdio and writes as 0 for w0.ufdio.
+\f[B]tarpm\f[R] keeps either one, so both kinds of package round trip.
+Any other value, such as a level left over from a compressor the
+metadata no longer names, becomes 0.
 Extracting an uncompressed package writes none to
 \f[B]header.json\f[R].
 A gzip payload carries an mtime of 0 in its gzip header, the same as

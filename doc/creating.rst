@@ -127,9 +127,13 @@ an extracted tree go back out unchanged.  These are the defaults:
     error, and so is a level the compressor does not take.
 
     ``none`` gives an uncompressed payload.  rpm(8) has no name for
-    this, so the package carries no ``Payloadcompressor`` tag and
-    ``Payloadflags`` is 0, the same as rpmbuild(8) writes.  Extracting
-    an uncompressed package writes ``none`` to ``header.json``.
+    this, so the package carries no ``Payloadcompressor`` tag.
+    ``Payloadflags`` is the level the ``_binary_payload`` macro held,
+    which rpmbuild(8) leaves empty for ``w.ufdio`` and writes as 0 for
+    ``w0.ufdio``.  tarpm keeps either one, so both kinds of package
+    round trip.  Any other value, such as a level left over from a
+    compressor the metadata no longer names, becomes 0.  Extracting an
+    uncompressed package writes ``none`` to ``header.json``.
 
 ``Sourcerpm``
     ``(none)`` for a binary package, left off for a source package.

@@ -171,6 +171,42 @@ test_apply_header_defaults_compressor_none(void)
     return;
 }
 
+/* Test apply_header_defaults() keeps the flags rpmbuild writes with "none" */
+void
+test_apply_header_defaults_compressor_none_flags(void)
+{
+    size_t i = 0;
+    struct json_object *header = NULL;
+    struct json_object *tags = NULL;
+
+    /* rpmbuild leaves these empty for "w.ufdio" and 0 for "w0.ufdio" */
+    const char *kept[] = { "", RPM_UNCOMPRESSED_PAYLOADFLAGS };
+
+    for (i = 0; i < sizeof(kept) / sizeof(kept[0]); i++) {
+        header = make_minimal_header(&tags);
+        add_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, PAYLOADCOMPRESSOR_NONE);
+        add_tag(tags, RPMTAG_PAYLOADFLAGS, kept[i]);
+        TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+
+        TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_PAYLOADCOMPRESSOR));
+        TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_PAYLOADFLAGS), kept[i]);
+
+        json_object_put(header);
+    }
+
+    /* with none of its own we write the value rpmbuild uses */
+    header = make_minimal_header(&tags);
+    add_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, PAYLOADCOMPRESSOR_NONE);
+    TARPM_ASSERT_EQUAL(apply_header_defaults(header, RPM_FORMAT_V6), 0);
+
+    TARPM_ASSERT_PTR_NULL((void *) tag_value(header, RPMTAG_PAYLOADCOMPRESSOR));
+    TARPM_ASSERT_STRING_EQUAL(tag_value(header, RPMTAG_PAYLOADFLAGS), RPM_UNCOMPRESSED_PAYLOADFLAGS);
+
+    json_object_put(header);
+
+    return;
+}
+
 /* Test apply_header_defaults() leaves a v6 format source package on the v4 format compressor */
 void
 test_apply_header_defaults_v6_source_package(void)
@@ -559,6 +595,7 @@ get_suite(void)
     if (CU_add_test(pSuite, "test apply_header_defaults() v4", test_apply_header_defaults_v4) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() v6", test_apply_header_defaults_v6) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() compressor none", test_apply_header_defaults_compressor_none) == NULL ||
+        CU_add_test(pSuite, "test apply_header_defaults() compressor none flags", test_apply_header_defaults_compressor_none_flags) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() v6 format gzip", test_apply_header_defaults_v6_gzip) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() v6 format source package", test_apply_header_defaults_v6_source_package) == NULL ||
         CU_add_test(pSuite, "test apply_header_defaults() never overwrites", test_apply_header_defaults_never_overwrites) == NULL ||

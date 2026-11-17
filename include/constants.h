@@ -299,7 +299,9 @@
 /*
  * The Payloadcompressor value in header.json for an uncompressed
  * payload.  rpm has no name for this, so it stays out of the package,
- * which carries no Payloadcompressor tag and Payloadflags of 0.
+ * which carries no Payloadcompressor tag.  rpmbuild writes the flags
+ * as an empty string or as 0, so we keep either one and fall back on
+ * this value.
  */
 #define PAYLOADCOMPRESSOR_NONE         "none"
 #define RPM_UNCOMPRESSED_PAYLOADFLAGS  "0"

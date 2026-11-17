@@ -270,6 +270,7 @@ apply_header_defaults(struct json_object *header, const int format)
     const char *release = NULL;
     const char *arch = NULL;
     const char *compressor = NULL;
+    const char *flags = NULL;
     bool source_package = false;
     struct json_object *tags = NULL;
     struct utsname uts;
@@ -330,16 +331,29 @@ apply_header_defaults(struct json_object *header, const int format)
     add_default_tag(tags, RPMTAG_PAYLOADFORMAT, RPM_STRING_TYPE, RPM_DEFAULT_PAYLOADFORMAT);
 
     /*
-     * rpmbuild marks an uncompressed payload with no compressor tag
-     * and flags of 0.  The name "none" is how a tree asks for that
-     * and it never reaches the header.  Otherwise match rpm when the
-     * metadata names no compressor.
+     * rpmbuild marks an uncompressed payload with no compressor tag.
+     * The name "none" is how a tree asks for that and it never
+     * reaches the header.  Otherwise match rpm when the metadata
+     * names no compressor.
      */
     compressor = get_tag_value(tags, RPMTAG_PAYLOADCOMPRESSOR, false);
 
     if (compressor != NULL && !strcmp(compressor, PAYLOADCOMPRESSOR_NONE)) {
         drop_tag(tags, RPMTAG_PAYLOADCOMPRESSOR);
-        drop_tag(tags, RPMTAG_PAYLOADFLAGS);
+
+        /*
+         * Payloadflags is the level the _binary_payload macro held,
+         * which rpmbuild leaves empty for "w.ufdio" and writes as 0
+         * for "w0.ufdio".  Keep either one so those packages round
+         * trip.  A level left over from a compressor the metadata no
+         * longer names goes back to 0.
+         */
+        flags = get_tag_value(tags, RPMTAG_PAYLOADFLAGS, false);
+
+        if (flags != NULL && *flags != '\0' && strcmp(flags, RPM_UNCOMPRESSED_PAYLOADFLAGS)) {
+            drop_tag(tags, RPMTAG_PAYLOADFLAGS);
+        }
+
         add_default_tag(tags, RPMTAG_PAYLOADFLAGS, RPM_STRING_TYPE, RPM_UNCOMPRESSED_PAYLOADFLAGS);
     } else if (format == RPM_FORMAT_V6 && !source_package) {
         add_default_tag(tags, RPMTAG_PAYLOADCOMPRESSOR, RPM_STRING_TYPE, RPMFORMAT_V6_COMPRESSOR);
