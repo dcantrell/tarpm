@@ -179,8 +179,6 @@ bool path_beneath_seen(const char *base, const char *path, const bool allow_last
 int open_beneath_walk_at(const int basefd, const char *path);
 int open_beneath_at(const int basefd, const char *path);
 int open_beneath_base(const char *base);
-int open_beneath_walk(const char *base, const char *path);
-int open_beneath(const char *base, const char *path);
 
 /* json.c */
 struct json_object *create_json_entry(const struct rpmhdrentry *hdrentry, const bool signature);

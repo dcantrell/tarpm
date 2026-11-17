@@ -183,29 +183,30 @@ test_path_beneath(void)
     return;
 }
 
-/* Assert opener fails on path with the given errno */
+/* Assert opener fails on path below basefd with the given errno */
 static void
-assert_open_fails(int (*opener)(const char *, const char *), const char *base, const char *path, const int expected)
+assert_open_at_fails(int (*opener)(const int, const char *), const int basefd, const char *path, const int expected)
 {
     errno = 0;
-    TARPM_ASSERT_EQUAL(opener(base, path), -1);
+    TARPM_ASSERT_EQUAL(opener(basefd, path), -1);
     TARPM_ASSERT_EQUAL(errno, expected);
     return;
 }
 
-/* Run the same cases against open_beneath() and its fallback */
+/*
+ * Run the descriptor cases against open_beneath_at() and its fallback.
+ * One base descriptor serves every open and stays open after.
+ */
 static void
-check_opener(int (*opener)(const char *, const char *))
+check_opener_at(int (*opener)(const int, const char *))
 {
+    int i = 0;
     int fd = -1;
+    int basefd = -1;
     char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
     char *path = NULL;
     char buf[8];
     FILE *fp = NULL;
-
-    /* the don't crash case */
-    assert_open_fails(opener, NULL, "usr", EINVAL);
-    assert_open_fails(opener, "/", NULL, EINVAL);
 
     TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
 
@@ -229,32 +230,46 @@ check_opener(int (*opener)(const char *, const char *))
     TARPM_ASSERT_TRUE(symlink("file", path) == 0);
     free(path);
 
-    /* a file below the base opens with or without a leading slash */
-    fd = opener(tmpdir, "usr/bin/file");
-    TARPM_ASSERT_TRUE(fd >= 0);
-    memset(buf, 0, sizeof(buf));
-    TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
-    TARPM_ASSERT_STRING_EQUAL(buf, "data");
-    close(fd);
+    basefd = open_beneath_base(tmpdir);
+    TARPM_ASSERT_TRUE(basefd >= 0);
 
-    fd = opener(tmpdir, "/usr/bin/file");
+    /* the don't crash cases */
+    assert_open_at_fails(opener, basefd, NULL, EINVAL);
+    assert_open_at_fails(opener, -1, "usr/bin/file", EBADF);
+
+    /* the same base opens the file again and again */
+    for (i = 0; i < 3; i++) {
+        fd = opener(basefd, "/usr/bin/file");
+        TARPM_ASSERT_TRUE(fd >= 0);
+        memset(buf, 0, sizeof(buf));
+        TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
+        TARPM_ASSERT_STRING_EQUAL(buf, "data");
+        close(fd);
+    }
+
+    /* the leading slash is optional */
+    fd = opener(basefd, "usr/bin/file");
     TARPM_ASSERT_TRUE(fd >= 0);
     close(fd);
 
     /* no symlink is followed, on the way or at the end */
-    assert_open_fails(opener, tmpdir, "lib/file", ELOOP);
-    assert_open_fails(opener, tmpdir, "/usr/bin/link", ELOOP);
+    assert_open_at_fails(opener, basefd, "lib/file", ELOOP);
+    assert_open_at_fails(opener, basefd, "/usr/bin/link", ELOOP);
 
     /* names that leave the base or are not plain */
-    assert_open_fails(opener, tmpdir, "", EINVAL);
-    assert_open_fails(opener, tmpdir, "/", EINVAL);
-    assert_open_fails(opener, tmpdir, "../etc/passwd", EINVAL);
-    assert_open_fails(opener, tmpdir, "usr/../usr/bin/file", EINVAL);
-    assert_open_fails(opener, tmpdir, "usr/./bin/file", EINVAL);
-    assert_open_fails(opener, tmpdir, "usr//bin/file", EINVAL);
+    assert_open_at_fails(opener, basefd, "", EINVAL);
+    assert_open_at_fails(opener, basefd, "/", EINVAL);
+    assert_open_at_fails(opener, basefd, "../etc/passwd", EINVAL);
+    assert_open_at_fails(opener, basefd, "usr/../usr/bin/file", EINVAL);
+    assert_open_at_fails(opener, basefd, "usr/./bin/file", EINVAL);
+    assert_open_at_fails(opener, basefd, "usr//bin/file", EINVAL);
 
     /* a missing file is just missing */
-    assert_open_fails(opener, tmpdir, "usr/bin/missing", ENOENT);
+    assert_open_at_fails(opener, basefd, "usr/bin/missing", ENOENT);
+
+    /* none of that closed the base */
+    TARPM_ASSERT_TRUE(fcntl(basefd, F_GETFD) != -1);
+    close(basefd);
 
     /* clean up */
     xasprintf(&path, "%s/usr/bin/link", tmpdir);
@@ -268,95 +283,6 @@ check_opener(int (*opener)(const char *, const char *))
     free(path);
     xasprintf(&path, "%s/usr/bin", tmpdir);
     TARPM_ASSERT_TRUE(rmdir(path) == 0);
-    free(path);
-    xasprintf(&path, "%s/usr", tmpdir);
-    TARPM_ASSERT_TRUE(rmdir(path) == 0);
-    free(path);
-    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
-
-    return;
-}
-
-void
-test_open_beneath(void)
-{
-    check_opener(open_beneath);
-    return;
-}
-
-void
-test_open_beneath_walk(void)
-{
-    check_opener(open_beneath_walk);
-    return;
-}
-
-/*
- * Run the descriptor cases against open_beneath_at() and its fallback.
- * One base descriptor serves every open and stays open after.
- */
-static void
-check_opener_at(int (*opener)(const int, const char *))
-{
-    int i = 0;
-    int fd = -1;
-    int basefd = -1;
-    char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
-    char *path = NULL;
-    char buf[8];
-    FILE *fp = NULL;
-
-    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
-
-    /* usr/file is a file and lib a symlink to usr */
-    xasprintf(&path, "%s/usr", tmpdir);
-    TARPM_ASSERT_TRUE(mkdir(path, 0755) == 0);
-    free(path);
-    xasprintf(&path, "%s/usr/file", tmpdir);
-    fp = fopen(path, "w");
-    TARPM_ASSERT_PTR_NOT_NULL(fp);
-    fputs("data", fp);
-    fclose(fp);
-    free(path);
-    xasprintf(&path, "%s/lib", tmpdir);
-    TARPM_ASSERT_TRUE(symlink("usr", path) == 0);
-    free(path);
-
-    basefd = open_beneath_base(tmpdir);
-    TARPM_ASSERT_TRUE(basefd >= 0);
-
-    /* the don't crash cases */
-    errno = 0;
-    TARPM_ASSERT_EQUAL(opener(basefd, NULL), -1);
-    TARPM_ASSERT_EQUAL(errno, EINVAL);
-    errno = 0;
-    TARPM_ASSERT_EQUAL(opener(-1, "usr/file"), -1);
-    TARPM_ASSERT_EQUAL(errno, EBADF);
-
-    /* the same base opens the file again and again */
-    for (i = 0; i < 3; i++) {
-        fd = opener(basefd, "/usr/file");
-        TARPM_ASSERT_TRUE(fd >= 0);
-        memset(buf, 0, sizeof(buf));
-        TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
-        TARPM_ASSERT_STRING_EQUAL(buf, "data");
-        close(fd);
-    }
-
-    /* a symlink on the way is refused and the base is still open */
-    errno = 0;
-    TARPM_ASSERT_EQUAL(opener(basefd, "lib/file"), -1);
-    TARPM_ASSERT_EQUAL(errno, ELOOP);
-    TARPM_ASSERT_TRUE(fcntl(basefd, F_GETFD) != -1);
-
-    close(basefd);
-
-    /* clean up */
-    xasprintf(&path, "%s/lib", tmpdir);
-    TARPM_ASSERT_TRUE(unlink(path) == 0);
-    free(path);
-    xasprintf(&path, "%s/usr/file", tmpdir);
-    TARPM_ASSERT_TRUE(unlink(path) == 0);
     free(path);
     xasprintf(&path, "%s/usr", tmpdir);
     TARPM_ASSERT_TRUE(rmdir(path) == 0);
@@ -420,8 +346,6 @@ get_suite(void)
     /* add tests to the suite */
     if (CU_add_test(pSuite, "test joinpath()", test_joinpath) == NULL ||
         CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL ||
-        CU_add_test(pSuite, "test open_beneath()", test_open_beneath) == NULL ||
-        CU_add_test(pSuite, "test open_beneath_walk()", test_open_beneath_walk) == NULL ||
         CU_add_test(pSuite, "test open_beneath_at()", test_open_beneath_at) == NULL ||
         CU_add_test(pSuite, "test open_beneath_walk_at()", test_open_beneath_walk_at) == NULL ||
         CU_add_test(pSuite, "test open_beneath_base()", test_open_beneath_base) == NULL) {
