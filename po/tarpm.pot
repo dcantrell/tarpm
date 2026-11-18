@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 11:10-0500\n"
+"POT-Creation-Date: 2026-11-18 12:47-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -767,120 +767,120 @@ msgstr ""
 msgid "*** invalid dirindex %u (max %u)"
 msgstr ""
 
-#: src/files.c:1406
+#: src/files.c:1408
 #, c-format
 msgid "*** unsupported file digest algorithm: %s"
 msgstr ""
 
-#: src/files.c:1868
+#: src/files.c:1888
 #, c-format
 msgid "%s: new in the payload, added to the file list"
 msgstr ""
 
-#: src/files.c:1870
+#: src/files.c:1890
 #, c-format
 msgid "*** %s is new in the payload, adding it to the file list"
 msgstr ""
 
-#: src/files.c:1979
+#: src/files.c:1999
 #, c-format
 msgid "*** %s is a %s in the payload and not a %s, going with the payload"
 msgstr ""
 
-#: src/files.c:2038
+#: src/files.c:2058
 #, c-format
 msgid "*** %s is missing the %s file metadata, taking it from the payload"
 msgstr ""
 
-#: src/files.c:2040
+#: src/files.c:2060
 #, c-format
 msgid "*** %s is missing the %s file metadata, using the default"
 msgstr ""
 
-#: src/files.c:2054
+#: src/files.c:2074
 #, c-format
 msgid ""
 "*** %s %s in header.json does not match the payload, taking the payload value"
 msgstr ""
 
-#: src/files.c:2470
+#: src/files.c:2490
 #, c-format
 msgid "*** %s in the payload is owned by uid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2482
+#: src/files.c:2502
 #, c-format
 msgid "*** %s in the payload is in gid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2643
+#: src/files.c:2663
 #, c-format
 msgid "*** unable to compute the digest of %s"
 msgstr ""
 
-#: src/files.c:2826
+#: src/files.c:2846
 #, c-format
 msgid "*** missing dependency type in the provides of %s"
 msgstr ""
 
-#: src/files.c:2833
+#: src/files.c:2853
 #, c-format
 msgid "*** unknown dependency type %s in the provides of %s"
 msgstr ""
 
-#: src/files.c:2840
+#: src/files.c:2860
 #, c-format
 msgid "*** no matching %s dependency for the provides of %s"
 msgstr ""
 
-#: src/files.c:2862
+#: src/files.c:2882
 #, c-format
 msgid "*** %s changed, dropping its file signatures"
 msgstr ""
 
-#: src/files.c:2922
+#: src/files.c:2942
 #, c-format
 msgid "%s: not in the payload, left out of the file list"
 msgstr ""
 
-#: src/files.c:2924
+#: src/files.c:2944
 #, c-format
 msgid "*** %s is not in the payload, leaving it out of the file list"
 msgstr ""
 
-#: src/files.c:2955
+#: src/files.c:2975
 #, c-format
 msgid "%s: size %<PRId64> in %s, %<PRId64> in the payload, using the payload"
 msgstr ""
 
-#: src/files.c:2967
+#: src/files.c:2987
 #, c-format
 msgid "*** %s has device number %<PRId64>, which does not fit in %s"
 msgstr ""
 
-#: src/files.c:2987
+#: src/files.c:3007
 #, c-format
 msgid "%s: the payload file changed, computed a new digest"
 msgstr ""
 
-#: src/files.c:2989
+#: src/files.c:3009
 #, c-format
 msgid "%s: the payload file changed, keeping the old digest (-D)"
 msgstr ""
 
-#: src/files.c:3369 src/files.c:3371
+#: src/files.c:3389 src/files.c:3391
 #, c-format
 msgid "*** %s does not match the file list, leaving it in %s"
 msgstr ""
 
-#: src/files.c:3555
+#: src/files.c:3575
 #, c-format
 msgid ""
 "*** the main header carries %s, leaving the file signatures out of the "
 "signature header"
 msgstr ""
 
-#: src/files.c:3574
+#: src/files.c:3594
 #, c-format
 msgid "*** %s \"%s\" is not a number, writing %d"
 msgstr ""
