@@ -1035,7 +1035,7 @@ free_hardlink_groups(struct hardlink_groups *hl)
 }
 
 /*
- * Work out the order we write the payload entries in.  rpmbuild
+ * Determine the order we write the payload entries in.  rpmbuild
  * writes the files that are not in a hardlink group first, then each
  * hardlink group in the order the groups show up in the file list.
  * We put the indexes in order, which holds numfiles of them, and give
@@ -3088,7 +3088,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     }
 
     /*
-     * Fill in the tags we can work out ourselves.  This runs first
+     * Fill in the tags we can determine ourselves.  This runs first
      * because the payload scan below goes by the digest algorithm and
      * the package type it leaves behind.
      */
@@ -3208,7 +3208,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
         goto create_cleanup;
     }
 
-    /* work out the payload digests and sizes the format calls for */
+    /* determine the payload digests and sizes the format calls for */
     verbose_stage(_("Computing the payload digests"));
 
     if (update_payload_tags(header, payloadfd, rpmformat, keptpayload, &archivesize) != 0) {

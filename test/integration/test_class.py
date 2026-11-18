@@ -68,7 +68,7 @@ class TestFileClass(object):
     # The class of every file in the RPM, read back through librpm so
     # that RPMTAG_FILECLASS and RPMTAG_CLASSDICT both have to be right.
     #
-    # Note that %{FILECLASS} is worked out rather than read straight
+    # Note that %{FILECLASS} is determined rather than read straight
     # out of the header.  When the stored class is empty, rpm makes one
     # up from the file mode, and for a symlink it makes one up from the
     # link target.  See makeFClass() in lib/tagexts.cc in the rpm
@@ -170,7 +170,7 @@ class TestFileClassUnchanged(TestFileClass, TestUnpackRPM):
 
         self.assertEqual(before, after, "classes changed on an untouched payload")
 
-        # and the ones we put there are what rpm works out for itself
+        # and the ones we put there are what rpm figures out for itself
         self.assertEqual(before["/usr/share/%s/readme.txt" % NAME], "ASCII text")
         self.assertEqual(before["/usr/share/%s/empty.txt" % NAME], "empty")
         self.assertIn("script", before["/usr/bin/%s-run" % NAME])

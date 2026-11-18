@@ -390,7 +390,7 @@ test_create_json_entry_signature_file_tags(void)
 
     /*
      * The reserved space tag is carried over to a package we create
-     * rather than worked out again, but it is still read-only.
+     * rather than determined again, but it is still read-only.
      */
     hdrentry.tag = htonl(RPMSIGTAG_RESERVED_VALUE);
     hdrentry.type = htonl(RPM_BIN_TYPE);

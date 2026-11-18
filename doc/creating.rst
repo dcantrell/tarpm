@@ -8,7 +8,7 @@ subdirectory is enough.  tarpm walks the payload tree, builds the
 whole file list out of what it finds there, and fills in the header
 tags a package needs but that you have no reason to name yourself.
 
-Only three tags have no value tarpm can work out, which are ``Name``,
+Only three tags have no value tarpm can determine, which are ``Name``,
 ``Version``, and ``Release``.  A header missing any of them, or
 holding an empty string for one, is an error.  ``License`` has no
 sensible default either, so tarpm warns rather than invent a license

@@ -102,7 +102,7 @@ class MissingTarpm(Exception):
 #
 # The only significant difference here is that rpmbuild is called
 # with the '-bs' option instead of '-ba'.  Enough functions are
-# duplicated here in order to make it all work.
+# duplicated here to make it all work.
 class SimpleSrpmBuild(rpmfluff.SimpleRpmBuild):
     def __write_log(self, log, arch):
         log_dir = self.get_build_log_dir(arch)

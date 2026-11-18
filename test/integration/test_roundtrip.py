@@ -310,8 +310,8 @@ class RoundTrip(object):
         f.close()
 
         # On older RPM versions (<= 4.20), packages may differ in signature
-        # metadata generation but still be valid. Only verify RPM packages,
-        # not payload files. Check if the file is an RPM (magic at offset 96).
+        # metadata generation but still be valid.  Only verify RPM packages,
+        # not payload files.  Check if the file is an RPM (magic at offset 96).
         is_rpm = len(two_data) > 100 and two_data[96:100] == b"\x8e\xad\xe8\x01"
         if is_rpm and not rpm_at_least("6.0.0"):
             self.assertVerifies(two)

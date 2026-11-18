@@ -11,7 +11,7 @@ it needs are:
 * librpm, for the tag tables and a few helpers
 * json-c, for reading and writing the JSON metadata
 * libarchive 3.3.3 or later, for the cpio payload
-* libmagic, for working out file classes and MIME types
+* libmagic, for determining file classes and MIME types
 * libzstd, for zstd payload compression
 * liblzma, for xz payload compression
 * OpenSSL, for the digests

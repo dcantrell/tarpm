@@ -27,7 +27,7 @@ static bool n_flag = false;
 #define OPT_HELP 256
 
 /*
- * Work out where one of the JSON metadata files lives.  A single
+ * Determine where one of the JSON metadata files lives.  A single
  * hyphen means stdout and is kept as it is.  A relative path is taken
  * from the current directory.  A path that ends with a slash or names
  * a directory we already have gets the usual filename added to it.

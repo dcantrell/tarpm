@@ -288,7 +288,7 @@
 /*
  * The values apply_header_defaults() writes for the main header tags
  * a package needs but a user has no reason to name.  Name, Version
- * and Release are the only three with no value we can work out, so
+ * and Release are the only three with no value we can determine, so
  * they are not here.
  */
 #define RPM_DEFAULT_OS                 "linux"
@@ -432,7 +432,7 @@
 /* names used for the file flag bits in the "files" array */
 /*
  * From enum rpmfileAttrs_e in include/rpm/rpmfiles.h in the rpm
- * source; not public API.  New things may show up in rpm!
+ * source and not public API.  New things may show up in rpm!
  */
 #define RPM_FILE_FLAG_CONFIG           "config"
 #define RPM_FILE_FLAG_DOC              "doc"

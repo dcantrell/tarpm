@@ -161,7 +161,7 @@ class TestFileMimeUnchanged(TestFileMime, TestUnpackRPM):
 
         self.assertEqual(before, after, "MIME types changed on an untouched payload")
 
-        # and the ones we put there are what rpm works out for itself
+        # and the ones we put there are what rpm figures out for itself
         self.assertEqual(before["/usr/share/%s/readme.txt" % NAME], "text/plain")
         self.assertEqual(before["/usr/share/%s/empty.txt" % NAME], "inode/x-empty")
         self.assertEqual(before["/usr/bin/%s-run" % NAME], "text/x-shellscript")

@@ -150,7 +150,7 @@ still hold after a rebuild.  tarpm does not put them in
 ``signature.json``.  The two per-file lists go to the ``signature``
 and ``verity`` keys of the ``files`` array in ``header.json``, and
 Veritysignaturealgo goes to the ``tags`` array there.
-Filesignaturelength is worked out again from the signatures.
+Filesignaturelength is determined again from the signatures.
 
 header.json
 ===========
@@ -540,11 +540,11 @@ Six of those keys are worth a few more words.
     carries this key.  A v4 format package has no MIME types.
 
     Switching formats fills in what the new format needs.  Writing a
-    v6 format package works out the MIME type of an entry with no
-    ``mime`` key.  Writing a v4 format package works out the class of
+    v6 format package determines the MIME type of an entry with no
+    ``mime`` key.  Writing a v4 format package determines the class of
     an entry with a ``mime`` key and no ``class`` key.
 
-    For a new or changed file, tarpm only works out the one the format
+    For a new or changed file, tarpm only determines the one the format
     records.  That is the class for a v4 format package and the MIME
     type for a v6 format package.  A source package gets neither.
 

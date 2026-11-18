@@ -51,7 +51,7 @@ test_joinpath(void)
     free(a);
 
     /*
-     * extra leading slashes and middle slashes reduced to one; extra
+     * extra leading slashes and middle slashes reduced to one.  Extra
      * trailing slashes reduced to one
      */
     a = joinpath("//////////usr/////////", "/////bin//////", NULL);

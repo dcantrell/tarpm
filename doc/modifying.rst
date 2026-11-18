@@ -243,10 +243,10 @@ writes the ones the new format wants, so you do not have to edit
 ``header.json`` first.  The file sizes survive the move, since the two
 formats only disagree on which tag they are counted in.  So does
 ``Sourcenevr``, which only a v6 format package carries but which tarpm
-works out again from ``Sourcerpm`` on the way back.
+determines again from ``Sourcerpm`` on the way back.
 
 A v4 format package describes each file with a class and a v6 format
-package uses a MIME type.  tarpm works out the one the new format
+package uses a MIME type.  tarpm determines the one the new format
 needs from the file in the payload tree.
 
 One thing does not survive.  The ``rpmlib()`` entries in

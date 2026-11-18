@@ -258,7 +258,7 @@ Longarchivesize there, and the reserved space shrinks so the signature
 header keeps the same size.
 .PP
 A v4 format package describes each file with a class and a v6 format
-package describes it with a MIME type.  \f[B]tarpm\f[R] works out the
+package describes it with a MIME type.  \f[B]tarpm\f[R] determines the
 one the new format needs from the file in the payload tree.  See FILE CLASSES
 and MIME TYPES below.
 .PP
@@ -269,7 +269,7 @@ v6 format keeps the ones rpm(8) only adds for v4 format.  Edit
 .PP
 Sourcenevr does survive, even though it is a v6 format tag a v4
 format package cannot carry.  It is the Sourcerpm value with the
-\(dq.src.rpm\(dq ending taken off, so \f[B]tarpm\f[R] works it out
+\(dq.src.rpm\(dq ending taken off, so \f[B]tarpm\f[R] determines it
 again on the way back to the v6 format.
 .PP
 The lead records the format in its major version, which is 3 for the
@@ -349,7 +349,7 @@ only be used when creating an RPM.
 .PP
 Similar to tar(1), you may run options together, such as
 \f[B]\-xvf\f[R] or \f[B]\-cvf\f[R]. Likewise, the leading hyphen on
-combined options like this is optional (in order to make
+combined options like this is optional (to make
 \f[B]tarpm\f[R] more syntax compatible with tar(1)).
 Without the hyphen, the combined options must be the first argument,
 such as \f[B]tarpm xvf\f[R] FILENAME.  A letter that is not an option
@@ -632,7 +632,7 @@ the languages and \f[B]tarpm\f[R] splits it in to an array.
 .TP
 \f[B]colors\f[R]
 An array naming the ELF class of the file, either Elf32 or Elf64. RPM
-uses this to work out which of two packages wins when a multilib
+uses this to figure out which of two packages wins when a multilib
 install puts a 32 bit and a 64 bit copy of the same path on the
 system.
 .TP
@@ -919,7 +919,7 @@ file list entry. Internally this is a table of the class strings in
 the package and one index per file in to that table.
 \f[B]tarpm\f[R] builds both of those for you.
 .PP
-The class is worked out the same way rpmbuild(1) works it out. A file
+The class is determined the same way rpmbuild(1) determines it. A file
 that is not a regular file or a symlink gets a fixed name from its
 type. A handful of path endings, such as .h and .png, get an answer
 without looking at the file at all. Anything under /dev/ gets no class
@@ -946,7 +946,7 @@ All of this is v4 format only.  A v6 format package records a MIME
 type per file rather than a class, so a file list out of a v6 format
 package carries no \f[B]class\f[R] key at all.  When you write a v4
 format package from it,
-\f[B]tarpm\f[R] works out the class of each entry that has a
+\f[B]tarpm\f[R] determines the class of each entry that has a
 \f[B]mime\f[R] key and no \f[B]class\f[R] key.
 .SH MIME TYPES
 A v6 format package records the MIME type of each file in place of a
@@ -957,7 +957,7 @@ the package and the Filemimeindex index per file in to that table.
 \f[B]tarpm\f[R] builds both of those for you. A source package
 carries neither.
 .PP
-The MIME type is worked out the same way rpmbuild(1) works it out. A
+The MIME type is determined the same way rpmbuild(1) determines it. A
 regular file or a symlink with one of the path endings that gets a
 class without looking at the file gets a MIME type the same way, such
 as text/x-c for .h. Everything else goes to libmagic, including
@@ -968,13 +968,13 @@ read is application/octet-stream.
 \f[B]tarpm\f[R] works the MIME type out again under the same
 conditions as the class. A file you did not touch keeps the MIME type
 the original package gave it.
-It only works out the one the format records, the class for a v4
+It only determines the one the format records, the class for a v4
 format package and the MIME type for a v6 format package.
 A source package gets neither.
 .PP
 A file list out of a v4 format package carries no \f[B]mime\f[R]
 key. When you write a v6 format package from it, \f[B]tarpm\f[R]
-works out the MIME type of each entry that has no \f[B]mime\f[R] key.
+determines the MIME type of each entry that has no \f[B]mime\f[R] key.
 .SH SEE ALSO
 \f[B]rpmbuild\f[R](1), \f[B]rpmsign\f[R](1), \f[B]tar\f[R](1),
 \f[B]file\f[R](1), \f[B]rpm\f[R](8), \f[B]rpm2cpio\f[R](8)

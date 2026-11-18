@@ -108,7 +108,7 @@ below_dir(const char *path, const char *dir)
 }
 
 /*
- * Work out where the extracted RPM goes.  We use the directory the
+ * Determine where the extracted RPM goes.  We use the directory the
  * caller gave us or we make a name from the NEVRA.  The caller has to
  * free it.
  */

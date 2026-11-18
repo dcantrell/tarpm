@@ -125,7 +125,7 @@ build_header(struct rpmhdr *hdr, struct rpmhdrinfo *hdrinfo, struct rpmhdrentry 
      * fileverifyflags (the second entry verifies nothing).  The first
      * entry is what rpmbuild writes for %verify(not md5 mtime), which
      * is the complement of the named bits and so carries the bits rpm
-     * keeps for itself; those are expected to be normalized away.
+     * keeps for itself.  Those are expected to be normalized away.
      */
     val32 = htonl(RPMVERIFY_ALL & ~(RPMVERIFY_FILEDIGEST | RPMVERIFY_MTIME));
     memcpy(data + FILEVERIFY_OFFSET, &val32, sizeof(val32));
@@ -2320,7 +2320,7 @@ test_add_file_list_tags_mime(void)
 }
 
 /*
- * Test add_file_list_tags() works out the MIME type of a file that has
+ * Test add_file_list_tags() determines the MIME type of a file that has
  * none for a v6 format package and the class of a file that came from
  * one for a v4 format package.
  */

@@ -18,7 +18,7 @@ static rpmVSFlags vsflags = RPMVSF_MASK_NODIGESTS | RPMVSF_MASK_NOSIGNATURES | R
 #define MAX_COLUMN_WIDTH 25
 
 /*
- * Work out the widths of the ownership and size columns from the file
+ * Determine the widths of the ownership and size columns from the file
  * list in the header, so we read the payload only once.  A %ghost file
  * is in the header but not the payload, so it does not count.  The
  * widths start at ownerlen and sizelen.

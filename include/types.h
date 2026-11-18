@@ -12,7 +12,7 @@
 /*
  * This is from lib/rpmlead.c in rpm's source.  The RPM "lead" is
  * legacy, but is part of every RPM.  The type and handling of this is
- * not part of the public librpm API, but we need it here in order to
+ * not part of the public librpm API, but we need it here to
  * reconstruct an RPM.
  */
 struct rpmlead {

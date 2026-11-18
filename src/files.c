@@ -1800,7 +1800,7 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
         }
     }
 
-    /* what kind of thing the file is, the way rpmbuild works it out */
+    /* what kind of thing the file is, the way rpmbuild determines it */
     classify_file(file, path, file_path, sb, scan->format, scan->source_package);
 
     /* rpmbuild starts every file out verifying all of its attributes */
@@ -2497,7 +2497,7 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
 }
 
 /*
- * Work out the size to store for a file.  Only entries that carry a
+ * Determine the size to store for a file.  Only entries that carry a
  * size get one.  A regular file in the payload tree wins so an edited
  * payload lands the right number in the header.
  */
@@ -2516,7 +2516,7 @@ file_size_value(struct json_object *file, const struct stat *sb)
 }
 
 /*
- * Work out the mode to store for a file.  The permission bits come
+ * Determine the mode to store for a file.  The permission bits come
  * from the entry and the type bits from the file in the payload tree.
  */
 static int
@@ -2594,7 +2594,7 @@ file_mtime_value(struct json_object *file)
 }
 
 /*
- * Work out the digest to store for a file.  We read it back out of
+ * Determine the digest to store for a file.  We read it back out of
  * the payload so an edited file lands a correct one in the header.
  * With no regular file there we keep what header.json had.  With
  * keep_digests we keep what header.json had regardless, so a hand

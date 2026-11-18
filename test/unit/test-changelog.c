@@ -539,7 +539,7 @@ test_add_changelog_tags_unknown_timezone(void)
     /*
      * CEST is how a changelog writes central European summer time but
      * it is not a zone name, so the date falls back on UTC.  The
-     * warning goes to stderr; what matters here is that the entry is
+     * warning goes to stderr.  What matters here is that the entry is
      * still built and reads as the UTC time of day.
      */
     entry = json_object_new_object();

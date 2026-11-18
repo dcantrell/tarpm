@@ -17,7 +17,7 @@
 /*
  * Convert Unix timestamp to RPM changelog date format in the C locale
  * cee the caller made.  Returns allocated string like "Wed Jul 29
- * 2020" or NULL without a locale. Caller must free.
+ * 2020" or NULL without a locale.  Caller must free.
  */
 static char *
 timestamp_to_changelog_date(uint32_t timestamp, locale_t cee)
@@ -189,7 +189,7 @@ changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
 /*
  * Split text on newlines into a JSON array.  Blank lines are kept so
  * join_changelog_text() gives back the same text.
- * Returns allocated json_object array. Caller must free.
+ * Returns allocated json_object array.  Caller must free.
  */
 static struct json_object *
 split_changelog_text(const char *text)

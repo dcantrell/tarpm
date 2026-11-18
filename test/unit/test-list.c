@@ -91,7 +91,7 @@ test_list_rpm_very_long_path(void)
         long_path[i] = '/';
     }
 
-    /* test that very long paths are handled gracefully */
+    /* test that very long paths are handled */
     TARPM_ASSERT_EQUAL(list_rpm(long_path), -1);
 
     return;

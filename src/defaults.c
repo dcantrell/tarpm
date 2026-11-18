@@ -256,7 +256,7 @@ add_self_provide(struct json_object *header, struct json_object *tags)
 
 /*
  * Fill in the main header tags the tree did not name.  Name, Version
- * and Release have no value we can work out, so a header without them
+ * and Release have no value we can determine, so a header without them
  * is an error.  Everything else here is additive, which is what lets
  * an extracted tree go back out unchanged.  Returns non-zero on
  * failure.

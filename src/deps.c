@@ -32,7 +32,7 @@ static const struct dep_type dep_types[] = {
 
 /*
  * Convert comparison flags (LESS, GREATER, EQUAL) to symbolic representation.
- * Returns allocated string. Caller must free.
+ * Returns allocated string.  Caller must free.
  */
 static char *
 comparison_to_str(uint32_t flags)

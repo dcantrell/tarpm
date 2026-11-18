@@ -15,7 +15,7 @@
 /* the format we write the package for */
 int rpmformat = RPM_FORMAT_DEFAULT;
 
-/* the main header tags rpm works out at write time, one group per RPM format */
+/* the main header tags rpm determines at write time, one group per format */
 static const rpmTagVal v4_header_tags[] = { RPMFORMAT_V4_HEADER_TAGS };
 static const rpmTagVal v6_header_tags[] = { RPMFORMAT_V6_HEADER_TAGS };
 
@@ -548,7 +548,7 @@ kept_payload_digests(struct json_object *header)
 }
 
 /*
- * Work out the payload digests and sizes and write them in to the
+ * Determine the payload digests and sizes and write them in to the
  * main header.  The payload has to exist by the time we are called.
  * A digest with its bit set in kept stays as header.json has it.  We
  * read the payload once as it is and decompress it once, whatever the
@@ -635,7 +635,7 @@ update_payload_tags(struct json_object *header, const int payloadfd, const int f
         if (set_payload_tag(tags, payload_digests[which[i]].tag, digest) != 0) {
             tag_name = rpmTagGetName(payload_digests[which[i]].tag);
 
-            /* older rpm versions may not have all payload digest tags, skip them gracefully */
+            /* older rpm versions may not have all payload digest tags, skip them */
             if (strcmp(tag_name, "(unknown)") == 0) {
                 continue;
             }
