@@ -23,6 +23,7 @@
 #include "constants.h"
 #include "i18n.h"
 #include "helpers.h"
+#include "epochtime.h"
 #include "types.h"
 
 /** @name Path canonicalization (abspath.c) */

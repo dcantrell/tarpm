@@ -1093,8 +1093,7 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
 {
     char mode_str[5];
     char mtime_str[32];
-    time_t mtime = 0;
-    struct tm *tm_info = NULL;
+    struct tm tm_info;
     const char *classname = NULL;
     const char *mimename = NULL;
     str_entry_t *lang = NULL;
@@ -1138,11 +1137,8 @@ file_entry(const struct file_metadata *fmd, const struct file_cursors *fc, struc
 
     /* Add mtime if available (as ISO 8601 timestamp) */
     if (fc->filemtime != NULL) {
-        mtime = (time_t) fc->filemtime->value;
-        tm_info = gmtime(&mtime);
-
-        if (tm_info != NULL) {
-            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+        if (tarpm_gmtime((int64_t) fc->filemtime->value, &tm_info)) {
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, &tm_info);
             json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
         }
     }
@@ -1766,8 +1762,7 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
     struct json_object *verifyflags = NULL;
     char mode_str[5];
     char mtime_str[32];
-    time_t mtime = 0;
-    struct tm *tm_info = NULL;
+    struct tm tm_info;
 
     file = json_object_new_object();
     json_object_object_add(file, RPM_FILE_PATH_DESC, json_object_new_string(path));
@@ -1797,11 +1792,8 @@ mkfileentry(const struct payload_scan *scan, const char *path, const char *file_
     json_object_object_add(file, RPM_FILE_TYPE_DESC, json_object_new_string(type_name(sb->st_mode)));
 
     /* the mtime as an ISO 8601 timestamp */
-    mtime = sb->st_mtime;
-    tm_info = gmtime(&mtime);
-
-    if (tm_info != NULL) {
-        strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+    if (tarpm_gmtime((int64_t) sb->st_mtime, &tm_info)) {
+        strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, &tm_info);
         json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
     }
 
@@ -2092,8 +2084,7 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
     char *digest = NULL;
     char mode_str[5];
     char mtime_str[32];
-    time_t mtime = 0;
-    struct tm *tm_info = NULL;
+    struct tm tm_info;
 
     if (file == NULL || path == NULL || file_path == NULL || sb == NULL) {
         return;
@@ -2143,12 +2134,9 @@ add_missing_metadata(struct json_object *file, const char *path, const char *fil
 
     /* the mtime as an ISO 8601 timestamp */
     if (!json_object_object_get_ex(file, RPM_FILE_MTIME_DESC, NULL)) {
-        mtime = sb->st_mtime;
-        tm_info = gmtime(&mtime);
-
-        if (tm_info != NULL) {
+        if (tarpm_gmtime((int64_t) sb->st_mtime, &tm_info)) {
             report_missing(path, RPM_FILE_MTIME_DESC, true);
-            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, &tm_info);
             json_object_object_add(file, RPM_FILE_MTIME_DESC, json_object_new_string(mtime_str));
         }
     }
@@ -2456,8 +2444,7 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
     ssize_t len = 0;
     char *target = NULL;
     char mtime_str[32];
-    time_t mtime = 0;
-    struct tm *tm_info = NULL;
+    struct tm tm_info;
     struct passwd *pw = NULL;
     struct group *gr = NULL;
 
@@ -2467,13 +2454,10 @@ apply_payload_overrides(struct json_object *file, const char *path, const char *
 
     /* the mtime as an ISO 8601 timestamp */
     if (payload_overrides & PAYLOAD_OVERRIDE_MTIME) {
-        mtime = sb->st_mtime;
-        tm_info = gmtime(&mtime);
-
-        if (tm_info == NULL) {
-            warn("gmtime");
+        if (!tarpm_gmtime((int64_t) sb->st_mtime, &tm_info)) {
+            warnx(_("*** unable to convert the mtime of %s"), path);
         } else {
-            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, tm_info);
+            strftime(mtime_str, sizeof(mtime_str), RPM_FILE_MTIME_FORMAT, &tm_info);
 
             if (strcmp(mtime_str, key_string(file, RPM_FILE_MTIME_DESC, ""))) {
                 report_override(path, RPM_FILE_MTIME_DESC);
@@ -2620,7 +2604,7 @@ file_mtime_value(struct json_object *file)
         return 0;
     }
 
-    return (int64_t) timegm(&tm_info);
+    return tarpm_timegm(&tm_info);
 }
 
 /*

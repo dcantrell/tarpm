@@ -673,6 +673,18 @@ test_strbuildtime(void)
     TARPM_ASSERT_TRUE(strcmp(s, "2025-07-21T00:00:00Z") == 0);
     free(s);
 
+    /* the last build time a signed 32 bit time_t can hold */
+    s = strbuildtime(2147483647U);
+    TARPM_ASSERT_PTR_NOT_NULL(s);
+    TARPM_ASSERT_TRUE(strcmp(s, "2038-01-19T03:14:07Z") == 0);
+    free(s);
+
+    /* one second past it, which a 32 bit time_t cannot hold */
+    s = strbuildtime(2147483648U);
+    TARPM_ASSERT_PTR_NOT_NULL(s);
+    TARPM_ASSERT_TRUE(strcmp(s, "2038-01-19T03:14:08Z") == 0);
+    free(s);
+
     /* the last build time an unsigned 32 bit value can hold */
     s = strbuildtime(4294967295U);
     TARPM_ASSERT_PTR_NOT_NULL(s);
@@ -689,6 +701,10 @@ test_buildtime_value(void)
     TARPM_ASSERT_EQUAL(buildtime_value("1970-01-01T00:00:00Z"), 0);
     TARPM_ASSERT_EQUAL(buildtime_value("2025-07-21T00:00:00Z"), 1753056000);
     TARPM_ASSERT_EQUAL(buildtime_value("2106-02-07T06:28:15Z"), 4294967295U);
+
+    /* times a 32 bit time_t cannot hold come back whole */
+    TARPM_ASSERT_EQUAL(buildtime_value("2038-01-19T03:14:07Z"), 2147483647U);
+    TARPM_ASSERT_EQUAL(buildtime_value("2038-01-19T03:14:08Z"), 2147483648U);
 
     /* a bare number is read as the value itself */
     TARPM_ASSERT_EQUAL(buildtime_value("1753056000"), 1753056000);

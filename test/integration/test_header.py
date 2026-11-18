@@ -16,6 +16,11 @@ from baseclass import TestUnpackSRPM, TestUnpackRPM
 from baseclass import PAYLOAD_DIGEST, PAYLOAD_DIGEST_ALGO, PAYLOAD_DIGEST_ALT
 from baseclass import RPMBUILD_FORMAT_SIX
 
+try:
+    from rpmfluff.utils import get_expected_arch
+except ImportError:
+    from rpmfluff import get_expected_arch
+
 # The main header tags only a v6 format package carries, and the
 # length of the hex digest each digest tag holds.  writeRPM() in
 # build/pack.cc in the rpm source writes these.
@@ -136,10 +141,34 @@ class VerifyHeaderExtractSRPM(TestUnpackSRPM):
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == build_host())
+                    elif t == "Distribution":
+                        # Koji sets %distribution, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(
+                            tag["value"] == rpm.expandMacro("%{?distribution}")
+                        )
                     elif t == "Vendor":
-                        # Copr sets %vendor, so take its value
+                        # Copr and Koji set %vendor, so take its value
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.expandMacro("%{?vendor}"))
+                    elif t == "Packager":
+                        # Koji sets %packager, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == rpm.expandMacro("%{?packager}"))
+                    elif t == "Bugurl":
+                        # Koji sets %bugurl.  We cannot compare against the
+                        # macro because it expands %{name} at build time.
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
+                    elif t == "Disturl":
+                        # the build system may set %disturl, which also
+                        # expands macros at build time
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
+                    elif t == "Disttag":
+                        # the build system may set %disttag
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) > 0)
@@ -429,10 +458,34 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                     elif t == "Buildhost":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == build_host())
+                    elif t == "Distribution":
+                        # Koji sets %distribution, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(
+                            tag["value"] == rpm.expandMacro("%{?distribution}")
+                        )
                     elif t == "Vendor":
-                        # Copr sets %vendor, so take its value
+                        # Copr and Koji set %vendor, so take its value
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == rpm.expandMacro("%{?vendor}"))
+                    elif t == "Packager":
+                        # Koji sets %packager, so take its value
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(tag["value"] == rpm.expandMacro("%{?packager}"))
+                    elif t == "Bugurl":
+                        # Koji sets %bugurl.  We cannot compare against the
+                        # macro because it expands %{name} at build time.
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
+                    elif t == "Disturl":
+                        # the build system may set %disturl, which also
+                        # expands macros at build time
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
+                    elif t == "Disttag":
+                        # the build system may set %disttag
+                        self.assertTrue(tag["type"] == "string")
+                        self.assertTrue(len(tag["value"]) > 0)
                     elif t == "Size":
                         self.assertTrue(tag["type"] == "int32")
                         self.assertTrue(int(tag["value"]) == 0)
@@ -454,7 +507,9 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                         self.assertTrue(tag["value"] == "linux")
                     elif t == "Arch":
                         self.assertTrue(tag["type"] == "string")
-                        self.assertTrue(tag["value"] == platform.uname()[4])
+                        # the package arch is what rpmbuild targeted, which
+                        # is not the kernel arch on an i686 build
+                        self.assertTrue(tag["value"] == get_expected_arch())
                     elif t == "Sourcerpm":
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(tag["value"] == "vaporware-0.1-1.src.rpm")
@@ -486,9 +541,11 @@ class VerifyHeaderExtractRPM(TestUnpackRPM):
                                 int(tag["value"]) >= 1 or int(tag["value"]) <= 9
                             )
                     elif t == "Platform":
+                        # the arch here is the one rpmbuild targeted, which
+                        # is not the kernel arch on an i686 build
                         self.assertTrue(tag["type"] == "string")
                         self.assertTrue(
-                            tag["value"].startswith(platform.uname()[4])
+                            tag["value"].startswith(get_expected_arch())
                             and (tag["value"].find(platform.uname()[0].lower()) != -1)
                         )
                     elif t == "Sourcesigmd5":

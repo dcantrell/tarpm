@@ -11,6 +11,7 @@ import os
 import pwd
 import struct
 import subprocess
+import tempfile
 import unittest
 import rpmfluff
 from baseclass import NAME
@@ -241,6 +242,25 @@ def utc_seconds(year, month, day, hour=12, minute=0, second=0):
             year, month, day, hour, minute, second, tzinfo=datetime.timezone.utc
         ).timestamp()
     )
+
+
+def can_store_mtime(when):
+    """True if a file on disk can carry this mtime
+
+    A 32 bit time_t runs out in 2038 and libarchive takes the mtime of
+    an entry as a time_t, so the payload tree on those systems cannot
+    hold a later time.  The header still carries the whole range.
+    """
+    fd, name = tempfile.mkstemp(prefix="tarpm-mtime-probe")
+    os.close(fd)
+
+    try:
+        os.utime(name, (when, when))
+        return int(os.stat(name).st_mtime) == when
+    except (OSError, OverflowError, ValueError):
+        return False
+    finally:
+        os.unlink(name)
 
 
 class RoundTrip(object):
@@ -3046,9 +3066,14 @@ class TestRoundTripWideValues(RoundTrip, TestUnpackRPM):
         flags = query_rpm(recreated, "[%{requirename} %{requireflags}\\n]")
         self.assertIn("wide-flags %d" % bits, flags)
 
-        # the payload carries the same time as the header
+        # the payload carries the same time as the header, which a
+        # system with a 32 bit time_t cannot store on disk
         again = self.extract(recreated, subdir="again")
-        self.assertEqual(int(os.stat(self.payload_path(again, path)).st_mtime), late)
+
+        if can_store_mtime(late):
+            self.assertEqual(
+                int(os.stat(self.payload_path(again, path)).st_mtime), late
+            )
 
         # and the flags come back out the way they went in
         for entry in read_header(again)["dependencies"]["requires"]:

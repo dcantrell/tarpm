@@ -31,27 +31,24 @@
 static char *
 timestamp_to_changelog_date(uint32_t timestamp, locale_t cee)
 {
-    time_t t = (time_t) timestamp;
-    struct tm *tm_info = NULL;
+    struct tm tm_info;
     char *result = NULL;
 
     if (cee == (locale_t) 0) {
         return NULL;
     }
 
-    tm_info = gmtime(&t);
-
-    if (tm_info == NULL) {
+    if (!tarpm_gmtime((int64_t) timestamp, &tm_info)) {
         return NULL;
     }
 
     result = xalloc(64);
 
     /* the short form reads back as noon UTC, so anything else needs the time */
-    if (tm_info->tm_hour == 12 && tm_info->tm_min == 0 && tm_info->tm_sec == 0) {
-        strftime_l(result, 64, "%a %b %d %Y", tm_info, cee);
+    if (tm_info.tm_hour == 12 && tm_info.tm_min == 0 && tm_info.tm_sec == 0) {
+        strftime_l(result, 64, "%a %b %d %Y", &tm_info, cee);
     } else {
-        strftime_l(result, 64, "%a %b %d %H:%M:%S UTC %Y", tm_info, cee);
+        strftime_l(result, 64, "%a %b %d %H:%M:%S UTC %Y", &tm_info, cee);
     }
 
     return result;
@@ -71,7 +68,7 @@ static int
 changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
 {
     struct tm tm_info = {0};
-    time_t t = 0;
+    int64_t t = 0;
     char *result = NULL;
     char *tz_start = NULL;
     char *year_start = NULL;
@@ -159,7 +156,12 @@ changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
          */
         tm_info.tm_isdst = -1;
 
-        t = mktime(&tm_info);
+        /*
+         * This path reads a local time, so we need mktime() and the
+         * time zone rules it carries.  Times past 2038 need a 64 bit
+         * time_t here.
+         */
+        t = (int64_t) mktime(&tm_info);
 
         /* Restore original timezone */
         if (saved_tz != NULL) {
@@ -184,7 +186,7 @@ changelog_date_to_timestamp(const char *changelog_date, uint32_t *timestamp)
         tm_info.tm_sec = 0;
 
         /* Original format is always UTC */
-        t = timegm(&tm_info);
+        t = tarpm_timegm(&tm_info);
     }
 
     if (t == -1) {

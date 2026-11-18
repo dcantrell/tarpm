@@ -485,9 +485,17 @@ tarpm checks four of the values before it writes anything.  ``mode``
 has to be a string of octal digits from ``0000`` to ``7777``.
 ``mtime`` has to be a time written like ``2026-01-16T00:00:00Z``, from
 1970 up to ``2106-02-07T06:28:15Z``, which is the largest time
-Filemtimes holds.  ``user`` and ``group`` have to be strings.  If one
+Filemtimes holds.  That range is the same everywhere.  tarpm does the
+date arithmetic itself, so a 32 bit ``time_t`` does not cut the header
+short at 2038.  ``user`` and ``group`` have to be strings.  If one
 of them is wrong, tarpm names the file and does not create the
 package.  A ``null`` counts as a missing key.
+
+The payload tree is a different matter.  Extracting writes each file
+through libarchive, which takes a timestamp as a ``time_t``.  On a
+system with a 32 bit ``time_t`` the files under ``payload/`` cannot
+carry a time past 2038 even though the header can.  Read the ``mtime``
+key when you need the real time on those systems.
 
 Six of those keys are worth a few more words.
 

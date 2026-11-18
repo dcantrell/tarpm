@@ -90,7 +90,7 @@ list_rpm(const char *rpm)
     int sizelen = 4;
     char modebuf[BUFSIZ];
     char timebuf[BUFSIZ];
-    time_t mtime;
+    uint32_t mtime;
     struct tm filetm;
     char *ownership = NULL;
     char *errstr = NULL;
@@ -188,8 +188,8 @@ list_rpm(const char *rpm)
         /* format the rpm_time_t of this file entry to ls(1) & tar(1) style output */
         mtime = rpmfiFMtime(fi);
 
-        if (gmtime_r(&mtime, &filetm) == NULL) {
-            warn("gmtime_r");
+        if (!tarpm_gmtime((int64_t) mtime, &filetm)) {
+            warnx(_("*** unable to convert mtime %" PRIu32), mtime);
             continue;
         }
 

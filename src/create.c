@@ -2701,7 +2701,7 @@ valid_mtime_string(const char *s)
         return false;
     }
 
-    t = (int64_t) timegm(&tm_info);
+    t = tarpm_timegm(&tm_info);
 
     if (t < 0 || t > UINT32_MAX) {
         return false;

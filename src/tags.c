@@ -245,16 +245,14 @@ digest_algo(const char *name)
 char *
 strbuildtime(uint32_t buildtime)
 {
-    time_t t = 0;
     struct tm tm_info;
     char buf[64];
     char *s = NULL;
 
-    t = (time_t) buildtime;
     memset(&tm_info, 0, sizeof(tm_info));
     memset(buf, 0, sizeof(buf));
 
-    if (gmtime_r(&t, &tm_info) == NULL || strftime(buf, sizeof(buf), RPM_BUILDTIME_FORMAT, &tm_info) == 0) {
+    if (!tarpm_gmtime((int64_t) buildtime, &tm_info) || strftime(buf, sizeof(buf), RPM_BUILDTIME_FORMAT, &tm_info) == 0) {
         /* no timestamp for this value, so use the number */
         xasprintf(&s, "%u", buildtime);
         return s;
@@ -284,7 +282,7 @@ buildtime_value(const char *timestamp)
     memset(&tm_info, 0, sizeof(tm_info));
 
     if (strptime(timestamp, RPM_BUILDTIME_FORMAT, &tm_info) != NULL) {
-        return (uint32_t) timegm(&tm_info);
+        return (uint32_t) tarpm_timegm(&tm_info);
     }
 
     errno = 0;
