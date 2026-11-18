@@ -1181,6 +1181,20 @@ int open_beneath_walk_at(const int basefd, const char *path);
 int open_beneath_at(const int basefd, const char *path);
 
 /**
+ * @brief Like open_beneath_at() but also open a regular file we own
+ *        that has no owner read bit.
+ *
+ * Files such as /etc/shadow and setuid programs extract that way for
+ * a user who is not root.  The owner read bit is added long enough to
+ * open the file and the mode is put back right away.
+ *
+ * @param basefd Descriptor for the directory the path sits below.
+ * @param path Path to open, relative to basefd.
+ * @return The descriptor, or -1 with errno set.
+ */
+int open_beneath_readable_at(const int basefd, const char *path);
+
+/**
  * @brief Open a directory for use as the basefd of open_beneath_at()
  *        and open_beneath_walk_at().
  *

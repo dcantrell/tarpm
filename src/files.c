@@ -1386,8 +1386,10 @@ mkfiledigest(const char *path, const uint32_t algo)
     unsigned int i = 0;
     size_t len = 0;
     unsigned int digest_sz = 0;
+    int saved_errno = 0;
     char *name = NULL;
     char *r = NULL;
+    struct stat sb;
     unsigned char buf[BUFSIZ];
     unsigned char digest[EVP_MAX_MD_SIZE];
     const EVP_MD *md = NULL;
@@ -1410,6 +1412,24 @@ mkfiledigest(const char *path, const uint32_t algo)
 
     free(name);
     fp = fopen(path, "rb");
+
+    /*
+     * Files like /etc/shadow or a setuid /usr/bin/sudo extract with no
+     * read bit for us.  We give ourselves read access to open the file
+     * and put the mode back right away.
+     */
+    if (fp == NULL && errno == EACCES && lstat(path, &sb) == 0 && S_ISREG(sb.st_mode) && sb.st_uid == geteuid() && !(sb.st_mode & S_IRUSR)) {
+        if (chmod(path, sb.st_mode | S_IRUSR) == 0) {
+            fp = fopen(path, "rb");
+            saved_errno = errno;
+
+            if (chmod(path, sb.st_mode & 07777) != 0) {
+                warn("chmod");
+            }
+
+            errno = saved_errno;
+        }
+    }
 
     if (fp == NULL) {
         warn("fopen");

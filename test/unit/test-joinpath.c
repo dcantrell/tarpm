@@ -331,6 +331,53 @@ test_open_beneath_base(void)
     return;
 }
 
+/* Test open_beneath_readable_at() opens a file with no owner read bit */
+void
+test_open_beneath_readable_at(void)
+{
+    int fd = -1;
+    int basefd = -1;
+    char tmpdir[] = "/tmp/tarpm-test-joinpath-XXXXXX";
+    char *path = NULL;
+    char buf[8];
+    FILE *fp = NULL;
+    struct stat sb;
+
+    TARPM_ASSERT_TRUE(mkdtemp(tmpdir) != NULL);
+
+    xasprintf(&path, "%s/shadow", tmpdir);
+    fp = fopen(path, "w");
+    TARPM_ASSERT_PTR_NOT_NULL(fp);
+    fputs("data", fp);
+    fclose(fp);
+    TARPM_ASSERT_TRUE(chmod(path, 04111) == 0);
+
+    basefd = open_beneath_base(tmpdir);
+    TARPM_ASSERT_TRUE(basefd >= 0);
+
+    /* the file reads and the mode is the one we started with */
+    fd = open_beneath_readable_at(basefd, "shadow");
+    TARPM_ASSERT_TRUE(fd >= 0);
+    memset(buf, 0, sizeof(buf));
+    TARPM_ASSERT_EQUAL(read(fd, buf, sizeof(buf)), 4);
+    TARPM_ASSERT_STRING_EQUAL(buf, "data");
+    close(fd);
+    TARPM_ASSERT_TRUE(stat(path, &sb) == 0);
+    TARPM_ASSERT_EQUAL(sb.st_mode & 07777, 04111);
+
+    /* a missing file is just missing */
+    errno = 0;
+    TARPM_ASSERT_EQUAL(open_beneath_readable_at(basefd, "missing"), -1);
+    TARPM_ASSERT_EQUAL(errno, ENOENT);
+
+    close(basefd);
+    TARPM_ASSERT_TRUE(unlink(path) == 0);
+    free(path);
+    TARPM_ASSERT_TRUE(rmdir(tmpdir) == 0);
+
+    return;
+}
+
 CU_pSuite
 get_suite(void)
 {
@@ -348,7 +395,8 @@ get_suite(void)
         CU_add_test(pSuite, "test path_beneath()", test_path_beneath) == NULL ||
         CU_add_test(pSuite, "test open_beneath_at()", test_open_beneath_at) == NULL ||
         CU_add_test(pSuite, "test open_beneath_walk_at()", test_open_beneath_walk_at) == NULL ||
-        CU_add_test(pSuite, "test open_beneath_base()", test_open_beneath_base) == NULL) {
+        CU_add_test(pSuite, "test open_beneath_base()", test_open_beneath_base) == NULL ||
+        CU_add_test(pSuite, "test open_beneath_readable_at()", test_open_beneath_readable_at) == NULL) {
         return NULL;
     }
 

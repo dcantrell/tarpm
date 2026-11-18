@@ -2741,8 +2741,8 @@ class CreateRefusesReadOnlyPackage(RequiresTarpm):
 
 
 @unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")
-class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
-    """A payload file that cannot be read makes tarpm exit non-zero"""
+class CreateReadsPayloadFileWithNoReadBit(RequiresTarpm):
+    """A payload file we own with mode 000 is packaged and keeps its mode"""
 
     def setUp(self):
         super().setUp()
@@ -2757,6 +2757,10 @@ class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
         f.close()
         os.chmod(self.program, 0o000)
 
+    def tearDown(self):
+        os.chmod(self.program, 0o644)
+        super().tearDown()
+
     def runTest(self):
         if HAVE_RPM_FORMAT_SIX:
             formats = ["4", "6"]
@@ -2769,14 +2773,14 @@ class CreateFailsOnUnreadablePayloadFile(RequiresTarpm):
                 [self.tarpm, "-c", "-F", rpmformat, "-f", pkg, self.tree]
             )
 
-            self.assertNotEqual(rc, 0)
-            self.assertIn("failed to add file: /usr/bin/hello", err)
-            self.assertFalse(os.path.exists(pkg))
+            self.assertEqual(rc, 0, msg=err)
+            self.assertTrue(os.path.isfile(pkg))
+            self.assertEqual(os.stat(self.program).st_mode & 0o7777, 0o000)
 
 
 @unittest.skipIf(os.geteuid() == 0, "root can read a file with mode 000")
-class CreateFailsOnUnreadableDigest(RequiresTarpm):
-    """A file list digest that cannot be recomputed is an error"""
+class CreateRecomputesDigestWithNoReadBit(RequiresTarpm):
+    """A file list digest is recomputed for a file with mode 000"""
 
     def runTest(self):
         tree = write_minimal_tree(os.path.join(self.output_dir, "tree"))
@@ -2797,11 +2801,15 @@ class CreateFailsOnUnreadableDigest(RequiresTarpm):
 
         pkg = os.path.join(self.output_dir, "hello.rpm")
         rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        mode = os.stat(program).st_mode & 0o7777
         os.chmod(program, 0o644)
 
-        self.assertNotEqual(rc, 0)
-        self.assertIn("unable to compute the digest of %s" % program, err)
-        self.assertFalse(os.path.exists(pkg))
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(mode, 0o000)
+        self.assertEqual(
+            query_rpm(pkg, "[%{FILEDIGESTS}\n]"),
+            hashlib.md5(b"#!/bin/sh\necho hello\n").hexdigest() + "\n",
+        )
 
 
 class CreateWithEmptiedPayload(TestUnpackRPM):

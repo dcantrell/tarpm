@@ -66,6 +66,13 @@ directories in ``payload``, and device nodes get mode 0600.  The full
 modes stay in the header and that is what tarpm writes back out when
 you create a package.
 
+Some files extract with no read bit for the owner, such as
+``/etc/shadow`` at mode 0000 or ``/usr/bin/sudo`` at mode 0111.  When
+you create a package as the user who extracted them, tarpm adds the
+owner read bit for as long as it takes to read the file and then puts
+the mode back.  tarpm cannot read a file owned by someone else this
+way.
+
 tarpm does not write through a symlink.  If ``header.json`` or one of
 the other JSON or ``.txt`` files is already a symlink in the output
 directory, tarpm says so and exits non-zero.

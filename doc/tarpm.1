@@ -197,6 +197,13 @@ The setuid and setgid bits are not restored in the payload tree, and
 device nodes get mode 0600.  The full modes stay in
 \f[B]header.json\f[R].
 .PP
+Some files extract with no read bit for the owner, such as
+/etc/shadow at mode 0000 or /usr/bin/sudo at mode 0111.  When you
+create a package as the user who extracted them, \f[B]tarpm\f[R] adds
+the owner read bit for as long as it takes to read the file and then
+puts the mode back.  It cannot read a file owned by someone else this
+way.
+.PP
 A JSON or tag value file that is already a symlink in the output
 directory is not written through, and \f[B]tarpm\f[R] exits non\-zero.
 .PP

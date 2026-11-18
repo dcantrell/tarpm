@@ -656,6 +656,56 @@ class TestCreateRecomputesFileDigests(RoundTrip, TestUnpackRPM):
         self.assertVerifies(recreated)
 
 
+class TestCreateUnreadableFiles(RoundTrip, TestUnpackRPM):
+    """Files with no owner read bit round trip for a user who is not root"""
+
+    def setUp(self):
+        super().setUp()
+
+        self.rpm.add_installed_file(
+            "/etc/%s-shadow" % NAME,
+            rpmfluff.SourceFile("shadow", b"secret\n"),
+        )
+        self.rpm.add_installed_file(
+            "/usr/bin/%s-setuid" % NAME,
+            rpmfluff.SourceFile("setuid", b"program\n"),
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original = self.rpm.get_built_rpm(get_expected_arch())
+
+        extract_dir = self.extract(original)
+        shadow = self.payload_path(extract_dir, "/etc/%s-shadow" % NAME)
+        setuid = self.payload_path(extract_dir, "/usr/bin/%s-setuid" % NAME)
+
+        # rpmbuild cannot package files like these as a user who is not
+        # root, so we change the modes after the extract
+        os.chmod(shadow, 0o000)
+        os.chmod(setuid, 0o4111)
+
+        recreated = self.create(extract_dir)
+        digests = dict(digest_list(recreated))
+
+        self.assertEqual(
+            digests["/etc/%s-shadow" % NAME], hashlib.sha256(b"secret\n").hexdigest()
+        )
+        self.assertEqual(
+            digests["/usr/bin/%s-setuid" % NAME],
+            hashlib.sha256(b"program\n").hexdigest(),
+        )
+
+        # the extracted tree keeps those modes after the create
+        self.assertEqual(os.stat(shadow).st_mode & 0o7777, 0o000)
+        self.assertEqual(os.stat(setuid).st_mode & 0o7777, 0o4111)
+
+        # let the test cleanup read the tree
+        os.chmod(shadow, 0o600)
+        os.chmod(setuid, 0o755)
+
+        self.assertVerifies(recreated)
+
+
 class TestCreateRecomputesFileSizes(RoundTrip, TestUnpackRPM):
     """An edited payload file lands its new size in the header"""
 

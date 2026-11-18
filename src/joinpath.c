@@ -42,6 +42,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <errno.h>
+#include <err.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -419,6 +420,53 @@ open_beneath_at(const int basefd, const char *path)
 #endif
 
     return open_beneath_walk_at(basefd, path);
+}
+
+/*
+ * Like open_beneath_at() but a regular file we own with no owner read
+ * bit is still opened.  Files such as /etc/shadow and setuid programs
+ * extract that way for a user who is not root.  We add the read bit
+ * long enough to open the file and put the mode back right away.
+ * Returns the descriptor or -1 with errno set.
+ */
+int
+open_beneath_readable_at(const int basefd, const char *path)
+{
+    int fd = -1;
+    int saved = 0;
+    const char *relative = NULL;
+    struct stat sb;
+
+    fd = open_beneath_at(basefd, path);
+
+    if (fd != -1 || errno != EACCES) {
+        return fd;
+    }
+
+    if (path == NULL || (relative = plain_relative(path)) == NULL) {
+        errno = EACCES;
+        return -1;
+    }
+
+    if (fstatat(basefd, relative, &sb, AT_SYMLINK_NOFOLLOW) == -1 || !S_ISREG(sb.st_mode) || sb.st_uid != geteuid() || (sb.st_mode & S_IRUSR)) {
+        errno = EACCES;
+        return -1;
+    }
+
+    if (fchmodat(basefd, relative, (sb.st_mode & 07777) | S_IRUSR, 0) == -1) {
+        errno = EACCES;
+        return -1;
+    }
+
+    fd = open_beneath_at(basefd, path);
+    saved = errno;
+
+    if (fchmodat(basefd, relative, sb.st_mode & 07777, 0) == -1) {
+        warn("fchmodat");
+    }
+
+    errno = saved;
+    return fd;
 }
 
 /*

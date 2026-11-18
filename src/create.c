@@ -237,7 +237,7 @@ write_file_data(const int payload_dirfd, const char *payload_dir, const char *re
 
     file_path = joinpath(payload_dir, relative_path, NULL);
 
-    if ((fd = open_beneath_at(payload_dirfd, relative_path)) == -1) {
+    if ((fd = open_beneath_readable_at(payload_dirfd, relative_path)) == -1) {
         if (errno == ELOOP || errno == EXDEV || errno == EINVAL) {
             warnx_escaped(_("*** %s leaves the payload tree or goes through a symlink in it"), relative_path);
         } else {
