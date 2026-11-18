@@ -12,11 +12,23 @@ rather to add an additional tool for specific RPM modification as
 well as an alternative way to construct binary RPMs.
 
 
-EXAMPLES
---------
+Status
+------
+
+[![pre-commit](https://github.com/dcantrell/tarpm/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/dcantrell/tarpm/actions/workflows/pre-commit.yml)
+[![ShellCheck](https://github.com/dcantrell/tarpm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/dcantrell/tarpm/actions/workflows/shellcheck.yml)
+
+For each merge and pull request, tarpm is built and tested in the
+following environments:
+
+[x86_64](https://en.wikipedia.org/wiki/X86-64):
+
+| Platform | Release | Status |
+|:-------------------------------------------------------|:----|----:|
+| [Fedora Linux](https://getfedora.org/)                 | rawhide<br />stable | [![Fedora Linux](https://github.com/dcantrell/tarpm/actions/workflows/fedora.yml/badge.svg)](https://github.com/dcantrell/tarpm/actions/workflows/fedora.yml) |
 
 
-NAME
+Name
 ----
 
 The tar(1) command is generally understood for creating archive files
@@ -30,7 +42,7 @@ amusing.  Naming software projects is the hardest part of any project.
 Aside from testing and documentation.
 
 
-LICENSE
+License
 -------
 
 The GNU General Public License 3.0 (or, at your option, any later
