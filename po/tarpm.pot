@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-22 13:33-0400\n"
+"POT-Creation-Date: 2026-11-18 11:10-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,215 +17,1534 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/create.c:274 src/header.c:499
+#: src/changelog.c:152
+#, c-format
+msgid "*** unknown time zone \"%s\" in changelog date \"%s\", using UTC"
+msgstr ""
+
+#: src/changelog.c:399
+msgid "*** changelog arrays have mismatched lengths"
+msgstr ""
+
+#: src/changelog.c:514
+#, c-format
+msgid "*** changelog entry %zu carries no timestamp"
+msgstr ""
+
+#: src/changelog.c:526
+#, c-format
+msgid "*** unable to read the changelog date \"%s\""
+msgstr ""
+
+#: src/changelog.c:541
+#, c-format
+msgid "*** changelog entry %zu has text that is not an array of strings"
+msgstr ""
+
+#: src/changelog.c:553
+#, c-format
+msgid "*** invalid changelog entry at index %zu"
+msgstr ""
+
+#: src/class.c:175
+#, c-format
+msgid "*** magic_load failed: %s"
+msgstr ""
+
+#: src/class.c:274 src/class.c:346
+#, c-format
+msgid "*** unable to recognize %s: %s"
+msgstr ""
+
+#: src/create.c:109 src/digest.c:421
+msgid "*** header data is too small to hold the region trailer"
+msgstr ""
+
+#: src/create.c:242 src/create.c:2954
+#, c-format
+msgid "*** %s leaves the payload tree or goes through a symlink in it"
+msgstr ""
+
+#: src/create.c:265
+#, c-format
+msgid "*** %s is %<PRIu64> bytes but the header lists %<PRIu64>"
+msgstr ""
+
+#: src/create.c:586 src/create.c:691
+msgid "*** unable to read the uncompressed payload"
+msgstr ""
+
+#: src/create.c:1162
+msgid "newc cpio"
+msgstr ""
+
+#: src/create.c:1171
+msgid "stripped cpio"
+msgstr ""
+
+#: src/create.c:1178
+msgid "not compressed"
+msgstr ""
+
+#: src/create.c:1180
+#, c-format
+msgid "%s compressed"
+msgstr ""
+
+#: src/create.c:1182
+#, c-format
+msgid "%s compressed at level %s"
+msgstr ""
+
+#: src/create.c:1185
+#, c-format
+msgid "Writing the payload as a %s archive, %s"
+msgstr ""
+
+#: src/create.c:1252 src/format.c:476 src/format.c:600 src/header.c:1655
 msgid "*** missing tags in header data"
 msgstr ""
 
-#: src/create.c:465
+#: src/create.c:1260
+#, c-format
+msgid ""
+"*** unknown Payloadcompressor \"%s\", use gzip, bzip2, xz, lzma, zstd, or "
+"none"
+msgstr ""
+
+#: src/create.c:1278
+msgid "*** generated file list tags are inconsistent"
+msgstr ""
+
+#: src/create.c:1284
+msgid "*** missing generated file metadata tags in header data"
+msgstr ""
+
+#: src/create.c:1371 src/create.c:1417
+#, c-format
+msgid "*** %s \"%s\" is not a compression level"
+msgstr ""
+
+#: src/create.c:1589
+msgid "*** unable to write the payload trailer"
+msgstr ""
+
+#: src/create.c:1627
+msgid "*** payload compression child failed"
+msgstr ""
+
+#: src/create.c:1807
+#, c-format
+msgid "*** unable to read %s in signature"
+msgstr ""
+
+#: src/create.c:1852 src/create.c:2121 src/create.c:2268
+msgid "*** missing tags in signature data"
+msgstr ""
+
+#: src/create.c:1861 src/create.c:2177 src/create.c:2315
+msgid "*** failed to resize the reserved space in signature"
+msgstr ""
+
+#: src/create.c:1884
+#, c-format
+msgid "*** %s does not hold a JSON object"
+msgstr ""
+
+#: src/create.c:1893 src/create.c:2783
+#, c-format
+msgid "*** the %s in %s are not an array"
+msgstr ""
+
+#: src/create.c:1899
+#, c-format
+msgid "*** entry %zu of the tags in %s is not an object"
+msgstr ""
+
+#: src/create.c:1933 src/header.c:189 src/header.c:212 src/readfile.c:71
+#, c-format
+msgid "*** unable to read %s"
+msgstr ""
+
+#: src/create.c:1996 src/create.c:2126
+msgid "*** missing tags in signature.json"
+msgstr ""
+
+#: src/create.c:2014
+#, c-format
+msgid "*** %s in signature.json has the wrong length, computing it instead"
+msgstr ""
+
+#: src/create.c:2019 src/create.c:2327 src/create.c:2338
+#, c-format
+msgid "*** failed to update %s in signature"
+msgstr ""
+
+#: src/create.c:2023 src/create.c:2170 src/format.c:640
+#, c-format
+msgid "%s: kept from %s"
+msgstr ""
+
+#: src/create.c:2046 src/create.c:2054
+#, c-format
+msgid "*** the %s value in signature.json is not an array of strings"
+msgstr ""
+
+#: src/create.c:2060
+#, c-format
+msgid "*** the %s value in signature.json is not base64 data"
+msgstr ""
+
+#: src/create.c:2068
+#, c-format
+msgid "*** unable to copy %s from signature.json"
+msgstr ""
+
+#: src/create.c:2154
+#, c-format
+msgid ""
+"*** leaving %s out of the package, rpm does not read it in the v%d format"
+msgstr ""
+
+#: src/create.c:2159
+#, c-format
+msgid "*** signature.json has more than one %s, keeping the first"
+msgstr ""
+
+#: src/create.c:2231
+msgid ""
+"*** the main header differs from the one signature.json was signed for, the "
+"kept signatures will not verify"
+msgstr ""
+
+#: src/create.c:2307
+msgid "*** failed to widen the size tags in signature"
+msgstr ""
+
+#: src/create.c:2349
+msgid "*** failed to compute the signature MD5 digest"
+msgstr ""
+
+#: src/create.c:2365
+msgid "*** failed to update MD5 digest in signature"
+msgstr ""
+
+#: src/create.c:2378
+msgid "*** failed to compute the signature SHA-1 digest"
+msgstr ""
+
+#: src/create.c:2389
+msgid "*** failed to update SHA-1 digest in signature"
+msgstr ""
+
+#: src/create.c:2403
+msgid "*** failed to compute the signature SHA-256 digest"
+msgstr ""
+
+#: src/create.c:2414
+msgid "*** failed to update SHA-256 digest in signature"
+msgstr ""
+
+#: src/create.c:2430
+msgid "*** failed to compute the signature SHA3-256 digest"
+msgstr ""
+
+#: src/create.c:2441
+msgid "*** failed to update SHA3-256 digest in signature"
+msgstr ""
+
+#: src/create.c:2480
+#, c-format
+msgid "*** %s \"%s\" holds a slash, rpmbuild would refuse it"
+msgstr ""
+
+#: src/create.c:2529
+#, c-format
+msgid "*** unable to find the directory of %s"
+msgstr ""
+
+#: src/create.c:2633
+#, c-format
+msgid "*** remove %s from the tags in %s, tarpm builds the file list tags"
+msgstr ""
+
+#: src/create.c:2641
+#, c-format
+msgid "*** changelog tags in %s have mismatched lengths"
+msgstr ""
+
+#: src/create.c:2737
+#, c-format
+msgid "entry %zu of the files in %s"
+msgstr ""
+
+#: src/create.c:2742
+#, c-format
+msgid "*** %s has a mode that is not an octal string from 0000 to 7777"
+msgstr ""
+
+#: src/create.c:2749
+#, c-format
+msgid ""
+"*** %s has an mtime that is not a time such as 2026-01-16T00:00:00Z from "
+"1970 to 2106"
+msgstr ""
+
+#: src/create.c:2756
+#, c-format
+msgid "*** %s has a %s that is not a string"
+msgstr ""
+
+#: src/create.c:2789
+#, c-format
+msgid "*** entry %zu of the files in %s is not an object"
+msgstr ""
+
+#: src/create.c:2798
+#, c-format
+msgid "*** the %s in %s is not an array"
+msgstr ""
+
+#: src/create.c:2847
+#, c-format
+msgid "*** tag #%d is in the tags in %s more than once"
+msgstr ""
+
+#: src/create.c:2849
+#, c-format
+msgid "*** %s is in the tags in %s more than once"
+msgstr ""
+
+#: src/create.c:2942
+#, c-format
+msgid "*** entry %zu of the files in %s has an empty path"
+msgstr ""
+
+#: src/create.c:2948
+#, c-format
+msgid "*** %s has an empty or \".\" component in it"
+msgstr ""
+
+#: src/create.c:2959
+#, c-format
+msgid "*** %s is in the files array more than once"
+msgstr ""
+
+#: src/create.c:3006
 #, c-format
 msgid "*** %s does not exist"
 msgstr ""
 
-#: src/create.c:479
+#: src/create.c:3024
+msgid "*** unable to set payload_dir"
+msgstr ""
+
+#: src/create.c:3035 src/mkdirp.c:173
 #, c-format
 msgid "*** %s is not a directory"
 msgstr ""
 
-#: src/create.c:486
-msgid "*** missing signature data"
+#: src/create.c:3050 src/extract.c:554
+msgid "*** unable to set header_dir"
 msgstr ""
 
-#: src/create.c:492
-msgid "*** missing header data"
+#: src/create.c:3054
+#, c-format
+msgid "Creating %s, a v%d format package"
 msgstr ""
 
-#: src/create.c:499
-msgid "*** unable to construct RPM lead"
+#: src/create.c:3055
+#, c-format
+msgid "from %s"
 msgstr ""
 
-#: src/create.c:504
-msgid "*** unable to construct RPM header"
+#: src/create.c:3058
+#, c-format
+msgid "with the payload tree in %s"
 msgstr ""
 
-#: src/create.c:521
+#: src/create.c:3069 src/create.c:3263
 msgid "*** unable to construct RPM signature"
 msgstr ""
 
-#: src/extract.c:33
+#: src/create.c:3074
+#, c-format
+msgid "Reading %s"
+msgstr ""
+
+#: src/create.c:3078
+msgid "*** missing header data"
+msgstr ""
+
+#: src/create.c:3105
+#, c-format
+msgid "Filling in the tags %s does not carry"
+msgstr ""
+
+#: src/create.c:3121
+#, c-format
+msgid "Scanning the payload tree %s"
+msgstr ""
+
+#: src/create.c:3127
+msgid "nothing new in the payload"
+msgstr ""
+
+#: src/create.c:3129
+#, c-format
+msgid "%zu new %s added to the file list"
+msgstr ""
+
+#: src/create.c:3144
+msgid "Using data as-is"
+msgstr ""
+
+#: src/create.c:3147
+#, c-format
+msgid "the raw changelog tags in %s"
+msgstr ""
+
+#: src/create.c:3151
+#, c-format
+msgid "the file digests in %s (-D)"
+msgstr ""
+
+#: src/create.c:3160
+#, c-format
+msgid "the signature digests in %s (-D)"
+msgstr ""
+
+#: src/create.c:3164
+#, c-format
+msgid "the package signatures in %s (-k)"
+msgstr ""
+
+#: src/create.c:3172
+#, c-format
+msgid "Fitting the header to the v%d format"
+msgstr ""
+
+#: src/create.c:3175
+msgid "*** unable to apply the RPM format to the header"
+msgstr ""
+
+#: src/create.c:3180
+msgid "Building the lead"
+msgstr ""
+
+#: src/create.c:3184
+msgid "*** unable to construct RPM lead"
+msgstr ""
+
+#: src/create.c:3196
+#, c-format
+msgid "Building the file list tags for %zu %s"
+msgstr ""
+
+#: src/create.c:3209 src/create.c:3233
+msgid "*** unable to construct RPM header"
+msgstr ""
+
+#: src/create.c:3222
+msgid "Computing the payload digests"
+msgstr ""
+
+#: src/create.c:3230
+msgid "Building the main header"
+msgstr ""
+
+#: src/create.c:3240
+msgid "Building the signature header"
+msgstr ""
+
+#: src/create.c:3270
+#, c-format
+msgid "Writing %s"
+msgstr ""
+
+#: src/create.c:3335
+#, c-format
+msgid "Done, the package is %s"
+msgstr ""
+
+#: src/defaults.c:110
+#, c-format
+msgid "%s: the region trailer"
+msgstr ""
+
+#: src/defaults.c:251
+#, c-format
+msgid "Provides: %s = %s"
+msgstr ""
+
+#: src/defaults.c:299
+msgid "*** apply_header_defaults: tags must be an array"
+msgstr ""
+
+#: src/defaults.c:308
+#, c-format
+msgid "*** missing %s, %s, or %s in header data"
+msgstr ""
+
+#: src/defaults.c:314
+#, c-format
+msgid "*** %s, %s, and %s cannot be empty"
+msgstr ""
+
+#: src/defaults.c:320
+#, c-format
+msgid "*** missing %s in header data, continuing without it"
+msgstr ""
+
+#: src/defaults.c:427
+msgid "nothing was missing"
+msgstr ""
+
+#: src/deps.c:325
+#, c-format
+msgid "*** unknown dependency sense flag: %s"
+msgstr ""
+
+#: src/deps.c:923
+#, c-format
+msgid ""
+"*** entry %zu (%s) in %s has the comparison \"%s\", which is not one of %s "
+"%s %s %s %s"
+msgstr ""
+
+#: src/deps.c:928
+#, c-format
+msgid "*** entry %zu (%s) in %s has a comparison but no version"
+msgstr ""
+
+#: src/deps.c:933
+#, c-format
+msgid "*** entry %zu (%s) in %s has a version but no comparison"
+msgstr ""
+
+#: src/deps.c:963
+#, c-format
+msgid "*** %s must be an object"
+msgstr ""
+
+#: src/deps.c:972
+#, c-format
+msgid "*** unknown dependency type \"%s\" in %s, leaving it out"
+msgstr ""
+
+#: src/deps.c:982
+#, c-format
+msgid "*** %s in %s must be an array"
+msgstr ""
+
+#: src/deps.c:990
+#, c-format
+msgid "*** entry %zu in %s must be an object"
+msgstr ""
+
+#: src/deps.c:995
+#, c-format
+msgid "*** entry %zu in %s has a %s, %s or %s that is not a string"
+msgstr ""
+
+#: src/deps.c:1008 src/deps.c:1014
+#, c-format
+msgid "*** entry %zu in %s has %s that is not an array of strings"
+msgstr ""
+
+#: src/digest.c:83
+#, c-format
+msgid "*** unsupported digest type: %d"
+msgstr ""
+
+#: src/digest.c:430
+msgid "*** missing the region trailer in the header data"
+msgstr ""
+
+#: src/entry.c:115
+#, c-format
+msgid "*** %s does not go to a file"
+msgstr ""
+
+#: src/entry.c:207
+#, c-format
+msgid ""
+"*** the %s tag has translations with no locale in %s, keeping the first "
+"string"
+msgstr ""
+
+#: src/entry.c:217
+#, c-format
+msgid ""
+"*** the locale \"%s\" is in %s more than once, keeping the first string of "
+"the %s tag"
+msgstr ""
+
+#: src/entry.c:231
+#, c-format
+msgid "*** the locale \"%s\" in %s cannot be used in a file name"
+msgstr ""
+
+#: src/entry.c:399
+#, c-format
+msgid "*** unable to encode the %s value"
+msgstr ""
+
+#: src/extract.c:42
+#, c-format
+msgid "%s to standard output"
+msgstr ""
+
+#: src/extract.c:137
+msgid "unable to read NEVRA from RPM header"
+msgstr ""
+
+#: src/extract.c:142
+msgid ""
+"*** the NEVRA in the RPM header cannot be used as a directory name, use -O "
+"to name one"
+msgstr ""
+
+#: src/extract.c:165
+#, c-format
+msgid "*** %s is outside of %s, use -O to name an output directory"
+msgstr ""
+
+#: src/extract.c:243
+msgid "Reading the lead"
+msgstr ""
+
+#: src/extract.c:252
+#, c-format
+msgid "lead version %s for a %s package"
+msgstr ""
+
+#: src/extract.c:255
+msgid "Reading the signature header"
+msgstr ""
+
+#: src/extract.c:268
+msgid "Reading the main header"
+msgstr ""
+
+#: src/extract.c:283
+#, c-format
+msgid "some tags stay raw in %s, see the warnings above"
+msgstr ""
+
+#: src/extract.c:301
+msgid "Writing the metadata"
+msgstr ""
+
+#: src/extract.c:304 src/extract.c:309 src/extract.c:314
+#, c-format
+msgid "*** unable to write %s"
+msgstr ""
+
+#: src/extract.c:351
+msgid "*** unable to set the payload directory"
+msgstr ""
+
+#: src/extract.c:382
+msgid "reading the cpio archive with libarchive"
+msgstr ""
+
+#: src/extract.c:389
+msgid "libarchive cannot read this payload, trying librpm"
+msgstr ""
+
+#: src/extract.c:391
+msgid "reading the stripped cpio archive with librpm"
+msgstr ""
+
+#: src/extract.c:407
+msgid "binary"
+msgstr ""
+
+#: src/extract.c:415
+msgid "source"
+msgstr ""
+
+#: src/extract.c:423
+#, c-format
+msgid "Extracting %s"
+msgstr ""
+
+#: src/extract.c:424
+#, c-format
+msgid "%s, a v%d format %s package"
+msgstr ""
+
+#: src/extract.c:425
+#, c-format
+msgid "in to %s"
+msgstr ""
+
+#: src/extract.c:445
+#, c-format
+msgid "Unpacking the uncompressed payload in to %s"
+msgstr ""
+
+#: src/extract.c:456
+#, c-format
+msgid "Unpacking the %s compressed payload in to %s"
+msgstr ""
+
+#: src/extract.c:492
+#, c-format
+msgid "%zu %s, %s installed size"
+msgstr ""
+
+#: src/extract.c:510
 #, c-format
 msgid "missing cwd in %s call"
 msgstr ""
 
-#: src/extract.c:37
+#: src/extract.c:515
 #, c-format
 msgid "missing filename in %s call"
 msgstr ""
 
-#: src/extract.c:44
+#: src/extract.c:529 src/list.c:134 src/rpm.c:191
 #, c-format
 msgid "*** %s is not a valid RPM"
 msgstr ""
 
-#: src/extract.c:85
-msgid "unable to read NEVRA from RPM header"
-msgstr ""
-
-#: src/extract.c:98
+#: src/extract.c:537
 msgid "*** unable to set dest_dir"
 msgstr ""
 
-#: src/header.c:203
-msgid "*** invalid header tag entry, missing 'number'"
+#: src/extract.c:585
+msgid "Skipping the payload"
 msgstr ""
 
-#: src/header.c:210
-msgid "*** invalid header tag entry, missing 'type'"
+#: src/files.c:358
+#, c-format
+msgid "*** unknown file type %s"
 msgstr ""
 
-#: src/header.c:241
-msgid "*** invalid header tag entry, missing 'value'"
+#: src/files.c:482
+#, c-format
+msgid "*** unknown file color: %s"
 msgstr ""
 
-#: src/header.c:255
+#: src/files.c:579
+#, c-format
+msgid "*** unknown file flag: %s"
+msgstr ""
+
+#: src/files.c:666
+#, c-format
+msgid "*** unknown file verify flag: %s"
+msgstr ""
+
+#: src/files.c:699
+#, c-format
+msgid "*** unknown dependency type '%c' in the depends dictionary"
+msgstr ""
+
+#: src/files.c:704
+#, c-format
+msgid "*** no %s dependencies for the depends dictionary"
+msgstr ""
+
+#: src/files.c:711
+#, c-format
+msgid "*** %s dependency %u is out of range"
+msgstr ""
+
+#: src/files.c:750
+#, c-format
+msgid "*** depends dictionary index %u is out of range"
+msgstr ""
+
+#: src/files.c:1341
+msgid "*** file list arrays have mismatched lengths"
+msgstr ""
+
+#: src/files.c:1353
+#, c-format
+msgid "*** invalid dirindex %u (max %u)"
+msgstr ""
+
+#: src/files.c:1406
+#, c-format
+msgid "*** unsupported file digest algorithm: %s"
+msgstr ""
+
+#: src/files.c:1868
+#, c-format
+msgid "%s: new in the payload, added to the file list"
+msgstr ""
+
+#: src/files.c:1870
+#, c-format
+msgid "*** %s is new in the payload, adding it to the file list"
+msgstr ""
+
+#: src/files.c:1979
+#, c-format
+msgid "*** %s is a %s in the payload and not a %s, going with the payload"
+msgstr ""
+
+#: src/files.c:2038
+#, c-format
+msgid "*** %s is missing the %s file metadata, taking it from the payload"
+msgstr ""
+
+#: src/files.c:2040
+#, c-format
+msgid "*** %s is missing the %s file metadata, using the default"
+msgstr ""
+
+#: src/files.c:2054
+#, c-format
+msgid ""
+"*** %s %s in header.json does not match the payload, taking the payload value"
+msgstr ""
+
+#: src/files.c:2470
+#, c-format
+msgid "*** %s in the payload is owned by uid %u, which has no name"
+msgstr ""
+
+#: src/files.c:2482
+#, c-format
+msgid "*** %s in the payload is in gid %u, which has no name"
+msgstr ""
+
+#: src/files.c:2643
+#, c-format
+msgid "*** unable to compute the digest of %s"
+msgstr ""
+
+#: src/files.c:2826
+#, c-format
+msgid "*** missing dependency type in the provides of %s"
+msgstr ""
+
+#: src/files.c:2833
+#, c-format
+msgid "*** unknown dependency type %s in the provides of %s"
+msgstr ""
+
+#: src/files.c:2840
+#, c-format
+msgid "*** no matching %s dependency for the provides of %s"
+msgstr ""
+
+#: src/files.c:2862
+#, c-format
+msgid "*** %s changed, dropping its file signatures"
+msgstr ""
+
+#: src/files.c:2922
+#, c-format
+msgid "%s: not in the payload, left out of the file list"
+msgstr ""
+
+#: src/files.c:2924
+#, c-format
+msgid "*** %s is not in the payload, leaving it out of the file list"
+msgstr ""
+
+#: src/files.c:2955
+#, c-format
+msgid "%s: size %<PRId64> in %s, %<PRId64> in the payload, using the payload"
+msgstr ""
+
+#: src/files.c:2967
+#, c-format
+msgid "*** %s has device number %<PRId64>, which does not fit in %s"
+msgstr ""
+
+#: src/files.c:2987
+#, c-format
+msgid "%s: the payload file changed, computed a new digest"
+msgstr ""
+
+#: src/files.c:2989
+#, c-format
+msgid "%s: the payload file changed, keeping the old digest (-D)"
+msgstr ""
+
+#: src/files.c:3369 src/files.c:3371
+#, c-format
+msgid "*** %s does not match the file list, leaving it in %s"
+msgstr ""
+
+#: src/files.c:3555
+#, c-format
+msgid ""
+"*** the main header carries %s, leaving the file signatures out of the "
+"signature header"
+msgstr ""
+
+#: src/files.c:3574
+#, c-format
+msgid "*** %s \"%s\" is not a number, writing %d"
+msgstr ""
+
+#: src/format.c:216
+#, c-format
+msgid "dropping %s, the v%d format does not carry it"
+msgstr ""
+
+#: src/format.c:227 src/format.c:230
+#, c-format
+msgid "%s becomes %s"
+msgstr ""
+
+#: src/format.c:374
+#, c-format
+msgid "*** unknown main header tag: %d"
+msgstr ""
+
+#: src/format.c:471 src/format.c:595 src/signature.c:234
+#, c-format
+msgid "*** unsupported RPM format: %d"
+msgstr ""
+
+#: src/format.c:495
+#, c-format
+msgid "adding %s"
+msgstr ""
+
+#: src/format.c:552
+#, c-format
+msgid "%s in %s (-D)"
+msgstr ""
+
+#: src/format.c:631
+msgid "*** failed to compute the payload digests"
+msgstr ""
+
+#: src/format.c:652
+#, c-format
+msgid "*** failed to update %s in the header"
+msgstr ""
+
+#: src/format.c:666
+#, c-format
+msgid "%s compressed, %s uncompressed"
+msgstr ""
+
+#: src/format.c:676
+msgid "*** failed to update the payload sizes in the header"
+msgstr ""
+
+#: src/header.c:194
+#, c-format
+msgid "*** %s is not a regular file"
+msgstr ""
+
+#: src/header.c:224
+#, c-format
+msgid "*** %s contains a NUL byte and cannot be used as a tag value"
+msgstr ""
+
+#: src/header.c:304
+#, c-format
+msgid ""
+"*** the %s tag names \"%s\", which is not a file below the directory holding "
+"%s or the payload directory"
+msgstr ""
+
+#: src/header.c:310
+#, c-format
+msgid "*** unable to read the value of the %s tag"
+msgstr ""
+
+#: src/header.c:377
+#, c-format
+msgid "*** the %s tag has translations but the header has no %s tag"
+msgstr ""
+
+#: src/header.c:383
+#, c-format
+msgid "*** the %s tag has a value for locale \"%s\" that is not a string"
+msgstr ""
+
+#: src/header.c:400
+#, c-format
+msgid "*** the %s tag names the locale \"%s\", which is not in %s"
+msgstr ""
+
+#: src/header.c:406
+#, c-format
+msgid "*** the %s tag has no strings"
+msgstr ""
+
+#: src/header.c:414
+#, c-format
+msgid "*** the %s tag has no string for \"%s\", the first locale in %s"
+msgstr ""
+
+#: src/header.c:751
+#, c-format
+msgid "*** the %s tag has no \"%s\""
+msgstr ""
+
+#: src/header.c:758
+#, c-format
+msgid ""
+"*** the %s tag has an empty array as its value, rpm needs at least one value"
+msgstr ""
+
+#: src/header.c:765
+#, c-format
+msgid "*** the %s tag has a string type but its value is not a string"
+msgstr ""
+
+#: src/header.c:770
+#, c-format
+msgid ""
+"*** the %s tag has a string array type but its value is not an array of "
+"strings"
+msgstr ""
+
+#: src/header.c:775
+#, c-format
+msgid ""
+"*** the %s tag has a number type but its value is not a number or an array "
+"of numbers"
+msgstr ""
+
+#: src/header.c:778
+#, c-format
+msgid "*** the %s tag has a value that does not fit in its %s type"
+msgstr ""
+
+#: src/header.c:783
+#, c-format
+msgid "*** the %s tag has a binary blob type but its value is not base64 data"
+msgstr ""
+
+#: src/header.c:788
+#, c-format
+msgid ""
+"*** the %s tag has a char type but its value is not a string of one or more "
+"characters"
+msgstr ""
+
+#: src/header.c:792
+#, c-format
+msgid "*** the %s tag has no type tarpm can write"
+msgstr ""
+
+#: src/header.c:863
+#, c-format
+msgid "*** the %s tag has the %s type but rpm needs %s"
+msgstr ""
+
+#: src/header.c:915
+#, c-format
+msgid "*** unknown tag \"%s\" in header data"
+msgstr ""
+
+#: src/header.c:994
+#, c-format
+msgid "*** the %s tag does not belong in this header, use %s"
+msgstr ""
+
+#: src/header.c:999
+#, c-format
+msgid "*** the %s tag must have type binary blob and a value of %d bytes"
+msgstr ""
+
+#: src/header.c:1007
+#, c-format
+msgid "*** header data carries %zu region tags, only one is allowed"
+msgstr ""
+
+#: src/header.c:1373
 #, c-format
 msgid "*** rpmBase64Decode failed with code %d"
 msgstr ""
 
-#: src/header.c:506
+#: src/header.c:1446
+msgid "*** invalid header tag entry, missing 'type'"
+msgstr ""
+
+#: src/header.c:1466
+#, c-format
+msgid "*** invalid header tag entry, missing '%s'"
+msgstr ""
+
+#: src/header.c:1536
+msgid "*** unable to read the main header"
+msgstr ""
+
+#: src/header.c:1552
+msgid "*** the main header is cut short"
+msgstr ""
+
+#: src/header.c:1607 src/header.c:1617
+#, c-format
+msgid "*** unable to build the %s array, keeping the raw tags in %s"
+msgstr ""
+
+#: src/header.c:1660
 msgid "*** create_header: tags must be an array"
 msgstr ""
 
-#: src/json.c:205
+#: src/json.c:358
 #, c-format
 msgid "*** missing or unreadable %s"
 msgstr ""
 
-#: src/json.c:212
+#: src/json.c:365
 #, c-format
 msgid "*** json_object_from_file: %s"
 msgstr ""
 
-#: src/lead.c:104
+#: src/json.c:399
+msgid "*** unable to turn JSON object in to string"
+msgstr ""
+
+#: src/lead.c:55
+msgid "*** the lead does not start with the RPM lead magic"
+msgstr ""
+
+#: src/lead.c:129
 msgid "*** missing tags in header.json"
 msgstr ""
 
-#: src/main.c:27
-#, c-format
-msgid "RPM extraction and creation utility\n"
-msgstr ""
-
-#: src/main.c:28
-#, c-format
-msgid "Usage: %s [OPTIONS] [.rpm file] [directory]\n"
-msgstr ""
-
-#: src/main.c:29
-#, c-format
-msgid "Options:\n"
-msgstr ""
-
-#: src/main.c:30
-#, c-format
-msgid "    -t, --list                        List RPM payload contents\n"
-msgstr ""
-
-#: src/main.c:31
-#, c-format
-msgid "    -c, --create                      Create an RPM file\n"
-msgstr ""
-
-#: src/main.c:32
-#, c-format
-msgid "    -x, --extract                     Extract RPM file\n"
-msgstr ""
-
-#: src/main.c:33
-#, c-format
-msgid "    -v, --verbose                     Verbose progress output\n"
-msgstr ""
-
-#: src/main.c:34
-#, c-format
-msgid "    -f FILENAME, --filename=FILENAME  Use FILENAME as input or output\n"
-msgstr ""
-
-#: src/main.c:35
-#, c-format
-msgid "    -O DIRNAME, --output=DIRNAME      Use DIRNAME as output directory\n"
-msgstr ""
-
-#: src/main.c:36
-#, c-format
-msgid "    -V, --version                     Display version information\n"
-msgstr ""
-
-#: src/main.c:37
-#, c-format
-msgid "    -?, --help                        Display this screen\n"
-msgstr ""
-
-#: src/main.c:38
-#, c-format
-msgid "See the %s(1) man page for more information.\n"
-msgstr ""
-
-#: src/main.c:94 src/main.c:102 src/main.c:110 src/main.c:235
-msgid "*** only one of -t, -x, or -c may be specified"
-msgstr ""
-
-#: src/main.c:121 src/main.c:180
-msgid "*** -f already specified; only allowed once"
-msgstr ""
-
-#: src/main.c:135
-#, c-format
-msgid "*** unable to canonicalize %s"
-msgstr ""
-
-#: src/main.c:141
-msgid "*** -O already specified; only allowed once"
-msgstr ""
-
-#: src/main.c:147
-#, c-format
-msgid "%s version %s\n"
-msgstr ""
-
-#: src/main.c:153
-#, c-format
-msgid "*** ?? getopt returned character code 0%o ??"
-msgstr ""
-
-#: src/main.c:217
-msgid "*** missing filename for '-f' option"
-msgstr ""
-
-#: src/main.c:240
-msgid "*** must specify at least -t, -x, or -c"
-msgstr ""
-
-#: src/main.c:244
-msgid "*** missing filename (-f) argument"
-msgstr ""
-
-#: src/main.c:257
-msgid "*** missing input directory, unable to create RPM"
-msgstr ""
-
-#: src/mkdirp.c:79 src/mkdirp.c:92
-#, c-format
-msgid "*** unable to mkdir %s"
-msgstr ""
-
-#: src/rpm.c:170
-msgid "*** error reading file from RPM payload"
-msgstr ""
-
-#: src/rpm.c:224
+#: src/list.c:120 src/rpm.c:177 src/rpm.c:422
 #, c-format
 msgid "Fopen failed for %s: %s"
 msgstr ""
 
-#: src/tags.c:177
+#: src/list.c:217 src/rpm.c:274
+#, c-format
+msgid "*** error reading RPM payload: %s"
+msgstr ""
+
+#: src/main.c:66 src/main.c:79 src/main.c:276 src/main.c:322
+#, c-format
+msgid "*** unable to canonicalize %s"
+msgstr ""
+
+#: src/main.c:97
+#, c-format
+msgid "*** unrecognized option \"%s\""
+msgstr ""
+
+#: src/main.c:105
+#, c-format
+msgid "*** -%c needs an argument"
+msgstr ""
+
+#: src/main.c:110
+#, c-format
+msgid "*** \"%s\" does not take an argument"
+msgstr ""
+
+#: src/main.c:113
+#, c-format
+msgid "*** unknown option -%c"
+msgstr ""
+
+#: src/main.c:120
+#, c-format
+msgid "RPM extraction and creation utility\n"
+msgstr ""
+
+#: src/main.c:121
+#, c-format
+msgid "Usage: %s [OPTIONS] [.rpm file] [directory]\n"
+msgstr ""
+
+#: src/main.c:122
+#, c-format
+msgid "Options:\n"
+msgstr ""
+
+#: src/main.c:123
+#, c-format
+msgid "    -t, --list                  List RPM payload contents\n"
+msgstr ""
+
+#: src/main.c:124
+#, c-format
+msgid "    -c, --create                Create an RPM file\n"
+msgstr ""
+
+#: src/main.c:125
+#, c-format
+msgid "    -x, --extract               Extract RPM file\n"
+msgstr ""
+
+#: src/main.c:126
+#, c-format
+msgid "    -v, --verbose               Show each step and payload entry\n"
+msgstr ""
+
+#: src/main.c:127
+#, c-format
+msgid "    -f FILE, --filename=FILE    Use FILE as input or output RPM file\n"
+msgstr ""
+
+#: src/main.c:128
+#, c-format
+msgid "    -O DIR, --output=DIR        Use DIR as output directory\n"
+msgstr ""
+
+#: src/main.c:129
+#, c-format
+msgid "    -L FILE, --lead=FILE        Use FILE for lead.json\n"
+msgstr ""
+
+#: src/main.c:130
+#, c-format
+msgid "    -S FILE, --signature=FILE   Use FILE for signature.json\n"
+msgstr ""
+
+#: src/main.c:131
+#, c-format
+msgid "    -H FILE, --header=FILE      Use FILE for header.json\n"
+msgstr ""
+
+#: src/main.c:132
+#, c-format
+msgid "    -P DIR, --payload=DIR       Use DIR for the payload tree\n"
+msgstr ""
+
+#: src/main.c:133
+#, c-format
+msgid ""
+"    -n, --no-payload            Write the metadata and skip the payload\n"
+msgstr ""
+
+#: src/main.c:134
+#, c-format
+msgid ""
+"    -F NUM, --format=NUM        Write an RPM format NUM package (%d or %d)\n"
+msgstr ""
+
+#: src/main.c:135
+#, c-format
+msgid ""
+"    -m, --payload-mtime         Take file timestamps from the payload tree\n"
+msgstr ""
+
+#: src/main.c:136
+#, c-format
+msgid ""
+"    -u, --payload-user          Take file owners from the payload tree\n"
+msgstr ""
+
+#: src/main.c:137
+#, c-format
+msgid ""
+"    -g, --payload-group         Take file groups from the payload tree\n"
+msgstr ""
+
+#: src/main.c:138
+#, c-format
+msgid ""
+"    -l, --payload-linkto        Take symlink targets from the payload tree\n"
+msgstr ""
+
+#: src/main.c:139
+#, c-format
+msgid ""
+"    -a, --payload-all           Take all of the above from the payload tree\n"
+msgstr ""
+
+#: src/main.c:140
+#, c-format
+msgid ""
+"    -D, --keep-digests          Use the digests as-is from the JSON header "
+"files\n"
+msgstr ""
+
+#: src/main.c:141
+#, c-format
+msgid ""
+"    -k, --keep-signatures       Keep the package signatures in "
+"signature.json\n"
+msgstr ""
+
+#: src/main.c:142
+#, c-format
+msgid "    -V, --version               Display version information\n"
+msgstr ""
+
+#: src/main.c:143
+#, c-format
+msgid "    -?, --help                  Display this screen\n"
+msgstr ""
+
+#: src/main.c:144
+#, c-format
+msgid ""
+"A FILE of \"%s\" with -L, -S, or -H writes the JSON to standard output.\n"
+msgstr ""
+
+#: src/main.c:145
+#, c-format
+msgid "It may only be used when extracting an RPM.\n"
+msgstr ""
+
+#: src/main.c:146
+#, c-format
+msgid "The -n option may only be used when extracting an RPM.\n"
+msgstr ""
+
+#: src/main.c:147
+#, c-format
+msgid ""
+"The -t option always prints the long listing, so -v changes nothing there.\n"
+msgstr ""
+
+#: src/main.c:148
+#, c-format
+msgid ""
+"The -m, -u, -g, -l, -a, -D, -k, and -F options may only be used when "
+"creating an RPM.\n"
+msgstr ""
+
+#: src/main.c:149
+#, c-format
+msgid "The default format is %d.  The format shapes the lead, the signature\n"
+msgstr ""
+
+#: src/main.c:150
+#, c-format
+msgid "header, the payload digest tags in the main header, and the payload\n"
+msgstr ""
+
+#: src/main.c:151
+#, c-format
+msgid "compressor.  The signature header is generated, so -S is ignored when\n"
+msgstr ""
+
+#: src/main.c:152
+#, c-format
+msgid "creating an RPM unless -D or -k is given.\n"
+msgstr ""
+
+#: src/main.c:153
+#, c-format
+msgid "See the %s(1) man page for more information.\n"
+msgstr ""
+
+#: src/main.c:238 src/main.c:245 src/main.c:252 src/main.c:484
+msgid "*** only one of -t, -x, or -c may be specified"
+msgstr ""
+
+#: src/main.c:262 src/main.c:427
+msgid "*** -f already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:282
+msgid "*** -O already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:289
+#, c-format
+msgid "*** unable to canonicalize \"%s\""
+msgstr ""
+
+#: src/main.c:295
+msgid "*** -L already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:302
+msgid "*** -S already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:309
+msgid "*** -H already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:316
+msgid "*** -P already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:331
+msgid "*** -F already specified; only allowed once"
+msgstr ""
+
+#: src/main.c:339
+#, c-format
+msgid "*** -F %d needs rpm 6.0.0 or newer"
+msgstr ""
+
+#: src/main.c:343
+#, c-format
+msgid "*** -F must be %d or %d"
+msgstr ""
+
+#: src/main.c:370
+#, c-format
+msgid "%s version %s\n"
+msgstr ""
+
+#: src/main.c:385
+#, c-format
+msgid "*** ?? getopt returned character code 0%o ??"
+msgstr ""
+
+#: src/main.c:433
+#, c-format
+msgid "*** unknown option letter '%c' in \"%s\""
+msgstr ""
+
+#: src/main.c:462
+msgid "*** missing filename for '-f' option"
+msgstr ""
+
+#: src/main.c:489
+msgid "*** must specify at least -t, -x, or -c"
+msgstr ""
+
+#: src/main.c:493
+msgid "*** missing filename (-f) argument"
+msgstr ""
+
+#: src/main.c:498
+#, c-format
+msgid "*** unexpected argument \"%s\""
+msgstr ""
+
+#: src/main.c:503
+msgid "*** -m, -u, -g, -l, and -a may only be used when creating an RPM"
+msgstr ""
+
+#: src/main.c:508
+msgid "*** -D may only be used when creating an RPM"
+msgstr ""
+
+#: src/main.c:513
+msgid "*** -k may only be used when creating an RPM"
+msgstr ""
+
+#: src/main.c:518
+msgid "*** -F may only be used when creating an RPM"
+msgstr ""
+
+#: src/main.c:523
+msgid "*** -n may only be used when extracting an RPM"
+msgstr ""
+
+#: src/main.c:528
+msgid "*** -P is ignored when -n is specified"
+msgstr ""
+
+#: src/main.c:533
+#, c-format
+msgid "*** \"%s\" may not be used when creating an RPM"
+msgstr ""
+
+#: src/main.c:538
+msgid "*** -S is ignored when creating an RPM"
+msgstr ""
+
+#: src/main.c:565
+msgid "*** missing input directory, unable to create RPM"
+msgstr ""
+
+#: src/mkdirp.c:86
+#, c-format
+msgid "*** %s is a symlink, not writing through it"
+msgstr ""
+
+#: src/mkdirp.c:152 src/mkdirp.c:165
+#, c-format
+msgid "*** unable to mkdir %s"
+msgstr ""
+
+#: src/read.c:95
+#, c-format
+msgid "*** header claims %u entries and %u bytes of data, which is too large"
+msgstr ""
+
+#: src/read.c:156
+msgid "trailer offset out of bounds"
+msgstr ""
+
+#: src/read.c:208 src/read.c:249
+#, c-format
+msgid "*** tag %u has an offset or count outside the header data"
+msgstr ""
+
+#: src/read.c:236
+#, c-format
+msgid "*** tag %u has a string that runs past the header data"
+msgstr ""
+
+#: src/readfile.c:55
+#, c-format
+msgid "*** unable to find end of %s"
+msgstr ""
+
+#: src/readfile.c:58 src/readfile.c:78
+#, c-format
+msgid "*** unable to close %s"
+msgstr ""
+
+#: src/rpm.c:104
+msgid "*** error reading file from RPM payload"
+msgstr ""
+
+#: src/rpm.c:264
+#, c-format
+msgid "*** the RPM payload ended early with %zu %s missing"
+msgstr ""
+
+#: src/rpm.c:320
+#, c-format
+msgid "*** %s is a hard link with no earlier link to point at, skipping it"
+msgstr ""
+
+#: src/signature.c:49
+msgid "*** unable to read the signature header"
+msgstr ""
+
+#: src/signature.c:65
+msgid "*** the signature header is cut short"
+msgstr ""
+
+#: src/strfuncs.c:266
+#, c-format
+msgid "1 byte"
+msgstr ""
+
+#: src/strfuncs.c:268
+#, c-format
+msgid "%<PRIu64> bytes"
+msgstr ""
+
+#: src/tags.c:232
+#, c-format
+msgid "*** unknown file digest algorithm: %s"
+msgstr ""
+
+#: src/tags.c:294
+#, c-format
+msgid "*** unknown build time: %s"
+msgstr ""
+
+#: src/tags.c:721
 msgid "*** get_tag_value: tags must be an array"
+msgstr ""
+
+#: src/tags.c:760
+msgid "*** set_tag_value: tags must be an array"
+msgstr ""
+
+#: src/unpack.c:58
+msgid "the payload is corrupt or cut short"
+msgstr ""
+
+#: src/unpack.c:82
+#, c-format
+msgid "*** unable to read %s from the payload: %s"
+msgstr ""
+
+#: src/unpack.c:348
+#, c-format
+msgid "*** unable to read the next entry in the payload: %s"
 msgstr ""
