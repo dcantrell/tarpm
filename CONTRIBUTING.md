@@ -34,8 +34,10 @@ The headers the project uses are:
 
 This list may expand over time.
 
-NOTE: Short log messages without a header like this will be excluded
-from release announcements.  That may be appropriate for some commits.
+NOTE: Short log messages without a header like this collect under an
+"Uncategorized" heading at the end of the release announcement.  They
+are still listed, so nothing goes missing, but adding a header puts
+the entry in the group it belongs in.
 
 
 Consolidated Project History
