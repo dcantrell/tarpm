@@ -6,5 +6,4 @@ Primary Authors
 
 Contributors
 ============
-
 - Mike McLean <mikem@redhat.com>
