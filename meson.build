@@ -1,6 +1,6 @@
 project('tarpm',
         'c',
-        version : '0.3',
+        version : '0.4',
         default_options : [
             'c_std=gnu11',
             'warning_level=3',
