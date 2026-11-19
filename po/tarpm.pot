@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 10:51-0500\n"
+"POT-Creation-Date: 2026-11-19 14:27-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -330,139 +330,139 @@ msgstr ""
 msgid "*** %s is in the files array more than once"
 msgstr ""
 
-#: src/create.c:3006
+#: src/create.c:3007
 #, c-format
 msgid "*** %s does not exist"
 msgstr ""
 
-#: src/create.c:3024
+#: src/create.c:3025
 msgid "*** unable to set payload_dir"
 msgstr ""
 
-#: src/create.c:3035 src/mkdirp.c:173
+#: src/create.c:3036 src/mkdirp.c:173
 #, c-format
 msgid "*** %s is not a directory"
 msgstr ""
 
-#: src/create.c:3050 src/extract.c:554
+#: src/create.c:3051 src/extract.c:554
 msgid "*** unable to set header_dir"
-msgstr ""
-
-#: src/create.c:3054
-#, c-format
-msgid "Creating %s, a v%d format package"
 msgstr ""
 
 #: src/create.c:3055
 #, c-format
+msgid "Creating %s, a v%d format package"
+msgstr ""
+
+#: src/create.c:3056
+#, c-format
 msgid "from %s"
 msgstr ""
 
-#: src/create.c:3058
+#: src/create.c:3059
 #, c-format
 msgid "with the payload tree in %s"
 msgstr ""
 
-#: src/create.c:3069 src/create.c:3263
+#: src/create.c:3070 src/create.c:3272
 msgid "*** unable to construct RPM signature"
 msgstr ""
 
-#: src/create.c:3074
+#: src/create.c:3075
 #, c-format
 msgid "Reading %s"
 msgstr ""
 
-#: src/create.c:3078
+#: src/create.c:3079
 msgid "*** missing header data"
 msgstr ""
 
-#: src/create.c:3105
+#: src/create.c:3106
 #, c-format
 msgid "Filling in the tags %s does not carry"
 msgstr ""
 
-#: src/create.c:3121
+#: src/create.c:3130
 #, c-format
 msgid "Scanning the payload tree %s"
 msgstr ""
 
-#: src/create.c:3127
+#: src/create.c:3136
 msgid "nothing new in the payload"
 msgstr ""
 
-#: src/create.c:3129
+#: src/create.c:3138
 #, c-format
 msgid "%zu new %s added to the file list"
 msgstr ""
 
-#: src/create.c:3144
+#: src/create.c:3153
 msgid "Using data as-is"
 msgstr ""
 
-#: src/create.c:3147
+#: src/create.c:3156
 #, c-format
 msgid "the raw changelog tags in %s"
 msgstr ""
 
-#: src/create.c:3151
+#: src/create.c:3160
 #, c-format
 msgid "the file digests in %s (-D)"
 msgstr ""
 
-#: src/create.c:3160
+#: src/create.c:3169
 #, c-format
 msgid "the signature digests in %s (-D)"
 msgstr ""
 
-#: src/create.c:3164
+#: src/create.c:3173
 #, c-format
 msgid "the package signatures in %s (-k)"
 msgstr ""
 
-#: src/create.c:3172
+#: src/create.c:3181
 #, c-format
 msgid "Fitting the header to the v%d format"
 msgstr ""
 
-#: src/create.c:3175
+#: src/create.c:3184
 msgid "*** unable to apply the RPM format to the header"
 msgstr ""
 
-#: src/create.c:3180
+#: src/create.c:3189
 msgid "Building the lead"
 msgstr ""
 
-#: src/create.c:3184
+#: src/create.c:3193
 msgid "*** unable to construct RPM lead"
 msgstr ""
 
-#: src/create.c:3196
+#: src/create.c:3205
 #, c-format
 msgid "Building the file list tags for %zu %s"
 msgstr ""
 
-#: src/create.c:3209 src/create.c:3233
+#: src/create.c:3218 src/create.c:3242
 msgid "*** unable to construct RPM header"
 msgstr ""
 
-#: src/create.c:3222
+#: src/create.c:3231
 msgid "Computing the payload digests"
 msgstr ""
 
-#: src/create.c:3230
+#: src/create.c:3239
 msgid "Building the main header"
 msgstr ""
 
-#: src/create.c:3240
+#: src/create.c:3249
 msgid "Building the signature header"
 msgstr ""
 
-#: src/create.c:3270
+#: src/create.c:3279
 #, c-format
 msgid "Writing %s"
 msgstr ""
 
-#: src/create.c:3335
+#: src/create.c:3345
 #, c-format
 msgid "Done, the package is %s"
 msgstr ""
@@ -772,120 +772,120 @@ msgstr ""
 msgid "*** unsupported file digest algorithm: %s"
 msgstr ""
 
-#: src/files.c:1880
+#: src/files.c:1888
 #, c-format
 msgid "%s: new in the payload, added to the file list"
 msgstr ""
 
-#: src/files.c:1882
+#: src/files.c:1890
 #, c-format
 msgid "*** %s is new in the payload, adding it to the file list"
 msgstr ""
 
-#: src/files.c:1991
+#: src/files.c:2157
 #, c-format
 msgid "*** %s is a %s in the payload and not a %s, going with the payload"
 msgstr ""
 
-#: src/files.c:2050
+#: src/files.c:2216
 #, c-format
 msgid "*** %s is missing the %s file metadata, taking it from the payload"
 msgstr ""
 
-#: src/files.c:2052
+#: src/files.c:2218
 #, c-format
 msgid "*** %s is missing the %s file metadata, using the default"
 msgstr ""
 
-#: src/files.c:2066
+#: src/files.c:2232
 #, c-format
 msgid ""
 "*** %s %s in header.json does not match the payload, taking the payload value"
 msgstr ""
 
-#: src/files.c:2458
+#: src/files.c:2624
 #, c-format
 msgid "*** unable to convert the mtime of %s"
 msgstr ""
 
-#: src/files.c:2474
+#: src/files.c:2640
 #, c-format
 msgid "*** %s in the payload is owned by uid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2486
+#: src/files.c:2652
 #, c-format
 msgid "*** %s in the payload is in gid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2647
+#: src/files.c:2813
 #, c-format
 msgid "*** unable to compute the digest of %s"
 msgstr ""
 
-#: src/files.c:2830
+#: src/files.c:2996
 #, c-format
 msgid "*** missing dependency type in the provides of %s"
 msgstr ""
 
-#: src/files.c:2837
+#: src/files.c:3003
 #, c-format
 msgid "*** unknown dependency type %s in the provides of %s"
 msgstr ""
 
-#: src/files.c:2844
+#: src/files.c:3010
 #, c-format
 msgid "*** no matching %s dependency for the provides of %s"
 msgstr ""
 
-#: src/files.c:2866
+#: src/files.c:3032
 #, c-format
 msgid "*** %s changed, dropping its file signatures"
 msgstr ""
 
-#: src/files.c:2926
+#: src/files.c:3103
 #, c-format
 msgid "%s: not in the payload, left out of the file list"
 msgstr ""
 
-#: src/files.c:2928
+#: src/files.c:3105
 #, c-format
 msgid "*** %s is not in the payload, leaving it out of the file list"
 msgstr ""
 
-#: src/files.c:2959
+#: src/files.c:3136
 #, c-format
 msgid "%s: size %<PRId64> in %s, %<PRId64> in the payload, using the payload"
 msgstr ""
 
-#: src/files.c:2971
+#: src/files.c:3148
 #, c-format
 msgid "*** %s has device number %<PRId64>, which does not fit in %s"
 msgstr ""
 
-#: src/files.c:2991
+#: src/files.c:3168
 #, c-format
 msgid "%s: the payload file changed, computed a new digest"
 msgstr ""
 
-#: src/files.c:2993
+#: src/files.c:3170
 #, c-format
 msgid "%s: the payload file changed, keeping the old digest (-D)"
 msgstr ""
 
-#: src/files.c:3373 src/files.c:3375
+#: src/files.c:3550 src/files.c:3552
 #, c-format
 msgid "*** %s does not match the file list, leaving it in %s"
 msgstr ""
 
-#: src/files.c:3559
+#: src/files.c:3736
 #, c-format
 msgid ""
 "*** the main header carries %s, leaving the file signatures out of the "
 "signature header"
 msgstr ""
 
-#: src/files.c:3578
+#: src/files.c:3755
 #, c-format
 msgid "*** %s \"%s\" is not a number, writing %d"
 msgstr ""
