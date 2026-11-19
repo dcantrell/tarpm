@@ -2812,6 +2812,50 @@ class CreateRecomputesDigestWithNoReadBit(RequiresTarpm):
         )
 
 
+@unittest.skipIf(os.geteuid() == 0, "root can search a directory with no search bit")
+class CreateFailsOnUnsearchableDirectory(TestUnpackRPM):
+    """A payload file we cannot lstat() fails the run rather than dropping out"""
+
+    def setUp(self):
+        super().setUp()
+
+        content = rpmfluff.SourceFile(
+            "completion.sh", make_random_content(128).encode("utf-8")
+        )
+        self.rpm.add_installed_file("/usr/share/%s/dist/completion.sh" % NAME, content)
+
+    def runTest(self):
+        self.rpm.do_make()
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
+
+        tree = os.path.join(self.output_dir, "extracted")
+        os.makedirs(tree)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", original_rpm, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # a directory with no search bit hides the file below it from us
+        dist = os.path.join(tree, "payload", "usr", "share", NAME, "dist")
+        os.chmod(dist, 0o644)
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+
+        try:
+            rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        finally:
+            os.chmod(dist, 0o755)
+
+        self.assertNotEqual(rc, 0, msg=err)
+        self.assertFalse(os.path.isfile(pkg))
+
+        # the warning names the file and we only say it once
+        lines = [line for line in err.splitlines() if "lstat: " in line]
+        self.assertEqual(len(lines), 1, msg=err)
+        self.assertIn(os.path.join(dist, "completion.sh"), lines[0])
+
+        # the file is there, so it is not one we dropped
+        self.assertNotIn("not in the payload", err)
+
+
 class CreateWithEmptiedPayload(TestUnpackRPM):
     """An extracted tree with everything taken back out drops the file list tags"""
 

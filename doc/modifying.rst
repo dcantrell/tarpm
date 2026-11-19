@@ -101,6 +101,14 @@ Files you removed
     of the new package.  A ``%ghost`` is never in the payload to begin
     with, so ghosts are always kept.
 
+Files tarpm cannot look at
+    Only a file that is really gone counts as removed.  Any other
+    ``lstat()`` failure names the file and fails the run, rather than
+    write a package that is short a file.  A directory in the payload
+    tree with no search bit hides everything below it this way.  Some
+    packages ship a directory with a mode like 0644, and only root can
+    repack those.
+
 Files you added
     A file in the payload tree with no entry gets one, filled in from
     the file itself.  Everything about it, including its mode and its

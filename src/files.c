@@ -1520,6 +1520,11 @@ is_ghost(struct json_object *file)
  * so we always report those as present.  Anything else that is not
  * there was taken out of the unpacked package and stays out of the
  * header.  With no payload tree to look in, every entry is there.
+ *
+ * Only ENOENT means the file was taken out.  Any other lstat() error
+ * leaves us unable to say, so we report the file as present and let
+ * add_file_entry() fail the run.  The two have to agree on which
+ * entries are kept because the lists they build run in parallel.
  */
 static bool
 missing_from_payload(struct json_object *file, const char *path, const char *payload_dir)
@@ -1544,7 +1549,7 @@ missing_from_payload(struct json_object *file, const char *path, const char *pay
     }
 
     file_path = joinpath(payload_dir, relpath, NULL);
-    missing = (lstat(file_path, &sb) != 0);
+    missing = (lstat(file_path, &sb) != 0 && errno == ENOENT);
     free(file_path);
 
     return missing;
@@ -1872,7 +1877,10 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
         file_path = joinpath(dir_path, entries[i]->d_name, NULL);
 
         if (lstat(file_path, &sb) == -1) {
-            warn("lstat");
+            /* the file list pass says it again for a path the list names */
+            if (!json_object_object_get_ex(scan->names, path, NULL)) {
+                warn_escaped("lstat: %s", file_path);
+            }
         } else {
             if (new_in_payload(scan, path, &sb)) {
                 /* with -v the status line says it, so we skip the warning */
@@ -2884,6 +2892,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
     int64_t size = 0;
     int64_t rdev = 0;
     uint32_t verify = 0;
+    bool unreadable = false;
     char *file_path = NULL;
     const char *relpath = NULL;
     char *olddigest = NULL;
@@ -2912,6 +2921,16 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
 
         if (lstat(file_path, &sb) == 0) {
             psb = &sb;
+        } else if (errno != ENOENT && !is_ghost(file)) {
+            /*
+             * The file may well be there, we just cannot see it.  A
+             * directory in the payload tree with no search bit does
+             * this to everything below it.  We keep the entry and
+             * fail rather than quietly write a package short a file.
+             */
+            warn_escaped("lstat: %s", file_path);
+            build->failed = true;
+            unreadable = true;
         }
     }
 
@@ -2920,7 +2939,7 @@ add_file_entry(struct file_list_build *build, struct json_object *file, const ch
      * package was unpacked do not go in to the header.  This is
      * missing_from_payload() with the lstat() we already made.
      */
-    if (build->payload_dir != NULL && psb == NULL && !is_ghost(file)) {
+    if (build->payload_dir != NULL && psb == NULL && !unreadable && !is_ghost(file)) {
         /* with -v the status line says it, so we skip the warning */
         if (verbose) {
             verbose_detail(_("%s: not in the payload, left out of the file list"), path);
