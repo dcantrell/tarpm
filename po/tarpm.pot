@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tarpm\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 12:47-0500\n"
+"POT-Creation-Date: 2026-11-19 10:51-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,31 +17,31 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/changelog.c:152
+#: src/changelog.c:149
 #, c-format
 msgid "*** unknown time zone \"%s\" in changelog date \"%s\", using UTC"
 msgstr ""
 
-#: src/changelog.c:399
+#: src/changelog.c:401
 msgid "*** changelog arrays have mismatched lengths"
 msgstr ""
 
-#: src/changelog.c:514
+#: src/changelog.c:516
 #, c-format
 msgid "*** changelog entry %zu carries no timestamp"
 msgstr ""
 
-#: src/changelog.c:526
+#: src/changelog.c:528
 #, c-format
 msgid "*** unable to read the changelog date \"%s\""
 msgstr ""
 
-#: src/changelog.c:541
+#: src/changelog.c:543
 #, c-format
 msgid "*** changelog entry %zu has text that is not an array of strings"
 msgstr ""
 
-#: src/changelog.c:553
+#: src/changelog.c:555
 #, c-format
 msgid "*** invalid changelog entry at index %zu"
 msgstr ""
@@ -758,129 +758,134 @@ msgstr ""
 msgid "*** depends dictionary index %u is out of range"
 msgstr ""
 
-#: src/files.c:1341
+#: src/files.c:1337
 msgid "*** file list arrays have mismatched lengths"
 msgstr ""
 
-#: src/files.c:1353
+#: src/files.c:1349
 #, c-format
 msgid "*** invalid dirindex %u (max %u)"
 msgstr ""
 
-#: src/files.c:1408
+#: src/files.c:1404
 #, c-format
 msgid "*** unsupported file digest algorithm: %s"
 msgstr ""
 
-#: src/files.c:1888
+#: src/files.c:1880
 #, c-format
 msgid "%s: new in the payload, added to the file list"
 msgstr ""
 
-#: src/files.c:1890
+#: src/files.c:1882
 #, c-format
 msgid "*** %s is new in the payload, adding it to the file list"
 msgstr ""
 
-#: src/files.c:1999
+#: src/files.c:1991
 #, c-format
 msgid "*** %s is a %s in the payload and not a %s, going with the payload"
 msgstr ""
 
-#: src/files.c:2058
+#: src/files.c:2050
 #, c-format
 msgid "*** %s is missing the %s file metadata, taking it from the payload"
 msgstr ""
 
-#: src/files.c:2060
+#: src/files.c:2052
 #, c-format
 msgid "*** %s is missing the %s file metadata, using the default"
 msgstr ""
 
-#: src/files.c:2074
+#: src/files.c:2066
 #, c-format
 msgid ""
 "*** %s %s in header.json does not match the payload, taking the payload value"
 msgstr ""
 
-#: src/files.c:2490
+#: src/files.c:2458
+#, c-format
+msgid "*** unable to convert the mtime of %s"
+msgstr ""
+
+#: src/files.c:2474
 #, c-format
 msgid "*** %s in the payload is owned by uid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2502
+#: src/files.c:2486
 #, c-format
 msgid "*** %s in the payload is in gid %u, which has no name"
 msgstr ""
 
-#: src/files.c:2663
+#: src/files.c:2647
 #, c-format
 msgid "*** unable to compute the digest of %s"
 msgstr ""
 
-#: src/files.c:2846
+#: src/files.c:2830
 #, c-format
 msgid "*** missing dependency type in the provides of %s"
 msgstr ""
 
-#: src/files.c:2853
+#: src/files.c:2837
 #, c-format
 msgid "*** unknown dependency type %s in the provides of %s"
 msgstr ""
 
-#: src/files.c:2860
+#: src/files.c:2844
 #, c-format
 msgid "*** no matching %s dependency for the provides of %s"
 msgstr ""
 
-#: src/files.c:2882
+#: src/files.c:2866
 #, c-format
 msgid "*** %s changed, dropping its file signatures"
 msgstr ""
 
-#: src/files.c:2942
+#: src/files.c:2926
 #, c-format
 msgid "%s: not in the payload, left out of the file list"
 msgstr ""
 
-#: src/files.c:2944
+#: src/files.c:2928
 #, c-format
 msgid "*** %s is not in the payload, leaving it out of the file list"
 msgstr ""
 
-#: src/files.c:2975
+#: src/files.c:2959
 #, c-format
 msgid "%s: size %<PRId64> in %s, %<PRId64> in the payload, using the payload"
 msgstr ""
 
-#: src/files.c:2987
+#: src/files.c:2971
 #, c-format
 msgid "*** %s has device number %<PRId64>, which does not fit in %s"
 msgstr ""
 
-#: src/files.c:3007
+#: src/files.c:2991
 #, c-format
 msgid "%s: the payload file changed, computed a new digest"
 msgstr ""
 
-#: src/files.c:3009
+#: src/files.c:2993
 #, c-format
 msgid "%s: the payload file changed, keeping the old digest (-D)"
 msgstr ""
 
-#: src/files.c:3389 src/files.c:3391
+#: src/files.c:3373 src/files.c:3375
 #, c-format
 msgid "*** %s does not match the file list, leaving it in %s"
 msgstr ""
 
-#: src/files.c:3575
+#: src/files.c:3559
 #, c-format
 msgid ""
 "*** the main header carries %s, leaving the file signatures out of the "
 "signature header"
 msgstr ""
 
-#: src/files.c:3594
+#: src/files.c:3578
 #, c-format
 msgid "*** %s \"%s\" is not a number, writing %d"
 msgstr ""
@@ -1113,6 +1118,11 @@ msgstr ""
 #: src/list.c:120 src/rpm.c:177 src/rpm.c:422
 #, c-format
 msgid "Fopen failed for %s: %s"
+msgstr ""
+
+#: src/list.c:192
+#, c-format
+msgid "*** unable to convert mtime %<PRIu32>"
 msgstr ""
 
 #: src/list.c:217 src/rpm.c:274
@@ -1522,16 +1532,16 @@ msgstr ""
 msgid "*** unknown file digest algorithm: %s"
 msgstr ""
 
-#: src/tags.c:294
+#: src/tags.c:292
 #, c-format
 msgid "*** unknown build time: %s"
 msgstr ""
 
-#: src/tags.c:721
+#: src/tags.c:719
 msgid "*** get_tag_value: tags must be an array"
 msgstr ""
 
-#: src/tags.c:760
+#: src/tags.c:758
 msgid "*** set_tag_value: tags must be an array"
 msgstr ""
 
