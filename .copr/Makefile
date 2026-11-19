@@ -51,13 +51,17 @@ TARBALL_BASENAME := $(PKG)-$(VER)-$(GITDATE)git$(GITHASH)
 # HEAD if the tree is clean.  This lets local development use the
 # 'make copr-srpm' target to create an SRPM for scratch building.
 TAG              := $(shell git stash create)
-else
-TAG              := $(shell git tag -l | sort -V | tail -n 1)
-endif
 
-# Backup case for a clean tree or no tags defined
+# Backup case for a clean tree
 ifeq ($(TAG),)
 TAG              := HEAD
+endif
+else
+# A release tarball has to come from the tag matching the version in
+# meson.build.  Reaching for whatever tag sorts last lets a version
+# bump that nobody tagged yet ship old source in a tarball named for
+# the new version.
+TAG              := v$(VER)
 endif
 
 ifeq ($(BUILDTYPE),release)
@@ -65,6 +69,13 @@ TARBALL_BASENAME = $(PKG)-$(VER)
 endif
 
 srpm:
+ifeq ($(BUILDTYPE),release)
+	@if [ -z "$$(git tag -l '$(TAG)')" ]; then \
+		echo "*** meson.build says $(VER), but there is no $(TAG) tag." >&2 ; \
+		echo "*** Run 'make release' to tag it, or 'make copr-srpm' for a snapshot build." >&2 ; \
+		exit 1 ; \
+	fi
+endif
 	sed -e 's|%%VERSION%%|$(VER)|g' < "$(SPEC_TEMPLATE)" > "$(SPEC)"
 	sed -i -e 's|%%GPGKEYRING%%|gpgkey-$(GPGKEY).gpg|g' "$(SPEC)"
 ifeq ($(BUILDTYPE),copr)

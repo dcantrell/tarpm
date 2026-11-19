@@ -141,3 +141,12 @@ meson installs the binary and the man page::
 To build a source package of the latest release instead::
 
     make srpm
+
+This archives the ``vX.Y`` tag matching the version in ``meson.build``.
+It stops with an error when that tag does not exist, so a version bump
+nobody tagged yet cannot ship old source under the new version.  Tag
+the release with ``make release`` first.
+
+For a source package of the working tree instead::
+
+    make copr-srpm
