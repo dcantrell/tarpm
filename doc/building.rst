@@ -6,7 +6,7 @@ Requirements
 ============
 
 tarpm is written in C and builds with meson and ninja.  The libraries
-it needs are:
+it needs to build:
 
 * librpm, for the tag tables and a few helpers
 * json-c, for reading and writing the JSON metadata
@@ -16,11 +16,11 @@ it needs are:
 * liblzma, for xz payload compression
 * OpenSSL, for the digests
 
-The test suite also wants CUnit, python3, python3-rpm, rpm-build, and
-the rpmfluff Python module.  It checks the man page with groff and
-mandoc as well, and skips that check when either one is missing.
-The HTML manual wants doxygen, sphinx, breathe, and the Read the Docs
-sphinx theme.
+The test suite also needs CUnit, python3, python3-rpm, rpm-build, and
+the rpmfluff Python module.  If available, the build will do man page
+validation using groff and mandoc, but will skip those checks if
+either or both tools are unavailable.  The HTML manual needs doxygen,
+sphinx, breathe, and the Read the Docs sphinx theme.
 
 On Fedora the packages are listed in ``osdeps/fedora/reqs.txt`` and
 the Python modules in ``osdeps/fedora/pip.txt``.  This installs both
@@ -70,7 +70,7 @@ of the BSD ``sys/queue.h``.
 
 A missing piece skips the manual with a warning rather than failing
 the build of the program, so you can always build tarpm without any
-of it.  To turn it off outright::
+of it.  To turn it off building docs::
 
     meson setup build -Ddocs=false
 

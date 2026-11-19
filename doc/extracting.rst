@@ -55,11 +55,11 @@ mknod(2).  tarpm says so and exits non-zero::
 A v6 format package prints ``tarpm: unpack_rpm_payload`` after that
 because librpm reads its payload.  See `The payload`_ below.
 
-The JSON still gets written, so this is enough to read the metadata.
-Do not repack from a tree like that, though.  The device node is not
-in the payload tree, so tarpm takes it to be a file you deleted and
-leaves it out of the new package.  Extract as root if you mean to
-repack.
+The JSON files still gets written, so this is enough to read the
+metadata.  Do not repack from a tree like that though.  The device
+node is not in the payload tree, so tarpm takes it to be a file you
+deleted and leaves it out of the new package.  Extract as root if you
+mean to repack.
 
 tarpm does not restore the setuid and setgid bits on files and
 directories in ``payload``, and device nodes get mode 0600.  The full
@@ -74,8 +74,8 @@ the mode back.  tarpm cannot read a file owned by someone else this
 way.
 
 tarpm does not write through a symlink.  If ``header.json`` or one of
-the other JSON or ``.txt`` files is already a symlink in the output
-directory, tarpm says so and exits non-zero.
+the other JSON files or ``.txt`` files is already a symlink in the
+output directory, tarpm says so and exits non-zero.
 
 tarpm also refuses a package whose header does not hold together, and
 exits non-zero.  A header with more than 65535 entries or more than
@@ -164,8 +164,8 @@ tag value files::
     description.txt  postin.txt  postun.txt
 
 Only one piece at a time should go to ``-``.  Three of them writing to
-standard output gives you three JSON documents back to back, which no
-parser is going to take.
+standard output gives you three JSON documents back to back, which
+will fail with most parsers.
 
 ``-n`` is also how you read a package you cannot otherwise unpack.  A
 package carrying device nodes needs root to extract, as above, but
@@ -231,15 +231,16 @@ carries, and exits non-zero when it comes up short::
     tarpm: *** the RPM payload ended early with 2 entries missing
 
 Whole sets may move around.  Only a link separated from the rest of
-its set reads short.  rpmbuild does not make a package like that
-either.
+its set reads short, but rpmbuild does not construct packages like
+that.
 
 A newc payload puts the data in the last entry of a hard link set.
 libarchive links the new name to an earlier one and then opens that
 name to write the data in, so a set the package marked read only needs
 the write bit back for the length of the write.  tarpm adds it and
 then takes it off again, and the files land with the mode the header
-gives them.  ``redhat-rpm-config`` is one package that needs this.
+gives them.  One package that needs this treatment is
+``redhat-rpm-config``.
 
 Watching it work
 ================

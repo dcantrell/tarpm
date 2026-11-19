@@ -15,8 +15,8 @@ Listing package contents
 The columns are the file type and permissions, the owner and group,
 the size in bytes, the modification time, and the path.  The ownership
 and size columns grow as wide as the widest entry in the package needs
-them to be.  Paths carry a leading ``./`` because that is how they sit
-in the cpio archive.
+them to be.  Paths carry a leading ``./`` because that is how they are
+represented in the cpio archive.
 
 A control character in a path is printed as a ``\ooo`` octal escape
 and a backslash is printed as ``\\``, which is what ``ls -b`` does.

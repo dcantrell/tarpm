@@ -2,7 +2,7 @@
 The JSON metadata
 =================
 
-This is the reference for what tarpm writes and what it reads back.
+This is the reference of what tarpm writes and what it reads back.
 Everything here is a view of the binary structures in the RPM file, so
 it helps to know what those look like first.
 
@@ -21,10 +21,11 @@ Four pieces, one after the other::
     | payload             |  compressed cpio archive
     +---------------------+
 
-Both headers use the same binary layout.  You get an 8 byte magic, the
-number of index entries, the size of the data area, then that many 16
-byte index entries, and then the data area itself.  Each index entry
-is a tag number, a type, an offset in to the data area, and a count::
+Both headers use the same binary layout.  You get an 8 byte magic
+number, the number of index entries, the size of the data area, then
+that many 16 byte index entries, and then the data area itself.  Each
+index entry is a tag number, a type, an offset in to the data area,
+and a count::
 
     struct entry {
         int32_t tag;      /* RPMTAG_NAME, RPMTAG_VERSION, ... */
@@ -363,7 +364,7 @@ dependencies
 RPM stores each kind of dependency as three parallel arrays.  Provides
 are Providename, Provideversion, and Provideflags, requires are
 Requirename, Requireversion, and Requireflags, and so on through
-conflicts, obsoletes, recommends, suggests, supplements, and enhances.
+Conflicts, Obsoletes, Recommends, Suggests, Supplements, and Enhances.
 Entry *n* of each array describes dependency *n*.
 
 Any other key under ``dependencies`` is left out of the package with a
@@ -398,8 +399,8 @@ bits.  These are the ``RPMSENSE_`` macros in
 dependency came from, such as ``find-requires`` for something a
 generator produced, or what it means, such as ``config`` or ``rpmlib``
 or ``interp``.  A key left off means the bit is clear.  Bits with no
-name go in as one decimal number, such as ``"4194304"``, so a round
-trip keeps them.
+name go in as one decimal number, such as ``"4194304"``, so repacking
+the RPM will retain them.
 
 A dependency type with nothing in it does not appear at all, so a
 package with no conflicts has no ``conflicts`` key.
@@ -645,8 +646,8 @@ left there.  That covers all of ``lead.json`` and every tag in
 ``signature.json``.
 
 ``header.json`` carries no read-only markers, since it is the file you
-are meant to edit, but three things in it are still not yours to
-change.  Those are the ``magic`` key, the ``reserved`` key, and the
+are meant to edit, but three keys are technically read-only.  Those
+are the ``magic`` key, the ``reserved`` key, and the
 ``Headerimmutable`` tag holding the region trailer.
 
 The digest and size tags in the main header are not marked read-only

@@ -3,15 +3,17 @@ tarpm
 =====
 
 tarpm is a command line tool for taking binary and source RPM packages
-apart and putting them back together.  The interface mimics tar(1), so
-if you know how to drive tar you already know how to drive tarpm.  You
-extract a package to a directory, you change what you find in that
-directory, and then you create a new package from it.
+apart and putting them back together.  You can also create installable
+RPM packages by providing metadata for the header and a payload tree.
+The interface mimics tar(1), so if you know how to drive tar you
+already know how to drive tarpm.  You extract a package to a
+directory, you change what you find in that directory, and then you
+create a new package from it.
 
-When you extract a package, the RPM header comes out as a set of JSON
-files you can read and edit with whatever you like.  The payload comes
-out as a regular directory tree.  No spec file is involved at any
-point and tarpm never calls rpmbuild(1).
+When you extract a package, the RPM header is written to a set of JSON
+files you can read and edit with whatever tool you like.  The payload
+is extracted to a regular directory tree.  No spec file is involved at
+any point and tarpm never calls rpmbuild(1).
 
 .. toctree::
    :maxdepth: 2
