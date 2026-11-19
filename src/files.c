@@ -1908,6 +1908,164 @@ scan_payload_dir(const struct payload_scan *scan, const char *dir_path, const ch
 }
 
 /*
+ * Index the paths in the "files" array that carry a mode.  That mode
+ * is what goes in to the package, so a directory we find here can be
+ * opened without changing anything we write.  The keys carry no
+ * leading slash, the way the payload tree holds them.
+ */
+static struct json_object *
+index_recorded_modes(struct json_object *files)
+{
+    size_t i = 0;
+    const char *path = NULL;
+    struct json_object *file = NULL;
+    struct json_object *value = NULL;
+    struct json_object *recorded = NULL;
+
+    recorded = json_object_new_object();
+
+    if (files == NULL || json_object_get_type(files) != json_type_array) {
+        return recorded;
+    }
+
+    for (i = 0; i < json_object_array_length(files); i++) {
+        file = json_object_array_get_idx(files, i);
+
+        if (!json_object_object_get_ex(file, RPM_FILE_MODE_DESC, &value) || json_object_get_type(value) != json_type_string) {
+            continue;
+        }
+
+        if (!json_object_object_get_ex(file, RPM_FILE_PATH_DESC, &value)) {
+            continue;
+        }
+
+        path = str_or_empty(json_object_get_string(value));
+
+        if (path[0] == '/') {
+            path++;
+        }
+
+        if (!json_object_object_get_ex(recorded, path, NULL)) {
+            json_object_object_add(recorded, path, NULL);
+        }
+    }
+
+    return recorded;
+}
+
+/*
+ * Walk the payload tree below dir_path and open the directories the
+ * file list names that we cannot look in.  prefix is the path of
+ * dir_path in the payload tree, empty at the top.  We descend before
+ * we come back up, so a directory goes on to the list after its
+ * parent and comes off it first.
+ */
+static void
+open_payload_dir(struct json_object *recorded, struct payload_dir_mode **opened, const char *dir_path, const char *prefix)
+{
+    int i = 0;
+    int n = 0;
+    mode_t want = S_IRUSR | S_IXUSR;
+    char *path = NULL;
+    char *sub = NULL;
+    struct dirent **entries = NULL;
+    struct stat sb;
+    struct payload_dir_mode *entry = NULL;
+
+    if (lstat(dir_path, &sb) == -1 || !S_ISDIR(sb.st_mode)) {
+        return;
+    }
+
+    /* the payload tree itself is not a directory the package owns */
+    if (prefix[0] != '\0' && (sb.st_mode & want) != want && sb.st_uid == geteuid() && json_object_object_get_ex(recorded, prefix, NULL)) {
+        if (chmod(dir_path, (sb.st_mode & 07777) | want) == -1) {
+            warn_escaped("chmod: %s", dir_path);
+        } else {
+            entry = xalloc(sizeof(*entry));
+            entry->path = xstrdup(dir_path);
+            entry->mode = sb.st_mode & 07777;
+            entry->next = *opened;
+            *opened = entry;
+        }
+    }
+
+    n = scandir(dir_path, &entries, NULL, alphasort);
+
+    if (n < 0) {
+        return;
+    }
+
+    for (i = 0; i < n; i++) {
+        if (!strcmp(entries[i]->d_name, ".") || !strcmp(entries[i]->d_name, "..")) {
+            free(entries[i]);
+            continue;
+        }
+
+        if (prefix[0] == '\0') {
+            path = xstrdup(entries[i]->d_name);
+        } else {
+            xasprintf(&path, "%s/%s", prefix, entries[i]->d_name);
+        }
+
+        sub = joinpath(dir_path, entries[i]->d_name, NULL);
+        open_payload_dir(recorded, opened, sub, path);
+
+        free(sub);
+        free(path);
+        free(entries[i]);
+    }
+
+    free(entries);
+    return;
+}
+
+/*
+ * Give ourselves access to the payload tree.  See the header for the
+ * details.
+ */
+struct payload_dir_mode *
+open_payload_tree(const char *payload_dir, struct json_object *files)
+{
+    struct json_object *recorded = NULL;
+    struct payload_dir_mode *opened = NULL;
+
+    /* root looks in a directory whatever the mode on it says */
+    if (payload_dir == NULL || geteuid() == 0) {
+        return NULL;
+    }
+
+    recorded = index_recorded_modes(files);
+    open_payload_dir(recorded, &opened, payload_dir, "");
+    json_object_put(recorded);
+
+    return opened;
+}
+
+/*
+ * Put the modes back.  Deepest first, so a directory we close does
+ * not hide one below it we still have to get to.
+ */
+void
+close_payload_tree(struct payload_dir_mode *opened)
+{
+    struct payload_dir_mode *entry = NULL;
+
+    while (opened != NULL) {
+        entry = opened;
+        opened = opened->next;
+
+        if (chmod(entry->path, entry->mode) == -1) {
+            warn_escaped("chmod: %s", entry->path);
+        }
+
+        free(entry->path);
+        free(entry);
+    }
+
+    return;
+}
+
+/*
  * Give back the digest algorithm the header names.  rpm falls back to
  * MD5 when RPMTAG_FILEDIGESTALGO is missing, so we do too.
  */

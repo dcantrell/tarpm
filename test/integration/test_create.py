@@ -2813,6 +2813,58 @@ class CreateRecomputesDigestWithNoReadBit(RequiresTarpm):
 
 
 @unittest.skipIf(os.geteuid() == 0, "root can search a directory with no search bit")
+class CreateOpensUnsearchableDirectory(TestUnpackRPM):
+    """A directory the package owns with no search bit is opened to repack it"""
+
+    def setUp(self):
+        super().setUp()
+
+        content = rpmfluff.SourceFile(
+            "completion.sh", make_random_content(128).encode("utf-8")
+        )
+        self.rpm.add_installed_file("/usr/share/%s/dist/completion.sh" % NAME, content)
+
+        # the package owns the directory and carries mode 0644 for it
+        self.rpm.get_subpackage(None).section_files += (
+            "%%attr(0644,root,root) %%dir /usr/share/%s/dist\n" % NAME
+        )
+
+    def runTest(self):
+        self.rpm.do_make()
+        original_rpm = self.rpm.get_built_rpm(get_expected_arch())
+
+        tree = os.path.join(self.output_dir, "extracted")
+        os.makedirs(tree)
+        rc, out, err = run_tarpm([self.tarpm, "-x", "-f", original_rpm, "-O", tree])
+        self.assertEqual(rc, 0, msg=err)
+
+        # extraction puts the mode the package carries on the directory
+        dist = os.path.join(tree, "payload", "usr", "share", NAME, "dist")
+        self.assertEqual(os.stat(dist).st_mode & 0o7777, 0o644)
+
+        pkg = os.path.join(self.output_dir, "recreated.rpm")
+        rc, out, err = run_tarpm([self.tarpm, "-c", "-f", pkg, tree])
+        mode = os.stat(dist).st_mode & 0o7777
+        os.chmod(dist, 0o755)
+
+        self.assertEqual(rc, 0, msg=err)
+        self.assertEqual(err, "")
+
+        # the mode we borrowed went back
+        self.assertEqual(mode, 0o644)
+
+        # every file is there and the directory kept the mode it had
+        listing = "[%{filenames} %{filemodes:perms}\n]"
+        self.assertEqual(query_rpm(pkg, listing), query_rpm(original_rpm, listing))
+        self.assertIn(
+            "/usr/share/%s/dist drw-r--r--" % NAME, query_rpm(pkg, listing).splitlines()
+        )
+
+        rc, err = verify_rpm(pkg)
+        self.assertEqual(rc, 0, msg=err)
+
+
+@unittest.skipIf(os.geteuid() == 0, "root can search a directory with no search bit")
 class CreateFailsOnUnsearchableDirectory(TestUnpackRPM):
     """A payload file we cannot lstat() fails the run rather than dropping out"""
 
@@ -2833,7 +2885,8 @@ class CreateFailsOnUnsearchableDirectory(TestUnpackRPM):
         rc, out, err = run_tarpm([self.tarpm, "-x", "-f", original_rpm, "-O", tree])
         self.assertEqual(rc, 0, msg=err)
 
-        # a directory with no search bit hides the file below it from us
+        # the file list does not name this directory, so we leave the
+        # mode alone and cannot see the file below it
         dist = os.path.join(tree, "payload", "usr", "share", NAME, "dist")
         os.chmod(dist, 0o644)
 

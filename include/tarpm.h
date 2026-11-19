@@ -956,6 +956,38 @@ extern bool keep_signatures;
 struct json_object *generate_files(const struct rpmhdr *hdr, const struct rpmhdrinfo *hdrinfo, struct json_object *dependencies);
 
 /**
+ * @brief A directory open_payload_tree() opened and the mode it had.
+ */
+struct payload_dir_mode {
+    char *path;
+    mode_t mode;
+    struct payload_dir_mode *next;
+};
+
+/**
+ * @brief Give ourselves access to the payload tree.
+ *
+ * A package can own a directory with a mode like 0644.  Only root can
+ * look at the files below one of those, so we add the owner search
+ * and read bits to the directories the file list names.  The mode in
+ * the file list is what goes in to the package, not the one on disk,
+ * so nothing we write changes.  Does nothing when we are root.
+ *
+ * @param payload_dir The payload tree.
+ * @param files The files array, which says which modes are recorded.
+ * @return The directories we opened, deepest last.  Hand it to
+ *         close_payload_tree() when done with the payload tree.
+ */
+struct payload_dir_mode *open_payload_tree(const char *payload_dir, struct json_object *files);
+
+/**
+ * @brief Put back the modes open_payload_tree() changed.
+ *
+ * @param opened What open_payload_tree() gave back.  Freed here.
+ */
+void close_payload_tree(struct payload_dir_mode *opened);
+
+/**
  * @brief Add entries to the "files" array for files added to the
  *        payload tree.
  *

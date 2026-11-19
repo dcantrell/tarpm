@@ -104,10 +104,7 @@ Files you removed
 Files tarpm cannot look at
     Only a file that is really gone counts as removed.  Any other
     ``lstat()`` failure names the file and fails the run, rather than
-    write a package that is short a file.  A directory in the payload
-    tree with no search bit hides everything below it this way.  Some
-    packages ship a directory with a mode like 0644, and only root can
-    repack those.
+    write a package that is short a file.
 
 Files you added
     A file in the payload tree with no entry gets one, filled in from
@@ -130,6 +127,24 @@ Keys you left out
     file in the payload tree.  The owner, the group, and the device
     are not things a file can answer, so those fall back to root,
     root, and 1.
+
+Directories with no search bit
+==============================
+
+A directory with no search bit hides everything below it from everyone
+but root, and some packages own one with a mode like 0644.  Creating a
+package adds the owner search and read bits to a directory like that
+for as long as it takes to read the payload tree, then puts the mode
+back.  The mode in the file list is what goes in to the package, so
+the package comes out the same either way.
+
+Only a directory the file list names along with a ``mode`` gets this.
+A directory the list does not name keeps the mode it has, because the
+mode on disk is the one tarpm would record for it.  Killing tarpm
+while the tree is open leaves the wider mode behind.
+
+How the warnings read
+=====================
 
 tarpm warns on standard error when it adds or drops an entry, when a
 file changed type, when it fills in a missing key, and when a changed

@@ -2996,6 +2996,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     struct rpmhdrinfo *siginfo = NULL;
     struct rpmhdr *hdr = NULL;
     struct rpmhdrinfo *hdrinfo = NULL;
+    struct payload_dir_mode *opened = NULL;
 
     if (filename == NULL || cwd == NULL || input_dir == NULL) {
         return -1;
@@ -3117,6 +3118,14 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
             files = json_object_new_array();
             json_object_object_add(header, RPM_FILES_DESC, files);
         }
+
+        /*
+         * A directory the package owns with no search bit hides the
+         * files below it from everyone but root.  We open the ones
+         * the file list records a mode for and put them back when we
+         * are done with the tree.
+         */
+        opened = open_payload_tree(payload_dir, files);
 
         verbose_stage(_("Scanning the payload tree %s"), payload_dir);
         nfiles = json_object_array_length(files);
@@ -3301,6 +3310,7 @@ create_rpm(const char *filename, const char *cwd, const char *input_dir, const s
     rc = 0;
 
 create_cleanup:
+    close_payload_tree(opened);
     json_object_put(header);
     json_object_put(signature);
     json_object_put(keptsig);
