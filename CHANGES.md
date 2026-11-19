@@ -1,3 +1,11 @@
+Changes in tarpm-0.4
+--------------------
+
+* Fail a create we cannot lstat instead of dropping the file
+* Docs updates
+* Repack through a directory with no search bit
+
+
 Changes in tarpm-0.3
 --------------------
 
