@@ -1,3 +1,6 @@
+# Set to 1 for Copr builds (.copr/Makefile does this)
+%global copr_build 0
+
 Name:           tarpm
 Version:        %%VERSION%%
 Release:        %autorelease
@@ -28,7 +31,9 @@ BuildRequires:  rpm-build
 # right now (27OCT2026).
 %if 0%{?rhel} == 0 || 0%{?rhel} == 9
 BuildRequires:  python3-rpmfluff
-%else
+%endif
+
+%if %{copr_build} && 0%{?rhel} && 0%{?rhel} != 9
 # pip builds rpmfluff from its sdist in %%check
 BuildRequires:  python3-setuptools
 %endif
@@ -57,7 +62,7 @@ package is usable by rpm(8).
 %check
 # If we lack the rpmfluff RPM, install it with pip.  This requires
 # network access in mock or Copr builds.
-%if 0%{?rhel} && 0%{?rhel} != 9
+%if %{copr_build} && 0%{?rhel} && 0%{?rhel} != 9
 %{python3} -m pip install --user rpmfluff
 %endif
 

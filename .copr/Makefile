@@ -79,6 +79,7 @@ endif
 	sed -e 's|%%VERSION%%|$(VER)|g' < "$(SPEC_TEMPLATE)" > "$(SPEC)"
 	sed -i -e 's|%%GPGKEYRING%%|gpgkey-$(GPGKEY).gpg|g' "$(SPEC)"
 ifeq ($(BUILDTYPE),copr)
+	sed -i -e 's|^%global copr_build .*$$|%global copr_build 1|' "$(SPEC)"
 	sed -i -e '/^Release:/ s/%autorelease$$/1.1.$(GITDATE)git$(GITHASH)/' "$(SPEC)"
 	sed -i -e 's|^Source0:.*$$|Source0: $(TARBALL_BASENAME).tar.gz|g' "$(SPEC)"
 	sed -i -e 's|^%autosetup.*$$|%autosetup -n $(TARBALL_BASENAME)|g' "$(SPEC)"
