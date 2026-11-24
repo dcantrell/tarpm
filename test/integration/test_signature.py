@@ -9,15 +9,11 @@ import os
 import struct
 import subprocess
 import unittest
-import rpmfluff
+from baseclass import rpmfluff
+from baseclass import get_expected_arch
 from baseclass import NAME, TestUnpackSRPM, TestUnpackRPM
 from baseclass import HAVE_RPM_FORMAT_SIX, rpm_at_least
 from baseclass import RPMBUILD_FORMAT_ARGS, RPMBUILD_FORMAT_SIX
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 # The signature header tags rpm writes by default, one set per RPM
 # format.  rpmGenerateSignature() in lib/signature.cc in the rpm

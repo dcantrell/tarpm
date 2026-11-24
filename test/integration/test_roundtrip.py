@@ -13,7 +13,8 @@ import struct
 import subprocess
 import tempfile
 import unittest
-import rpmfluff
+from baseclass import rpmfluff
+from baseclass import get_expected_arch
 from baseclass import NAME
 from baseclass import REL
 from baseclass import VER
@@ -21,11 +22,6 @@ from baseclass import RPMBUILD_FORMAT_ARGS
 from baseclass import TestUnpackRPM
 from baseclass import TestUnpackSRPM
 from baseclass import rpm_at_least
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 
 def run_tarpm(tarpm, args, env=None, cwd=None):

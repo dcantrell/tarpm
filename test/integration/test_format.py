@@ -9,15 +9,11 @@ import os
 import struct
 import subprocess
 import unittest
-import rpmfluff
 import rpm
+from baseclass import rpmfluff
+from baseclass import get_expected_arch
 from baseclass import NAME, TestUnpackRPM
 from baseclass import HAVE_RPM_FORMAT_SIX, RPMBUILD_FORMAT_ARGS, rpm_at_least
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 # The main header tags rpm writes for the payload, one set per RPM
 # format.  writeRPM() in build/pack.cc in the rpm source puts these in.

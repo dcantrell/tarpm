@@ -10,12 +10,26 @@ import subprocess
 import tempfile
 import unittest
 import rpm
-import rpmfluff
 
+# The rpmfluff module is not always available.  Test cases that need
+# it are skipped when it is missing.
 try:
-    from rpmfluff.utils import get_expected_arch
+    import rpmfluff
+
+    HAVE_RPMFLUFF = True
 except ImportError:
-    from rpmfluff import get_expected_arch
+    rpmfluff = None
+    HAVE_RPMFLUFF = False
+
+if HAVE_RPMFLUFF:
+    try:
+        from rpmfluff.utils import get_expected_arch
+    except ImportError:
+        from rpmfluff import get_expected_arch
+else:
+    get_expected_arch = None
+
+SKIP_NO_RPMFLUFF = "rpmfluff module not available"
 
 # NVRs to use for the fake test package
 NAME = "vaporware"
@@ -103,7 +117,13 @@ class MissingTarpm(Exception):
 # The only significant difference here is that rpmbuild is called
 # with the '-bs' option instead of '-ba'.  Enough functions are
 # duplicated here to make it all work.
-class SimpleSrpmBuild(rpmfluff.SimpleRpmBuild):
+if HAVE_RPMFLUFF:
+    SimpleRpmBuildBase = rpmfluff.SimpleRpmBuild
+else:
+    SimpleRpmBuildBase = object
+
+
+class SimpleSrpmBuild(SimpleRpmBuildBase):
     def __write_log(self, log, arch):
         log_dir = self.get_build_log_dir(arch)
         if not os.path.exists(log_dir):
@@ -210,6 +230,9 @@ class RequiresTarpm(unittest.TestCase):
 # Base test case class that tests operations on a source RPM
 class TestUnpackSRPM(RequiresTarpm):
     def setUp(self):
+        if not HAVE_RPMFLUFF:
+            self.skipTest(SKIP_NO_RPMFLUFF)
+
         super().setUp()
         self.rpm = SimpleSrpmBuild(NAME, VER, REL)
 
@@ -242,6 +265,9 @@ class TestUnpackSRPM(RequiresTarpm):
 # Base test case class that tests operations on a binary RPM
 class TestUnpackRPM(RequiresTarpm):
     def setUp(self):
+        if not HAVE_RPMFLUFF:
+            self.skipTest(SKIP_NO_RPMFLUFF)
+
         super().setUp()
         self.rpm = rpmfluff.SimpleRpmBuild(NAME, VER, REL)
 

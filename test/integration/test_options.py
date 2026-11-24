@@ -6,13 +6,9 @@
 import os
 import subprocess
 
+from baseclass import get_expected_arch
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackRPM
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 
 # Verify --help and -? give help output

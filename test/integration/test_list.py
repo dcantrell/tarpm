@@ -8,16 +8,12 @@ import os
 import re
 import struct
 import subprocess
-import rpmfluff
+from baseclass import rpmfluff
+from baseclass import get_expected_arch
 from baseclass import NAME
 from baseclass import BUILD_FILES_OWNED_BY_ROOT
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackSRPM, TestUnpackRPM
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 
 def list_entries(out):

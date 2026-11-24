@@ -12,17 +12,13 @@ import stat
 import struct
 import subprocess
 import unittest
-import rpmfluff
+from baseclass import rpmfluff
+from baseclass import get_expected_arch
 from baseclass import NAME
 from baseclass import PAYLOAD_DIGEST
 from baseclass import HAVE_RPM_FORMAT_SIX
 from baseclass import RequiresTarpm
 from baseclass import TestUnpackRPM
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 
 def make_random_content(size):

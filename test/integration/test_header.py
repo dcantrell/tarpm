@@ -12,14 +12,10 @@ import platform
 import rpm
 import stat
 import time
+from baseclass import get_expected_arch
 from baseclass import TestUnpackSRPM, TestUnpackRPM
 from baseclass import PAYLOAD_DIGEST, PAYLOAD_DIGEST_ALGO, PAYLOAD_DIGEST_ALT
 from baseclass import RPMBUILD_FORMAT_SIX
-
-try:
-    from rpmfluff.utils import get_expected_arch
-except ImportError:
-    from rpmfluff import get_expected_arch
 
 # The main header tags only a v6 format package carries, and the
 # length of the hex digest each digest tag holds.  writeRPM() in

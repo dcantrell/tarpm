@@ -17,7 +17,9 @@ it needs to build:
 * OpenSSL, for the digests
 
 The test suite also needs CUnit, python3, python3-rpm, rpm-build, and
-the rpmfluff Python module.  If available, the build will do man page
+the rpmfluff Python module.  Without rpmfluff the integration tests
+that build packages are skipped with the message "rpmfluff module not
+available".  If available, the build will do man page
 validation using groff and mandoc, but will skip those checks if
 either or both tools are unavailable.  The HTML manual needs doxygen,
 sphinx, breathe, and the Read the Docs sphinx theme.
